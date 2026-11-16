@@ -102,7 +102,7 @@ export const DEFAULT_SETTINGS: Settings = {
   brand: {
     title: 'FOTO STRUK',
     subtitle: 'Foto seru, langsung tercetak ala struk belanja',
-    accent: '#7c5cff',
+    accent: '#c2552d',
   },
   session: {
     countdownSec: 3,

@@ -78,7 +78,7 @@ export function Payment({ frame, onPaid, onBack }: Props) {
         <section class="card method-panel">
           {pkg.price === 0 ? (
             <>
-              <h2 class="heading small">Pilihan ini gratis 🎉</h2>
+              <h2 class="heading small">Pilihan ini gratis</h2>
               <button class="btn primary huge" onClick={() => onPaid(pkg, 'free')}>
                 Mulai sesi foto →
               </button>
@@ -100,7 +100,7 @@ export function Payment({ frame, onPaid, onBack }: Props) {
             <>
               <div class="method-head">
                 <h2 class="heading small">
-                  {METHODS[choice].icon} {METHODS[choice].title}
+                  {METHODS[choice].title}
                 </h2>
                 {choices.length > 1 && (
                   <button

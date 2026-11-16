@@ -208,28 +208,44 @@ class UsbTransport implements Transport {
     await device.open();
     try {
       if (!device.configuration) await device.selectConfiguration(1);
-      // Prefer the interface that declares itself a printer; fall back to any bulk output.
-      const target = this.findOutput(device, true) ?? this.findOutput(device, false);
-      if (!target) throw new Error('Perangkat USB ini tidak punya jalur untuk mencetak.');
-      await device.claimInterface(target.interfaceNumber);
-      this.interfaceNumber = target.interfaceNumber;
-      this.endpoint = target.endpoint;
-      this.device = device;
-      navigator.usb.addEventListener('disconnect', this.handleUnplug);
+      const candidates = this.outputs(device);
+      if (candidates.length === 0) throw new Error('Perangkat USB ini tidak punya jalur untuk mencetak. Pastikan yang dipilih printernya, bukan hub.');
+
+      // Some printers expose more than one interface and the tablet may refuse
+      // the first; try each one that can take print data until one is granted.
+      for (const target of candidates) {
+        try {
+          await device.claimInterface(target.interfaceNumber);
+        } catch {
+          continue;
+        }
+        this.interfaceNumber = target.interfaceNumber;
+        this.endpoint = target.endpoint;
+        this.device = device;
+        navigator.usb.addEventListener('disconnect', this.handleUnplug);
+        return;
+      }
+      const classes = candidates.map((c) => c.interfaceClass).join(', ');
+      throw new Error(
+        `Printer "${this.describe(device)}" terdeteksi, tapi tablet menolak memberikannya ke Chrome (kelas antarmuka: ${classes}). ` +
+          'Biasanya karena aplikasi lain sedang memakai printer ini. Tutup aplikasi printer lain, cabut lalu colok lagi kabel USB-nya, ' +
+          'dan saat Android bertanya aplikasi mana yang membuka perangkat USB ini, pilih Chrome. Lalu tekan Hubungkan lagi.',
+      );
     } catch (error) {
       await device.close().catch(() => undefined);
       throw error;
     }
   }
 
-  private findOutput(device: USBDevice, printerOnly: boolean): { interfaceNumber: number; endpoint: number } | null {
+  /** Interfaces that can take print data: the ones that say they are a printer first, then any other bulk output. */
+  private outputs(device: USBDevice): { interfaceNumber: number; endpoint: number; interfaceClass: number }[] {
+    const found = [];
     for (const iface of device.configuration?.interfaces ?? []) {
       const alternate = iface.alternate;
-      if (printerOnly && alternate.interfaceClass !== USB_PRINTER_CLASS) continue;
       const out = alternate.endpoints.find((e) => e.direction === 'out' && e.type === 'bulk');
-      if (out) return { interfaceNumber: iface.interfaceNumber, endpoint: out.endpointNumber };
+      if (out) found.push({ interfaceNumber: iface.interfaceNumber, endpoint: out.endpointNumber, interfaceClass: alternate.interfaceClass });
     }
-    return null;
+    return found.sort((x, y) => Number(y.interfaceClass === USB_PRINTER_CLASS) - Number(x.interfaceClass === USB_PRINTER_CLASS));
   }
 
   async disconnect(): Promise<void> {

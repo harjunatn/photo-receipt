@@ -1,38 +1,60 @@
-/* Only the Latin part of the font is bundled; the booth's text is Indonesian. */
 @font-face {
-  font-family: 'Rubik Variable';
+  font-family: 'Instrument Serif';
   font-style: normal;
   font-display: swap;
-  font-weight: 300 900;
-  src: url('../node_modules/@fontsource-variable/rubik/files/rubik-latin-wght-normal.woff2') format('woff2-variations');
+  font-weight: 400;
+  src: url('../node_modules/@fontsource/instrument-serif/files/instrument-serif-latin-400-normal.woff2') format('woff2');
+}
+
+@font-face {
+  font-family: 'Instrument Serif';
+  font-style: italic;
+  font-display: swap;
+  font-weight: 400;
+  src: url('../node_modules/@fontsource/instrument-serif/files/instrument-serif-latin-400-italic.woff2') format('woff2');
+}
+
+/* Only the Latin part of the font is bundled; the booth's text is Indonesian. */
+@font-face {
+  font-family: 'Inter Variable';
+  font-style: normal;
+  font-display: swap;
+  font-weight: 100 900;
+  src: url('../node_modules/@fontsource-variable/inter/files/inter-latin-wght-normal.woff2') format('woff2-variations');
 }
 
 :root {
-  /* The operator's brand colour (set from the settings). Everything else is derived from it. */
-  --accent: #7c5cff;
-  /* A warmer neighbour of the accent, for gradients. */
-  --accent-2: oklch(from var(--accent) calc(l + 0.06) c calc(h + 48));
-  --accent-soft: color-mix(in oklab, var(--accent) 11%, #fff);
-  --accent-ink: color-mix(in oklab, var(--accent) 72%, #1b1d3a);
+  /*
+   * "Gallery" look: bone-white walls, black ink, a serif for headlines,
+   * hairlines instead of boxes, and the photos as the only decoration.
+   */
+  --page: #f6f3ee;
+  --soft: #efebe4;
+  --cream: #efebe4;
+  --strong: #e1dbd0;
+  --card: #f6f3ee;
+  --ink: #1b1a18;
+  --body: #45423d;
+  --ink-2: #8b867d;
+  --line: #d6d0c5;
 
-  --ink: #1e2140;
-  --ink-2: #656b8c;
-  --line: #e3e6f4;
-  --card: #fff;
-  --page: #f4f5fd;
-  --ok: #0c8f61;
-  --ok-soft: #dcf5ea;
-  --warn: #a86400;
-  --warn-soft: #fff0d2;
-  --err: #d2364a;
-  --err-soft: #ffe2e6;
+  /* The operator's accent (set from the settings): the full stop after the title, progress, PIN dots. */
+  --accent: #c2552d;
 
-  --radius: 28px;
-  --radius-md: 20px;
-  --radius-sm: 13px;
-  --shadow: 0 26px 50px -30px rgb(41 45 104 / 0.6), 0 2px 8px rgb(41 45 104 / 0.06);
-  --shadow-sm: 0 10px 22px -14px rgb(41 45 104 / 0.45), 0 1px 3px rgb(41 45 104 / 0.07);
-  --ui: 'Rubik Variable', system-ui, -apple-system, 'Segoe UI', Roboto, sans-serif;
+  --ok: #2f4a2c;
+  --ok-soft: #dde6d8;
+  --warn: #6b5310;
+  --warn-soft: #efe3c6;
+  --err: #9c2f1c;
+  --err-soft: #f2d8d1;
+
+  --radius: 6px;
+  --radius-md: 6px;
+  --radius-sm: 10px;
+  --shadow: 0 0 0 0 transparent;
+  --shadow-sm: 0 0 0 0 transparent;
+  --ui: 'Inter Variable', Inter, system-ui, -apple-system, 'Segoe UI', Roboto, sans-serif;
+  --display: 'Instrument Serif', 'Times New Roman', serif;
   --mono: 'Space Mono', ui-monospace, Menlo, Consolas, monospace;
 }
 
@@ -52,7 +74,7 @@ body {
   color: var(--ink);
   font-family: var(--ui);
   font-size: 17px;
-  line-height: 1.45;
+  line-height: 1.5;
   -webkit-font-smoothing: antialiased;
   /* A kiosk must not scroll, zoom, select text or show a long-press menu under a guest's finger. */
   overflow: hidden;
@@ -101,12 +123,7 @@ textarea {
   gap: clamp(10px, 2vmin, 22px);
   padding: max(18px, env(safe-area-inset-top)) max(26px, env(safe-area-inset-right))
     max(20px, env(safe-area-inset-bottom)) max(26px, env(safe-area-inset-left));
-  /* Soft blobs of the brand colours behind everything. */
-  background:
-    radial-gradient(70vmax 70vmax at -10% -20%, color-mix(in oklab, var(--accent) 26%, transparent) 0, transparent 62%),
-    radial-gradient(60vmax 60vmax at 110% 8%, color-mix(in oklab, var(--accent-2) 26%, transparent) 0, transparent 60%),
-    radial-gradient(60vmax 60vmax at 62% 128%, rgb(64 205 190 / 0.24) 0, transparent 62%),
-    var(--page);
+  background: var(--page);
   overflow: hidden;
   animation: screen-in 0.32s cubic-bezier(0.2, 0.8, 0.2, 1);
 }
@@ -137,50 +154,42 @@ textarea {
 
 .steps {
   display: flex;
-  gap: 4px;
+  gap: clamp(12px, 2.2vw, 28px);
   margin: 0;
-  padding: 6px;
+  padding: 0;
   list-style: none;
-  border-radius: 999px;
-  background: rgb(255 255 255 / 0.72);
-  box-shadow: var(--shadow-sm);
 }
 
 .steps li {
   display: flex;
-  align-items: center;
+  align-items: baseline;
   gap: 8px;
-  padding: 5px 14px 5px 5px;
-  border-radius: 999px;
+  padding: 0 0 6px;
+  border-bottom: 1px solid transparent;
   color: var(--ink-2);
-  font-weight: 600;
-  font-size: 15px;
+  font-size: 12px;
+  font-weight: 500;
+  letter-spacing: 0.16em;
+  text-transform: uppercase;
 }
 
 .steps i {
-  display: grid;
-  place-items: center;
-  width: 28px;
-  height: 28px;
-  border-radius: 50%;
-  background: var(--line);
+  font-family: var(--mono);
   font-style: normal;
-  font-weight: 700;
-  font-size: 14px;
+  font-size: 11px;
 }
 
 .steps .done i {
-  background: var(--ok-soft);
-  color: var(--ok);
+  color: var(--ink-2);
 }
 
 .steps .now {
-  background: linear-gradient(135deg, var(--accent), var(--accent-2));
-  color: #fff;
+  border-bottom-color: var(--ink);
+  color: var(--ink);
 }
 
 .steps .now i {
-  background: rgb(255 255 255 / 0.28);
+  color: var(--ink);
 }
 
 .titles {
@@ -196,31 +205,34 @@ textarea {
 }
 
 .display {
-  padding-bottom: 0.08em;
-  font-size: clamp(56px, 12vmin, 140px);
-  font-weight: 800;
-  line-height: 0.94;
-  letter-spacing: -0.035em;
+  font-family: var(--display);
+  font-size: clamp(64px, 14vmin, 168px);
+  font-weight: 400;
+  line-height: 0.9;
+  letter-spacing: -0.02em;
   overflow-wrap: anywhere;
-  background: linear-gradient(120deg, var(--accent-ink), var(--accent) 48%, var(--accent-2));
-  -webkit-background-clip: text;
-  background-clip: text;
-  color: transparent;
+}
+
+/* The one spot of colour on the welcome screen. */
+.display::after {
+  content: '.';
+  color: var(--accent);
 }
 
 .heading {
-  font-size: clamp(30px, 5vmin, 52px);
-  font-weight: 700;
-  letter-spacing: -0.02em;
-  line-height: 1.08;
+  font-family: var(--display);
+  font-size: clamp(36px, 5.8vmin, 62px);
+  font-weight: 400;
+  letter-spacing: -0.01em;
+  line-height: 1.02;
 }
 
 .heading.small {
-  font-size: clamp(22px, 3.2vmin, 32px);
+  font-size: clamp(28px, 3.8vmin, 38px);
 }
 
 .lead {
-  color: var(--ink-2);
+  color: var(--body);
   font-size: clamp(16px, 2.3vmin, 21px);
 }
 
@@ -230,20 +242,17 @@ textarea {
 
 .note {
   color: var(--ink-2);
-  font-size: 15px;
+  font-size: 14px;
 }
 
 .pill {
   display: inline-flex;
   align-items: center;
-  gap: 8px;
-  padding: 7px 16px;
-  border-radius: 999px;
-  background: rgb(255 255 255 / 0.85);
-  box-shadow: var(--shadow-sm);
-  color: var(--accent-ink);
-  font-weight: 600;
-  font-size: 15px;
+  color: var(--ink-2);
+  font-size: 12px;
+  font-weight: 500;
+  letter-spacing: 0.18em;
+  text-transform: uppercase;
 }
 
 /* ---------- Buttons ---------- */
@@ -253,20 +262,15 @@ textarea {
   align-items: center;
   justify-content: center;
   gap: 10px;
-  min-height: 58px;
-  padding: 12px 26px;
-  border: 0;
+  min-height: 56px;
+  padding: 12px 28px;
+  border: 1px solid var(--ink);
   border-radius: 999px;
-  background: var(--card);
-  box-shadow:
-    var(--shadow-sm),
-    inset 0 0 0 1.5px var(--line);
-  font-weight: 600;
-  font-size: 18px;
+  background: transparent;
+  font-weight: 500;
+  font-size: 17px;
   text-decoration: none;
-  transition:
-    transform 0.12s,
-    box-shadow 0.12s;
+  transition: transform 0.12s;
 }
 
 .btn:active:not(:disabled) {
@@ -279,26 +283,25 @@ textarea {
 }
 
 .btn.primary {
-  background: linear-gradient(135deg, var(--accent), var(--accent-2));
+  border-color: var(--ink);
+  background: var(--ink);
   color: #fff;
-  box-shadow: 0 16px 30px -14px color-mix(in oklab, var(--accent) 85%, transparent);
 }
 
 .btn.dark {
+  border-color: var(--ink);
   background: var(--ink);
   color: #fff;
-  box-shadow: var(--shadow-sm);
 }
 
 .btn.quiet {
-  background: rgb(255 255 255 / 0.72);
-  box-shadow: inset 0 0 0 1.5px var(--line);
+  border-color: var(--line);
 }
 
 .btn.danger {
+  border-color: var(--err-soft);
   background: var(--err-soft);
   color: var(--err);
-  box-shadow: none;
 }
 
 .btn.small {
@@ -308,10 +311,9 @@ textarea {
 }
 
 .btn.huge {
-  min-height: clamp(72px, 11vmin, 104px);
-  padding: 16px clamp(32px, 6vmin, 64px);
-  font-size: clamp(24px, 4vmin, 38px);
-  font-weight: 700;
+  min-height: clamp(68px, 10vmin, 92px);
+  padding: 16px clamp(34px, 6vmin, 64px);
+  font-size: clamp(21px, 3.3vmin, 30px);
 }
 
 /* A slow pulse on the one button the guest is meant to press next. */
@@ -321,8 +323,7 @@ textarea {
 
 @keyframes glow {
   50% {
-    box-shadow: 0 18px 46px -8px color-mix(in oklab, var(--accent) 90%, transparent);
-    translate: 0 -2px;
+    translate: 0 -4px;
   }
 }
 
@@ -339,11 +340,9 @@ textarea {
 /* ---------- Cards, paper, tags ---------- */
 
 .card {
-  padding: clamp(18px, 3vmin, 32px);
-  border: 1px solid rgb(255 255 255 / 0.9);
+  padding: clamp(20px, 3vmin, 34px);
+  border: 1px solid var(--line);
   border-radius: var(--radius);
-  background: rgb(255 255 255 / 0.88);
-  box-shadow: var(--shadow);
 }
 
 /* A strip of receipt paper with a torn, zig-zag bottom edge. */
@@ -351,7 +350,8 @@ textarea {
   --tooth: 12px;
   padding: 10px 10px calc(10px + var(--tooth));
   background: #fff;
-  filter: drop-shadow(0 16px 20px rgb(41 45 104 / 0.3));
+  /* A hairline of shadow so white paper stays visible on the cream canvas. */
+  filter: drop-shadow(0 0 1px rgb(10 10 10 / 0.45));
   -webkit-mask:
     linear-gradient(#000 0 0) top / 100% calc(100% - var(--tooth)) no-repeat,
     conic-gradient(from -45deg at 50% 100%, #0000 90deg, #000 0) bottom / var(--tooth) var(--tooth) repeat-x;
@@ -393,7 +393,7 @@ textarea {
   width: 100%;
   aspect-ratio: 1 / 2.2;
   border-radius: 6px;
-  background: linear-gradient(100deg, #eceefa 30%, #f9faff 50%, #eceefa 70%) 0 0 / 200% 100%;
+  background: linear-gradient(100deg, var(--strong) 30%, var(--soft) 50%, var(--strong) 70%) 0 0 / 200% 100%;
   animation: shimmer 1.3s linear infinite;
 }
 
@@ -406,25 +406,29 @@ textarea {
 .tag {
   display: inline-flex;
   align-items: center;
-  padding: 5px 12px;
+  padding: 4px 10px;
+  border: 1px solid var(--line);
   border-radius: 999px;
-  background: var(--line);
-  color: var(--ink-2);
-  font-weight: 600;
-  font-size: 13px;
+  font-size: 11px;
+  font-weight: 500;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
 }
 
 .tag.ok {
+  border-color: transparent;
   background: var(--ok-soft);
   color: var(--ok);
 }
 
 .tag.warn {
+  border-color: transparent;
   background: var(--warn-soft);
   color: var(--warn);
 }
 
 .tag.err {
+  border-color: transparent;
   background: var(--err-soft);
   color: var(--err);
 }
@@ -436,13 +440,12 @@ textarea {
 }
 
 .chip {
-  min-height: 46px;
-  padding: 8px 18px;
-  border: 0;
+  min-height: 48px;
+  padding: 8px 20px;
+  border: 1px solid var(--line);
   border-radius: 999px;
-  background: #fff;
-  box-shadow: inset 0 0 0 1.5px var(--line);
-  font-weight: 600;
+  background: transparent;
+  font-weight: 500;
   font-size: 16px;
   transition: transform 0.12s;
 }
@@ -452,9 +455,9 @@ textarea {
 }
 
 .chip.on {
-  background: linear-gradient(135deg, var(--accent), var(--accent-2));
+  border-color: var(--ink);
+  background: var(--ink);
   color: #fff;
-  box-shadow: 0 10px 20px -12px var(--accent);
 }
 
 .row {
@@ -505,12 +508,12 @@ textarea {
 /* Sample prints of the first frames, drifting gently. */
 .strip {
   position: absolute;
-  width: clamp(140px, 17vw, 230px);
-  padding: 8px;
-  border-radius: 10px;
+  /* Sized against the column, so the three prints always fit side by side. */
+  width: 30%;
+  padding: 2%;
+  border: 1px solid var(--line);
   background: #fff;
-  box-shadow: var(--shadow);
-  animation: float 8s ease-in-out infinite;
+  animation: float 9s ease-in-out infinite;
 }
 
 .strip img {
@@ -520,24 +523,24 @@ textarea {
 }
 
 .strip-0 {
-  top: 7%;
+  top: 20%;
   left: 2%;
-  rotate: -7deg;
+  rotate: -4deg;
 }
 
 .strip-1 {
-  top: 15%;
-  left: 32%;
+  top: 34%;
+  left: 35%;
   z-index: 2;
-  rotate: 4deg;
-  animation-delay: -2.6s;
+  rotate: 2deg;
+  animation-delay: -3s;
 }
 
 .strip-2 {
-  top: 4%;
-  left: 60%;
-  rotate: -3deg;
-  animation-delay: -5.2s;
+  top: 16%;
+  left: 68%;
+  rotate: -1.5deg;
+  animation-delay: -6s;
 }
 
 @keyframes float {
@@ -561,11 +564,11 @@ textarea {
 .gear {
   width: 44px;
   height: 44px;
-  border: 0;
+  border: 1px solid var(--line);
   border-radius: 50%;
-  background: rgb(255 255 255 / 0.65);
+  background: none;
   color: var(--ink-2);
-  font-size: 19px;
+  font-size: 18px;
 }
 
 .dot {
@@ -581,7 +584,7 @@ textarea {
 }
 
 .dot.busy {
-  background: #e0a01b;
+  background: #c79a2a;
 }
 
 /* ---------- Step 1: frames ---------- */
@@ -593,29 +596,37 @@ textarea {
   display: flex;
   align-items: center;
   justify-content: safe center;
-  gap: clamp(14px, 2vw, 24px);
+  gap: clamp(18px, 2.6vw, 34px);
   overflow-x: auto;
   overflow-y: hidden;
   padding: 8px clamp(6px, 2vw, 30px) 24px;
   scroll-snap-type: x proximity;
   scrollbar-width: none;
+  counter-reset: frame;
 }
 
 .frame-card {
   flex: none;
-  width: clamp(168px, 18.5vw, 226px);
+  width: clamp(176px, 19vw, 232px);
   display: flex;
   flex-direction: column;
-  align-items: center;
-  gap: 4px;
-  padding: 14px 14px 18px;
+  align-items: flex-start;
+  gap: 2px;
+  padding: 0;
   border: 0;
-  border-radius: var(--radius);
-  background: rgb(255 255 255 / 0.92);
-  box-shadow: var(--shadow);
-  text-align: center;
+  background: none;
+  text-align: left;
   scroll-snap-align: center;
   transition: transform 0.14s;
+}
+
+.frame-card::before {
+  counter-increment: frame;
+  content: counter(frame, decimal-leading-zero);
+  margin-bottom: 8px;
+  color: var(--ink-2);
+  font-family: var(--mono);
+  font-size: 12px;
 }
 
 .frame-card:active {
@@ -624,31 +635,33 @@ textarea {
 
 .frame-art {
   width: 100%;
-  height: clamp(200px, 50vh, 460px);
+  height: clamp(200px, 48vh, 440px);
   display: flex;
   align-items: center;
   justify-content: center;
-  padding: 12px;
-  border-radius: var(--radius-md);
-  background: var(--accent-soft);
+  padding: 14px;
+  border-radius: var(--radius);
+  background: var(--soft);
 }
 
 .frame-art img {
   max-width: 100%;
   max-height: 100%;
   background: #fff;
-  box-shadow: 0 8px 18px -10px rgb(30 33 64 / 0.6);
 }
 
 .frame-card b {
-  margin-top: 8px;
-  font-size: 20px;
+  margin-top: 12px;
+  font-family: var(--display);
+  font-size: 28px;
+  font-weight: 400;
+  line-height: 1.1;
 }
 
 .frame-card small {
   color: var(--ink-2);
   font-size: 14px;
-  line-height: 1.3;
+  line-height: 1.35;
 }
 
 /* ---------- Step 2: payment ---------- */
@@ -669,6 +682,13 @@ textarea {
   display: flex;
   align-items: center;
   gap: clamp(14px, 2vw, 24px);
+  border: 0;
+  padding-left: 0;
+}
+
+/* A cream pill would vanish on the cream card. */
+.order .pill {
+  color: var(--ink-2);
 }
 
 .order-frame {
@@ -682,7 +702,6 @@ textarea {
   max-height: 46vh;
   object-fit: contain;
   background: #fff;
-  box-shadow: var(--shadow-sm);
 }
 
 .order-info {
@@ -694,10 +713,10 @@ textarea {
 }
 
 .amount {
-  font-size: clamp(36px, 6vmin, 60px);
-  font-weight: 800;
-  letter-spacing: -0.02em;
-  line-height: 1.1;
+  font-family: var(--display);
+  font-size: clamp(48px, 7.5vmin, 80px);
+  font-weight: 400;
+  line-height: 1;
 }
 
 .method-panel {
@@ -728,44 +747,43 @@ textarea {
 .method {
   display: flex;
   flex-direction: column;
-  align-items: center;
+  align-items: flex-start;
   gap: 6px;
-  padding: clamp(18px, 3.4vmin, 34px) 14px;
-  border: 0;
-  border-radius: var(--radius-md);
-  background: var(--accent-soft);
-  transition:
-    transform 0.12s,
-    box-shadow 0.12s;
+  padding: clamp(20px, 3.4vmin, 32px) 22px;
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+  background: none;
+  text-align: left;
+  transition: background 0.12s;
 }
 
 .method:active {
-  transform: scale(0.96);
-  box-shadow: inset 0 0 0 2.5px var(--accent);
+  background: var(--soft);
 }
 
 .method-icon {
-  font-size: clamp(40px, 7vmin, 60px);
-  line-height: 1.1;
+  display: none;
 }
 
 .method b {
-  font-size: 22px;
+  font-family: var(--display);
+  font-size: 32px;
+  font-weight: 400;
+  line-height: 1.1;
 }
 
 .method small {
   color: var(--ink-2);
   font-size: 14px;
-  line-height: 1.3;
+  line-height: 1.35;
 }
 
 .qris-img {
   width: min(100%, 280px);
   max-height: 38vh;
   object-fit: contain;
-  border-radius: var(--radius-sm);
+  border: 1px solid var(--line);
   background: #fff;
-  box-shadow: var(--shadow-sm);
 }
 
 .code-display {
@@ -774,9 +792,9 @@ textarea {
   display: flex;
   align-items: center;
   justify-content: center;
+  border: 1px solid var(--line);
   border-radius: var(--radius-sm);
   background: #fff;
-  box-shadow: inset 0 0 0 2px var(--line);
   font-family: var(--mono);
   font-weight: 700;
   font-size: clamp(24px, 4vmin, 34px);
@@ -784,9 +802,9 @@ textarea {
 }
 
 .code-display.empty {
-  color: #b3b8d4;
+  color: #9a9a9a;
   font-family: var(--ui);
-  font-weight: 500;
+  font-weight: 400;
   font-size: 18px;
   letter-spacing: 0;
 }
@@ -799,20 +817,17 @@ textarea {
 }
 
 .key {
-  min-height: clamp(44px, 6.2vmin, 56px);
+  min-height: clamp(46px, 6.2vmin, 56px);
   padding: 0;
-  border: 0;
-  border-radius: 12px;
-  background: #fff;
-  box-shadow:
-    inset 0 0 0 1.5px var(--line),
-    0 2px 0 var(--line);
-  font-weight: 600;
+  border: 1px solid var(--line);
+  border-radius: var(--radius-sm);
+  background: transparent;
+  font-weight: 500;
   font-size: clamp(16px, 2.5vmin, 21px);
 }
 
 .key:active {
-  background: var(--accent);
+  background: var(--ink);
   color: #fff;
 }
 
@@ -844,14 +859,11 @@ textarea {
 .viewfinder {
   position: relative;
   /* As large as fits while keeping the photo's shape (set inline as --ratio). */
-  width: min(100cqw - 14px, (100cqh - 14px) * var(--ratio, 1.3333));
+  width: min(100cqw, 100cqh * var(--ratio, 1.3333));
   aspect-ratio: var(--ratio, 1.3333);
   overflow: hidden;
   border-radius: var(--radius);
-  background: #14162b;
-  box-shadow:
-    0 0 0 6px #fff,
-    var(--shadow);
+  background: var(--ink);
 }
 
 .viewfinder video,
@@ -872,6 +884,10 @@ textarea {
   top: 14px;
   left: 14px;
   z-index: 2;
+  padding: 6px 12px;
+  border-radius: 999px;
+  background: var(--page);
+  color: var(--ink);
 }
 
 .viewfinder-note {
@@ -891,10 +907,11 @@ textarea {
   align-items: center;
   justify-content: center;
   color: #fff;
-  font-weight: 800;
-  font-size: min(44vmin, 360px);
+  font-family: var(--display);
+  font-style: italic;
+  font-size: min(50vmin, 400px);
   line-height: 1;
-  text-shadow: 0 8px 44px rgb(0 0 0 / 0.5);
+  text-shadow: 0 4px 30px rgb(0 0 0 / 0.45);
   animation: pop 1s ease-out;
   pointer-events: none;
 }
@@ -950,12 +967,11 @@ textarea {
   overflow: hidden;
   display: grid;
   place-items: center;
-  border-radius: var(--radius-sm);
-  background: rgb(255 255 255 / 0.7);
-  box-shadow: inset 0 0 0 2px var(--line);
-  color: #b3b8d4;
-  font-weight: 700;
-  font-size: 22px;
+  border-radius: 2px;
+  background: var(--soft);
+  color: var(--ink-2);
+  font-family: var(--mono);
+  font-size: 14px;
 }
 
 .thumb img {
@@ -967,7 +983,8 @@ textarea {
 }
 
 .thumb.active {
-  box-shadow: 0 0 0 4px var(--accent);
+  outline: 1px solid var(--ink);
+  outline-offset: 3px;
 }
 
 /* ---------- Step 4: edit ---------- */
@@ -1012,9 +1029,9 @@ textarea {
 
 .tool h3 {
   color: var(--ink-2);
-  font-size: 14px;
+  font-size: 12px;
   font-weight: 600;
-  letter-spacing: 0.06em;
+  letter-spacing: 1.5px;
   text-transform: uppercase;
 }
 
@@ -1032,9 +1049,8 @@ textarea {
   padding: 0;
   overflow: hidden;
   border: 0;
-  border-radius: var(--radius-sm);
-  background: #14162b;
-  box-shadow: var(--shadow-sm);
+  border-radius: 2px;
+  background: var(--ink);
   transition: transform 0.12s;
 }
 
@@ -1103,26 +1119,22 @@ textarea {
 
 .progress {
   width: 100%;
-  height: 22px;
-  overflow: hidden;
-  border-radius: 999px;
-  background: #fff;
-  box-shadow: inset 0 0 0 1.5px var(--line);
+  height: 2px;
+  background: var(--line);
 }
 
 .progress i {
   display: block;
   height: 100%;
-  border-radius: 999px;
-  background: linear-gradient(90deg, var(--accent), var(--accent-2));
+  background: var(--accent);
   transition: width 0.25s;
 }
 
 .spinner {
-  width: 52px;
-  height: 52px;
-  border: 6px solid var(--line);
-  border-top-color: var(--accent);
+  width: 44px;
+  height: 44px;
+  border: 1px solid var(--line);
+  border-top-color: var(--ink);
   border-radius: 50%;
   animation: spin 0.8s linear infinite;
 }
@@ -1143,7 +1155,7 @@ textarea {
   align-items: center;
   justify-content: center;
   padding: 20px;
-  background: rgb(30 33 64 / 0.45);
+  background: rgb(27 26 24 / 0.35);
   backdrop-filter: blur(6px);
   animation: fade 0.18s;
 }
@@ -1162,7 +1174,8 @@ textarea {
   flex-direction: column;
   align-items: center;
   gap: 16px;
-  background: #fff;
+  border: 0;
+  background: var(--page);
   text-align: center;
 }
 
@@ -1176,13 +1189,14 @@ textarea {
 }
 
 .pin-dots i {
-  width: 18px;
-  height: 18px;
+  width: 12px;
+  height: 12px;
+  border: 1px solid var(--ink);
   border-radius: 50%;
-  background: var(--line);
 }
 
 .pin-dots i.filled {
+  border-color: var(--accent);
   background: var(--accent);
 }
 
@@ -1206,9 +1220,10 @@ textarea {
 }
 
 .pinpad .key {
-  min-height: 64px;
-  border-radius: 20px;
-  font-size: 26px;
+  min-height: 76px;
+  border-radius: 50%;
+  font-family: var(--display);
+  font-size: 30px;
 }
 
 .toast {
@@ -1221,8 +1236,7 @@ textarea {
   border-radius: 999px;
   background: var(--ink);
   color: #fff;
-  font-weight: 600;
-  box-shadow: var(--shadow);
+  font-weight: 500;
   transform: translateX(-50%);
   animation: fade 0.2s;
 }
@@ -1243,14 +1257,16 @@ textarea {
   display: flex;
   align-items: center;
   gap: 12px;
-  padding: 12px 20px;
-  background: #fff;
-  box-shadow: 0 1px 0 var(--line);
+  min-height: 64px;
+  padding: 10px 20px;
+  border-bottom: 1px solid var(--line);
+  background: var(--page);
 }
 
 .admin-bar h1 {
-  font-size: 20px;
-  font-weight: 700;
+  font-family: var(--display);
+  font-size: 28px;
+  font-weight: 400;
 }
 
 .tabs {
@@ -1265,20 +1281,20 @@ textarea {
 
 .tab {
   flex: none;
-  padding: 9px 18px;
+  min-height: 44px;
+  padding: 8px 2px;
+  margin-right: 14px;
   border: 0;
-  border-radius: 999px;
-  background: #fff;
-  box-shadow: inset 0 0 0 1.5px var(--line);
+  border-bottom: 1px solid transparent;
+  background: none;
   color: var(--ink-2);
-  font-weight: 600;
+  font-weight: 500;
   font-size: 15px;
 }
 
 .tab.on {
-  background: var(--ink);
-  box-shadow: none;
-  color: #fff;
+  border-bottom-color: var(--ink);
+  color: var(--ink);
 }
 
 .admin-body {
@@ -1302,10 +1318,10 @@ textarea {
   display: flex;
   flex-direction: column;
   gap: 14px;
-  padding: 20px;
+  padding: 24px;
+  border: 1px solid var(--line);
   border-radius: var(--radius-md);
-  background: #fff;
-  box-shadow: var(--shadow-sm);
+  background: var(--page);
 }
 
 .panel.span {
@@ -1314,13 +1330,13 @@ textarea {
 
 /* A panel inside a panel sits flat on a tinted background. */
 .panel .panel {
-  background: var(--page);
-  box-shadow: none;
+  border: 0;
+  background: var(--soft);
 }
 
 .panel h2 {
-  font-size: 19px;
-  font-weight: 700;
+  font-size: 18px;
+  font-weight: 600;
 }
 
 .hint {
@@ -1341,7 +1357,7 @@ textarea {
 .frame-thumb img {
   display: block;
   width: 100%;
-  box-shadow: var(--shadow-sm);
+  border: 1px solid var(--line);
 }
 
 .frame-panel-info {
@@ -1371,16 +1387,17 @@ textarea {
   width: 100%;
   min-height: 46px;
   padding: 10px 14px;
-  border: 1.5px solid var(--line);
+  border: 1px solid var(--line);
   border-radius: var(--radius-sm);
-  background: #fff;
+  background: var(--page);
   outline: none;
 }
 
 .field input:focus,
 .field select:focus,
 .field textarea:focus {
-  border-color: var(--accent);
+  border-color: var(--ink);
+  box-shadow: inset 0 0 0 1px var(--ink);
 }
 
 .field textarea {
@@ -1393,7 +1410,7 @@ textarea {
 .field input[type='range'] {
   width: 100%;
   height: 32px;
-  accent-color: var(--accent);
+  accent-color: var(--ink);
 }
 
 .field input[type='color'] {
@@ -1418,7 +1435,7 @@ textarea {
   width: 24px;
   height: 24px;
   margin: 0;
-  accent-color: var(--accent);
+  accent-color: var(--ink);
 }
 
 .check small {
@@ -1438,17 +1455,16 @@ textarea {
   min-width: 96px;
   min-height: 46px;
   padding: 8px 12px;
-  border: 0;
+  border: 1px solid var(--line);
   border-radius: var(--radius-sm);
-  background: #fff;
-  box-shadow: inset 0 0 0 1.5px var(--line);
-  font-weight: 600;
+  background: var(--page);
+  font-weight: 500;
   font-size: 15px;
 }
 
 .seg button.on {
+  border-color: var(--ink);
   background: var(--ink);
-  box-shadow: none;
   color: #fff;
 }
 
@@ -1459,15 +1475,17 @@ textarea {
 }
 
 .stat {
-  padding: 12px 14px;
+  padding: 14px 16px;
   border-radius: var(--radius-sm);
-  background: var(--page);
+  background: var(--cream);
 }
 
 .stat b {
   display: block;
-  font-size: 24px;
-  line-height: 1.2;
+  font-family: var(--display);
+  font-size: 32px;
+  font-weight: 400;
+  line-height: 1.1;
 }
 
 .stat span {
@@ -1512,7 +1530,7 @@ textarea {
   justify-content: center;
   padding: 18px;
   border-radius: var(--radius-sm);
-  background: var(--page);
+  background: var(--cream);
 }
 
 .preview-box .paper {
@@ -1524,18 +1542,18 @@ textarea {
   padding: 12px 16px;
   border-radius: var(--radius-sm);
   background: var(--warn-soft);
-  color: #6b4200;
+  color: var(--warn);
   font-size: 15px;
 }
 
 .banner.err {
   background: var(--err-soft);
-  color: #8a1c2b;
+  color: var(--err);
 }
 
 .banner.ok {
   background: var(--ok-soft);
-  color: #075c3e;
+  color: var(--ok);
 }
 
 /* ---------- Tall and small screens ---------- */

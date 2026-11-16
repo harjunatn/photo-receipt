@@ -150,7 +150,7 @@ export function Result({ draft, onFinish }: Props) {
             <>
               <h1 class="heading">Strukmu siap!</h1>
               <button class="btn primary huge glow" onClick={() => bits && void print(bits)}>
-                Cetak sekarang 🖨️
+                Cetak sekarang
               </button>
             </>
           )}
@@ -168,7 +168,7 @@ export function Result({ draft, onFinish }: Props) {
           {phase === 'done' && (
             <>
               <span class="tag ok">Selesai</span>
-              <h1 class="heading">Ambil strukmu di bawah! 🎉</h1>
+              <h1 class="heading">Ambil strukmu di bawah</h1>
               <p class="lead">Terima kasih sudah berfoto. Sampai jumpa lagi!</p>
               <button class="btn primary huge" onClick={onFinish}>
                 Selesai ({Math.max(0, secondsLeft)})

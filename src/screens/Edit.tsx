@@ -125,7 +125,7 @@ export function Edit({ draft, onStyle, onFrame, onRetake, onPrint, onCancel }: P
 
           <div class="edit-actions">
             <button class="btn primary huge glow" disabled={!bits} onClick={onPrint}>
-              Cetak sekarang 🖨️
+              Cetak sekarang
             </button>
             <p class="note">
               {secondsLeft !== null ? `Otomatis dicetak dalam ${secondsLeft} detik…` : `${draft.pkg.prints}x cetak · ${draft.frame.name}`}

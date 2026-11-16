@@ -20,13 +20,13 @@ export function Attract({ onStart, onAdmin }: Props) {
   return (
     <div class="screen attract">
       <div class="attract-copy">
-        <span class="pill">✨ Photobooth struk · cetak instan</span>
+        <span class="pill">Photobooth struk — cetak instan</span>
         <h1 class="display">{settings.brand.title}</h1>
         <p class="lead">{settings.brand.subtitle}</p>
         {prices.length > 0 ? (
           <>
             <button class="btn primary huge glow" onClick={onStart}>
-              Mulai Foto 📸
+              Mulai foto
             </button>
             <p class="note">
               {Math.min(...prices) > 0 ? `Mulai ${formatRupiah(Math.min(...prices))} per sesi` : 'Gratis — langsung foto!'}

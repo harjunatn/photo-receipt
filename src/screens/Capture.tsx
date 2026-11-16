@@ -173,7 +173,7 @@ export function Capture({ frame, shots: initialShots, targets, retake, onDone, o
               </p>
             </>
           )}
-          {phase === 'shooting' && <p class="lead">Lihat ke kamera, senyum! 😄</p>}
+          {phase === 'shooting' && <p class="lead">Lihat ke kamera, senyum.</p>}
         </div>
       </div>
 
