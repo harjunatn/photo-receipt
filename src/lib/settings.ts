@@ -56,9 +56,15 @@ export interface Settings {
   packages: PackageDef[];
   /** Which ways of paying the guest is offered. */
   payment: {
-    /** Show the merchant's QRIS; staff confirm the payment with their PIN. */
+    /** Offer QRIS at all. */
     qris: boolean;
-    /** Data URL of the merchant's static QRIS image. */
+    /**
+     * true: a QR is made for every session through the payment provider and the
+     * session starts by itself once it is paid. false: the merchant's own static
+     * QRIS image is shown and staff confirm the payment with their PIN.
+     */
+    qrisAuto: boolean;
+    /** Data URL of the merchant's static QRIS image, for the manual way. */
     qrisImage: string;
     /** Pay staff in cash; staff confirm with their PIN. */
     cash: boolean;
@@ -149,6 +155,7 @@ export const DEFAULT_SETTINGS: Settings = {
   ],
   payment: {
     qris: false,
+    qrisAuto: false,
     qrisImage: '',
     cash: true,
     voucher: true,
@@ -256,12 +263,12 @@ export function useSettings(): Settings {
 export type PaymentChoice = 'qris' | 'cash' | 'voucher';
 
 /**
- * The payment methods to offer. QRIS needs its image; and so that a paid
+ * The payment methods to offer. Manual QRIS needs its image; and so that a paid
  * session can always be started, cash stays available when nothing else is on.
  */
 export function paymentChoices(payment: Settings['payment']): PaymentChoice[] {
   const choices: PaymentChoice[] = [];
-  if (payment.qris && payment.qrisImage) choices.push('qris');
+  if (payment.qris && (payment.qrisAuto || payment.qrisImage)) choices.push('qris');
   if (payment.cash) choices.push('cash');
   if (payment.voucher) choices.push('voucher');
   return choices.length > 0 ? choices : ['cash'];

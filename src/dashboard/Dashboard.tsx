@@ -10,6 +10,7 @@ import { Devices } from './Devices';
 import { FrameSets } from './FrameSets';
 import { Overview } from './Overview';
 import { OutletSettings } from './OutletSettings';
+import { Payments } from './Payments';
 import { Transactions } from './Transactions';
 import { describe } from './ui';
 import { Vouchers } from './Vouchers';
@@ -18,6 +19,7 @@ const PAGES = [
   { id: 'ringkasan', label: 'Dashboard', view: Overview },
   { id: 'perangkat', label: 'Perangkat', view: Devices },
   { id: 'transaksi', label: 'Transaksi', view: Transactions },
+  { id: 'pembayaran', label: 'Pembayaran QRIS', view: Payments },
   { id: 'voucher', label: 'Voucher', view: Vouchers },
   { id: 'frame', label: 'Koleksi Frame', view: FrameSets },
   { id: 'pengaturan', label: 'Pengaturan', view: OutletSettings },

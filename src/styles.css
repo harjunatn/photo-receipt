@@ -786,6 +786,14 @@ textarea {
   background: #fff;
 }
 
+/* A QR made for this one payment; kept large and on pure white so phones read it at once. */
+.qris-live {
+  width: min(100%, 300px, 42vh);
+  height: auto;
+  border: 1px solid var(--line);
+  background: #fff;
+}
+
 .code-display {
   width: 100%;
   min-height: 62px;

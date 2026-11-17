@@ -115,6 +115,7 @@ tablet mengirim transaksinya ke satu tempat dan kamu melihat serta mengaturnya d
 | Dashboard | Omzet hari ini, 7 hari, bulan ini; grafik per hari; cara bayar; per perangkat; transaksi terbaru |
 | Perangkat | Daftar tablet, kode perangkat + PIN, online/offline, status printer |
 | Transaksi | Semua sesi dari semua tablet, saring tanggal / cara bayar / perangkat, unduh CSV |
+| Pembayaran QRIS | Setiap kode QR otomatis: lunas, tidak dibayar, dan "lunas tanpa sesi" yang perlu diperiksa |
 | Voucher | Buat massal, status aktif / terpakai / kedaluwarsa; berlaku di semua tablet, sekali pakai |
 | Koleksi Frame | Frame yang ditawarkan, per perangkat |
 | Pengaturan | Nama outlet, warna, logo, teks struk, harga, cara bayar + gambar QRIS, password |
@@ -196,7 +197,9 @@ titik-titik yang benar-benar dikirim ke printer. Ubah satu pengaturan, tekan **T
 
 Cara bayar yang dinyalakan di dashboard (menu **Pengaturan**) muncul sebagai pilihan di langkah pembayaran:
 
-- **QRIS** — gambar QRIS toko kamu ditampilkan di layar. Tamu membayar, lalu petugas mengecek buktinya dan menekan
+- **QRIS otomatis (DOKU)** — tablet membuat kode QR khusus untuk sesi itu dengan nominal yang sudah terisi. Begitu
+  pembayaran masuk, sesi foto mulai sendiri, tanpa petugas. Lihat *QRIS otomatis lewat DOKU* di bawah.
+- **QRIS manual** — gambar QRIS toko kamu ditampilkan di layar. Tamu membayar, lalu petugas mengecek buktinya dan menekan
   *Petugas: konfirmasi bayar* dengan PIN. Pilihan ini baru muncul setelah gambar QRIS diunggah.
 - **Tunai** — tamu membayar ke petugas, lalu petugas mengonfirmasi dengan PIN.
 - **Voucher** — kode sekali pakai yang dibuat di dashboard (menu **Voucher**), berlaku di semua tablet. Tamu mengetik
@@ -206,12 +209,94 @@ Harga diatur di dashboard (menu **Pengaturan**) dan berlaku untuk semua frame. D
 itu; dengan beberapa pilihan (misalnya 1 lembar dan 2 lembar), tamu memilihnya di langkah pembayaran. Harga 0 berarti
 gratis: sesi langsung mulai.
 
-**Belum ada:** QRIS otomatis (sesi mulai sendiri begitu pembayaran masuk, tanpa petugas). Itu butuh akun payment gateway
-atas nama usahamu (Midtrans, Xendit, Tripay, dsb.) dan sebuah server kecil untuk menerima konfirmasi pembayaran.
+### QRIS otomatis lewat DOKU
+
+Kunci rahasia DOKU tidak pernah ada di tablet, di Vercel, atau di GitHub. Kunci itu hanya disimpan sebagai *secret* di
+Supabase dan dipakai oleh tiga Edge Function di [`supabase/functions`](supabase/functions):
+
+| Fungsi | Tugas |
+| --- | --- |
+| `qris-create` | Membuat kode QR untuk satu sesi. Nominal diambil dari harga di dashboard, bukan dari tablet. |
+| `qris-status` | Menanyakan ke DOKU apakah QR itu sudah dibayar. Tablet memanggilnya tiap beberapa detik. |
+| `doku-notify` | Menerima pemberitahuan pembayaran dari DOKU, sebagai pengaman kalau tablet sudah tidak menunggu. |
+
+**1. Jalankan ulang [`supabase/schema.sql`](supabase/schema.sql)** di SQL Editor (aman diulang). Ini menambah tabel
+`payments`.
+
+**2. Isi secret** di Supabase → **Edge Functions → Secrets**. Daftar dan penjelasannya ada di
+[`supabase/functions/.env.example`](supabase/functions/.env.example):
+
+| Secret | Dari mana |
+| --- | --- |
+| `DOKU_CLIENT_ID` | DOKU Back Office → Integration → API Keys → Client ID (`BRN-…`) |
+| `DOKU_SECRET_KEY` | Halaman yang sama → Secret Key |
+| `DOKU_PRIVATE_KEY` | Private key RSA milikmu, pasangan *Merchant Public Key* yang diunggah ke DOKU. Tempel utuh dengan baris BEGIN/END |
+| `DOKU_MERCHANT_ID` | Settings → Checkout Appearance → Pengaturan Kredensial QRIS (angka pendek, bukan NMID/MPAN) |
+| `DOKU_TERMINAL_ID` | Terminal ID, misalnya `A01` |
+| `DOKU_POSTAL_CODE` | Kode pos lokasi usaha, 5 angka |
+
+**Kunci privat RSA.** `DOKU_PRIVATE_KEY` harus kunci **privat** (`-----BEGIN PRIVATE KEY-----` atau
+`-----BEGIN RSA PRIVATE KEY-----`), pasangan dari *Merchant Public Key* yang diunggah ke DOKU, bukan kunci publiknya.
+Kalau berkas kunci privatnya tidak ada lagi, buat pasangan baru di Mac (simpan di luar folder proyek):
+
+```bash
+openssl genrsa -out ~/doku_private.pem 2048
+```
+
+```bash
+openssl rsa -in ~/doku_private.pem -pubout -out ~/doku_public.pem
+```
+
+Unggah isi `doku_public.pem` ke DOKU sebagai *Merchant Public Key*, lalu simpan isi `doku_private.pem` sebagai secret:
+
+```bash
+supabase secrets set DOKU_PRIVATE_KEY="$(cat ~/doku_private.pem)"
+```
+
+Mengganti Merchant Public Key di DOKU membuat kunci lama tidak berlaku, termasuk yang tersimpan di aplikasi lain yang
+memakai akun DOKU yang sama. Kunci yang dikunci password (`ENCRYPTED PRIVATE KEY`) dibuka dulu dengan
+`openssl pkey -in kunci.pem -out kunci-terbuka.pem`; kunci format OpenSSH diubah dengan
+`ssh-keygen -p -m PEM -f kunci`.
+
+Opsional: `DOKU_QR_MINUTES` (masa berlaku QR, bawaan 5 menit), `DOKU_BASE_URL` (isi
+`https://api-sandbox.doku.com` untuk sandbox; bawaannya produksi), `DOKU_SEND_VALIDITY=off` (kalau DOKU menolak
+pembuatan QR karena kolom `validityPeriod`).
+
+**3. Deploy fungsinya** dari folder proyek (sekali, dan lagi setiap kode fungsinya berubah):
+
+```bash
+brew install supabase/tap/supabase
+```
+
+```bash
+supabase login
+```
+
+```bash
+supabase link --project-ref <kode-proyek>
+```
+
+```bash
+supabase functions deploy
+```
+
+**4. (Dianjurkan) Notification URL** di DOKU Back Office:
+`https://<kode-proyek>.supabase.co/functions/v1/doku-notify`. Tanpa ini pembayaran tetap terdeteksi selama tablet masih
+menampilkan QR-nya; dengan ini, pembayaran yang masuk setelah tamu meninggalkan layar pun tetap tercatat.
+
+**5. Nyalakan** di dashboard → **Pengaturan → Cara bayar → QRIS → Otomatis (DOKU)**, lalu Simpan.
+
+Yang perlu diketahui:
+
+- Tablet butuh internet untuk QRIS otomatis. Tunai dan QRIS manual tetap bisa jadi cadangan.
+- Kalau tamu membayar tetapi sesinya tidak selesai (misalnya tablet mati), pembayarannya muncul di dashboard →
+  **Pembayaran QRIS** sebagai **Lunas tanpa sesi**. Pengembalian uang dilakukan dari DOKU Back Office.
+- Kalau QR gagal dibuat, pesan dari DOKU tersimpan di kolom `detail` tabel `payments` dan di log fungsi
+  (Supabase → Edge Functions → `qris-create` → Logs).
 
 ## Yang belum ada
 
-- QRIS otomatis (lihat di atas).
+- Pengembalian uang QRIS dari dashboard — saat ini dilakukan di DOKU Back Office.
 - Unduh foto lewat QR untuk tamu — butuh penyimpanan online. Saat ini petugas bisa mengunduh struk sebagai gambar dari
   tab **Riwayat**.
 - Frame buatan sendiri (mengunggah desain bingkai) — saat ini tersedia tujuh frame bawaan; logo, judul, kutipan, kode
@@ -249,4 +334,5 @@ npm run icons      # buat ulang ikon aplikasi
 | `src/lib/cloud/` | Sambungan tablet ke Supabase: pemasangan, antrean kirim transaksi, voucher, pengaturan bersama. |
 | `src/dashboard/` | Dashboard pemilik (`#dashboard`); `?demo#dashboard` menampilkannya dengan data contoh. |
 | `supabase/schema.sql` | Tabel, hak akses, dan fungsi di Supabase. |
+| `supabase/functions/` | Edge Functions untuk QRIS otomatis lewat DOKU. |
 | `tests/` | Tes untuk pengolahan gambar, ESC/POS, voucher, pembukuan, dan ringkasan dashboard. |

@@ -93,14 +93,36 @@ export function OutletSettings({ api }: PageProps) {
           <h2>Cara bayar</h2>
           <Check
             label="QRIS"
-            hint="Gambar QRIS ditampilkan; petugas mengecek bukti bayar lalu mengonfirmasi dengan PIN."
+            hint="Tamu membayar dengan scan kode QR dari e-wallet atau m-banking."
             checked={draft.payment.qris}
             onChange={(v) => edit((d) => void (d.payment.qris = v))}
           />
           {draft.payment.qris && (
-            <ImageField label="Gambar QRIS" value={draft.payment.qrisImage} maxSide={720} onChange={(v) => edit((d) => void (d.payment.qrisImage = v))} />
+            <div class="panel">
+              <Segmented
+                label="Cara kerja QRIS"
+                value={draft.payment.qrisAuto ? 'auto' : 'manual'}
+                options={[
+                  { value: 'auto', label: 'Otomatis (DOKU)' },
+                  { value: 'manual', label: 'Manual (gambar + PIN)' },
+                ]}
+                onChange={(v) => edit((d) => void (d.payment.qrisAuto = v === 'auto'))}
+              />
+              {draft.payment.qrisAuto ? (
+                <p class="hint">
+                  Tablet membuat kode QR khusus untuk tiap sesi dengan nominal yang sudah terisi, dan sesi foto mulai sendiri
+                  begitu pembayaran masuk — tanpa petugas. Membutuhkan internet di tablet dan kunci DOKU yang sudah diisi di
+                  Supabase (lihat README).
+                </p>
+              ) : (
+                <>
+                  <p class="hint">Gambar QRIS tokomu ditampilkan; petugas mengecek bukti bayar lalu mengonfirmasi dengan PIN.</p>
+                  <ImageField label="Gambar QRIS" value={draft.payment.qrisImage} maxSide={720} onChange={(v) => edit((d) => void (d.payment.qrisImage = v))} />
+                  {!draft.payment.qrisImage && <p class="banner">Unggah gambar QRIS dulu — tanpa gambar, pilihan QRIS tidak ditampilkan ke tamu.</p>}
+                </>
+              )}
+            </div>
           )}
-          {draft.payment.qris && !draft.payment.qrisImage && <p class="banner">Unggah gambar QRIS dulu — tanpa gambar, pilihan QRIS tidak ditampilkan ke tamu.</p>}
           <Check label="Tunai" hint="Tamu membayar ke petugas; petugas mengonfirmasi dengan PIN." checked={draft.payment.cash} onChange={(v) => edit((d) => void (d.payment.cash = v))} />
           <Check label="Voucher" hint="Kode sekali pakai dari menu Voucher." checked={draft.payment.voucher} onChange={(v) => edit((d) => void (d.payment.voucher = v))} />
         </section>

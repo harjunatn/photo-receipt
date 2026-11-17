@@ -43,6 +43,23 @@ export interface VoucherRow {
   used_by_name: string | null;
 }
 
+export type PaymentStatus = 'pending' | 'paid' | 'expired' | 'failed';
+
+/** One automatic QRIS charge, whether or not it was paid. */
+export interface PaymentRow {
+  id: string;
+  device_name: string;
+  package_name: string | null;
+  amount: number;
+  status: PaymentStatus;
+  partner_ref: string;
+  provider_ref: string | null;
+  created_at: string;
+  paid_at: string | null;
+  /** Whether a finished session was recorded for this payment. */
+  has_session: boolean;
+}
+
 export interface TxFilter {
   from: Date;
   /** Exclusive. */
@@ -75,6 +92,7 @@ export interface OwnerApi {
   deleteDevice(id: string): Promise<void>;
   dailyStats(from: Date, to: Date): Promise<StatRow[]>;
   listTransactions(filter: TxFilter, offset: number, limit: number): Promise<Page<Tx>>;
+  listPayments(status: PaymentStatus | 'all' | 'orphan', offset: number, limit: number): Promise<Page<PaymentRow>>;
   voucherCounts(): Promise<Record<VoucherStatus, number>>;
   listVouchers(filter: VoucherFilter, offset: number, limit: number): Promise<Page<VoucherRow>>;
   createVouchers(rows: { code: string; label: string | null; expires_at: string | null }[]): Promise<void>;
@@ -162,6 +180,24 @@ export function createSupabaseApi(db: SupabaseClient, email: string): OwnerApi {
       if (filter.deviceId) query = query.eq('device_id', filter.deviceId);
       const result = await query.order('at', { ascending: false }).range(offset, offset + limit - 1);
       return { rows: unwrap(result) as Tx[], total: result.count ?? 0 };
+    },
+    async listPayments(status, offset, limit) {
+      // 'orphan': money that arrived for a session that was never recorded.
+      const columns = 'id,device_name,package_name,amount,status,partner_ref,provider_ref,created_at,paid_at';
+      let query =
+        status === 'orphan'
+          ? db.from('payments').select(`${columns},transactions!left(id)`, { count: 'exact' }).eq('status', 'paid').is('transactions', null)
+          : db.from('payments').select(`${columns},transactions(id)`, { count: 'exact' });
+      if (status !== 'all' && status !== 'orphan') query = query.eq('status', status);
+      const result = await query.order('created_at', { ascending: false }).range(offset, offset + limit - 1);
+      const rows = unwrap(result) as unknown as (Omit<PaymentRow, 'has_session'> & { transactions: unknown })[];
+      return {
+        rows: rows.map(({ transactions, ...row }) => ({
+          ...row,
+          has_session: Array.isArray(transactions) ? transactions.length > 0 : transactions !== null && transactions !== undefined,
+        })),
+        total: result.count ?? 0,
+      };
     },
     async voucherCounts() {
       return unwrap(await db.rpc('voucher_counts')) as Record<VoucherStatus, number>;

@@ -80,6 +80,7 @@ export function Result({ draft, onFinish }: Props) {
           method: draft.method,
           voucher_code: draft.voucherCode ?? null,
           prints: draft.pkg.prints,
+          payment_id: draft.paymentId ?? null,
         });
         if (settings.storage.keepPhotos) {
           // Saved in the background: a full disk must not stop the guest's print.

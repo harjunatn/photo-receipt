@@ -23,6 +23,8 @@ export interface CloudTx {
   method: PayMethod;
   voucher_code: string | null;
   prints: number;
+  /** The automatic QRIS payment behind this session, so the dashboard can match money to sessions. */
+  payment_id: string | null;
 }
 
 export interface SyncState {
@@ -207,5 +209,62 @@ export async function redeemCloudVoucher(input: string): Promise<CloudVoucherRes
     return { status: 'not-found' };
   } catch {
     return { status: 'offline' };
+  }
+}
+
+/** Calls one of the project's Edge Functions, which hold the payment provider's secret keys. */
+async function callFunction<T>(name: string, body: Record<string, unknown>): Promise<T> {
+  const response = await fetch(`${SUPABASE_URL}/functions/v1/${name}`, {
+    method: 'POST',
+    headers: { apikey: SUPABASE_KEY, Authorization: `Bearer ${SUPABASE_KEY}`, 'Content-Type': 'application/json' },
+    body: JSON.stringify(body),
+    signal: AbortSignal.timeout(25_000),
+  });
+  // The functions answer every outcome they know about as JSON, also with an error status.
+  const result = (await response.json().catch(() => null)) as T | null;
+  if (result === null) throw new Error(`Server menjawab ${response.status}.`);
+  return result;
+}
+
+export type QrisError = 'offline' | 'unpaired' | 'disabled' | 'no-package' | 'too-many' | 'not-configured' | 'provider' | 'not-found';
+
+export interface QrisCharge {
+  id: string;
+  /** The text to show as a QR code. */
+  qr: string;
+  amount: number;
+  /** When the QR stops accepting payment (milliseconds since 1970). */
+  expiresAt: number;
+}
+
+/** Asks the server for a QR that pays for one session of the given price option. */
+export async function createQris(packageId: string): Promise<QrisCharge | { error: QrisError; message?: string }> {
+  const pairing = pairingStore.get();
+  if (!pairing) return { error: 'unpaired' };
+  try {
+    const result = await callFunction<{ id?: string; qr?: string; amount?: number; expires_at?: string; error?: QrisError; message?: string }>(
+      'qris-create',
+      { token: pairing.token, package_id: packageId },
+    );
+    if (result.error === 'unpaired') revoked();
+    if (result.error || !result.id || !result.qr) return { error: result.error ?? 'provider', message: result.message };
+    return { id: result.id, qr: result.qr, amount: result.amount ?? 0, expiresAt: Date.parse(result.expires_at ?? '') || Date.now() + 5 * 60_000 };
+  } catch {
+    return { error: 'offline' };
+  }
+}
+
+export type QrisStatus = 'pending' | 'paid' | 'expired' | 'failed' | 'offline';
+
+/** Whether a QR made by createQris has been paid. 'offline' means the answer is not known right now. */
+export async function checkQris(id: string): Promise<QrisStatus> {
+  const pairing = pairingStore.get();
+  if (!pairing) return 'offline';
+  try {
+    const result = await callFunction<{ status?: QrisStatus; error?: string }>('qris-status', { token: pairing.token, id });
+    if (result.status === 'paid' || result.status === 'pending' || result.status === 'expired' || result.status === 'failed') return result.status;
+    return result.error === 'not-found' ? 'failed' : 'offline';
+  } catch {
+    return 'offline';
   }
 }

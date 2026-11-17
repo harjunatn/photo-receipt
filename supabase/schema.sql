@@ -111,6 +111,32 @@ create table if not exists public.vouchers (
 );
 create index if not exists vouchers_created on public.vouchers (created_at desc);
 
+-- Tagihan QRIS otomatis. Dibuat dan diperbarui hanya oleh Edge Functions (lihat supabase/functions).
+create table if not exists public.payments (
+  id uuid primary key default gen_random_uuid(),
+  device_id uuid references public.devices (id) on delete set null,
+  device_name text not null,
+  package_id text,
+  package_name text,
+  amount int not null check (amount > 0),
+  -- pending: menunggu dibayar · paid: lunas · expired: QR habis waktunya · failed: gagal dibuat/ditolak
+  status text not null default 'pending' check (status in ('pending', 'paid', 'expired', 'failed')),
+  -- Nomor referensi kita yang dikirim ke penyedia pembayaran, dan nomor balasan dari mereka.
+  partner_ref text not null unique,
+  provider_ref text,
+  qr_content text,
+  expires_at timestamptz,
+  paid_at timestamptz,
+  detail jsonb not null default '{}'::jsonb,
+  created_at timestamptz not null default now()
+);
+create index if not exists payments_created on public.payments (created_at desc);
+create index if not exists payments_device on public.payments (device_id, created_at desc);
+
+alter table public.transactions add column if not exists payment_id uuid references public.payments (id) on delete set null;
+-- Satu pembayaran hanya untuk satu sesi.
+create unique index if not exists transactions_payment on public.transactions (payment_id) where payment_id is not null;
+
 -- ---------------------------------------------------------------- hak akses
 
 alter table public.owners enable row level security;
@@ -118,6 +144,7 @@ alter table public.outlet enable row level security;
 alter table public.devices enable row level security;
 alter table public.transactions enable row level security;
 alter table public.vouchers enable row level security;
+alter table public.payments enable row level security;
 
 drop policy if exists owner_all on public.outlet;
 create policy owner_all on public.outlet for all to authenticated using (public.is_owner()) with check (public.is_owner());
@@ -127,6 +154,11 @@ drop policy if exists owner_all on public.transactions;
 create policy owner_all on public.transactions for all to authenticated using (public.is_owner()) with check (public.is_owner());
 drop policy if exists owner_all on public.vouchers;
 create policy owner_all on public.vouchers for all to authenticated using (public.is_owner()) with check (public.is_owner());
+-- Pemilik hanya membaca pembayaran; yang menulis adalah Edge Functions.
+drop policy if exists owner_read on public.payments;
+create policy owner_read on public.payments for select to authenticated using (public.is_owner());
+revoke all on public.payments from anon, authenticated;
+grant select on public.payments to authenticated;
 -- owners: tanpa policy, jadi hanya bisa disentuh lewat claim_owner().
 
 revoke all on public.owners, public.outlet, public.devices, public.transactions, public.vouchers from anon;
@@ -220,11 +252,15 @@ begin
   if jsonb_typeof(p_rows) is distinct from 'array' or jsonb_array_length(p_rows) > 500 then
     return jsonb_build_object('error', 'bad-request');
   end if;
-  insert into transactions (id, device_id, device_name, at, session_no, frame, package, price, method, voucher_code, prints)
+  insert into transactions (id, device_id, device_name, at, session_no, frame, package, price, method, voucher_code, prints, payment_id)
   select r.id, d.id, d.name, r.at, r.session_no, left(r.frame, 80), left(r.package, 80),
-         greatest(coalesce(r.price, 0), 0), r.method, left(r.voucher_code, 40), greatest(coalesce(r.prints, 1), 1)
+         greatest(coalesce(r.price, 0), 0), r.method, left(r.voucher_code, 40), greatest(coalesce(r.prints, 1), 1),
+         -- Hanya pembayaran lunas milik tablet ini, dan yang belum dipakai sesi lain, yang boleh ditautkan.
+         (select p.id from payments p
+           where p.id = r.payment_id and p.device_id = d.id and p.status = 'paid'
+             and not exists (select 1 from transactions t where t.payment_id = p.id))
   from jsonb_to_recordset(p_rows)
-    as r(id uuid, at timestamptz, session_no int, frame text, package text, price int, method text, voucher_code text, prints int)
+    as r(id uuid, at timestamptz, session_no int, frame text, package text, price int, method text, voucher_code text, prints int, payment_id uuid)
   where r.id is not null and r.at is not null and r.method in ('free', 'voucher', 'qris', 'cash')
   on conflict (id) do nothing;
   return jsonb_build_object('ok', true);
@@ -299,3 +335,136 @@ grant execute on function public.claim_owner() to authenticated;
 grant execute on function public.is_owner() to authenticated;
 grant execute on function public.stats_daily(timestamptz, timestamptz, text) to authenticated;
 grant execute on function public.voucher_counts() to authenticated;
+
+-- ---------------------------------------------------------------- pembayaran QRIS (hanya untuk Edge Functions)
+--
+-- Fungsi payment_* dipanggil oleh Edge Functions dengan service role. Tablet dan pemegang
+-- anon/publishable key tidak bisa memanggilnya langsung.
+
+-- Membuka tagihan untuk satu pilihan harga. Nominal diambil dari pengaturan outlet di server,
+-- bukan dari tablet, sehingga tablet tidak bisa meminta QR dengan harga yang diubah.
+create or replace function public.payment_begin(p_token text, p_package_id text)
+returns jsonb
+language plpgsql security definer set search_path = public
+as $$
+declare
+  d devices;
+  cfg jsonb;
+  pkg jsonb;
+  price int;
+  p payments;
+begin
+  select * into d from devices where token_hash = token_hash(p_token) and active;
+  if not found then
+    return jsonb_build_object('error', 'unpaired');
+  end if;
+  select config into cfg from outlet where id = 1;
+  if coalesce((cfg #>> '{payment,qris}')::boolean, false) is not true
+     or coalesce((cfg #>> '{payment,qrisAuto}')::boolean, false) is not true then
+    return jsonb_build_object('error', 'disabled');
+  end if;
+  select value into pkg
+    from jsonb_array_elements(case when jsonb_typeof(cfg -> 'packages') = 'array' then cfg -> 'packages' else '[]'::jsonb end)
+    where value ->> 'id' = p_package_id and (value ->> 'active')::boolean
+    limit 1;
+  price := floor((pkg ->> 'price')::numeric);
+  if pkg is null or price is null or price <= 0 then
+    return jsonb_build_object('error', 'no-package');
+  end if;
+  -- Rem darurat: satu tablet tidak bisa membuat QR tanpa henti.
+  if (select count(*) from payments where device_id = d.id and created_at > now() - interval '10 minutes') >= 30 then
+    return jsonb_build_object('error', 'too-many');
+  end if;
+  insert into payments (device_id, device_name, package_id, package_name, amount, partner_ref)
+  values (d.id, d.name, p_package_id, left(pkg ->> 'name', 80), price,
+          'FS' || to_char(now() at time zone 'Asia/Jakarta', 'YYMMDDHH24MISS') || upper(substr(replace(gen_random_uuid()::text, '-', ''), 1, 10)))
+  returning * into p;
+  return jsonb_build_object('id', p.id, 'amount', p.amount, 'partner_ref', p.partner_ref,
+                            'device_name', p.device_name, 'package_name', p.package_name);
+end;
+$$;
+
+-- Menyimpan QR yang diberikan penyedia pembayaran.
+create or replace function public.payment_attach(p_id uuid, p_provider_ref text, p_qr text, p_expires timestamptz, p_detail jsonb)
+returns void
+language sql security definer set search_path = public
+as $$
+  update payments
+    set provider_ref = p_provider_ref, qr_content = p_qr, expires_at = p_expires, detail = coalesce(p_detail, '{}'::jsonb)
+    where id = p_id and status = 'pending';
+$$;
+
+-- Keadaan satu tagihan, hanya untuk tablet yang membuatnya.
+create or replace function public.payment_get(p_token text, p_id uuid)
+returns jsonb
+language plpgsql security definer set search_path = public
+as $$
+declare
+  d devices;
+  p payments;
+begin
+  select * into d from devices where token_hash = token_hash(p_token) and active;
+  if not found then
+    return jsonb_build_object('error', 'unpaired');
+  end if;
+  select * into p from payments where id = p_id and device_id = d.id;
+  if not found then
+    return jsonb_build_object('error', 'not-found');
+  end if;
+  return jsonb_build_object('id', p.id, 'status', p.status, 'amount', p.amount, 'partner_ref', p.partner_ref,
+                            'provider_ref', p.provider_ref, 'expires_at', p.expires_at, 'created_at', p.created_at);
+end;
+$$;
+
+-- Menutup tagihan yang masih menunggu: lunas, kedaluwarsa, atau gagal. Tagihan yang sudah
+-- ditutup tidak berubah lagi, kecuali kedaluwarsa/gagal yang ternyata lunas (uang tetap dicatat).
+create or replace function public.payment_settle(p_id uuid, p_status text, p_detail jsonb)
+returns text
+language plpgsql security definer set search_path = public
+as $$
+declare
+  result text;
+begin
+  if p_status not in ('paid', 'expired', 'failed') then
+    raise exception 'status tidak dikenal: %', p_status;
+  end if;
+  update payments
+    set status = p_status,
+        paid_at = case when p_status = 'paid' then now() else paid_at end,
+        detail = detail || coalesce(p_detail, '{}'::jsonb)
+    where id = p_id and (status = 'pending' or (p_status = 'paid' and status in ('expired', 'failed')))
+    returning status into result;
+  if result is null then
+    select status into result from payments where id = p_id;
+  end if;
+  return result;
+end;
+$$;
+
+-- Menutup tagihan berdasarkan nomor referensi kita, untuk pemberitahuan dari penyedia pembayaran.
+-- Nominal harus sama dengan tagihannya; pemberitahuan dengan nominal lain diabaikan.
+create or replace function public.payment_settle_by_ref(p_partner_ref text, p_amount int, p_detail jsonb)
+returns text
+language plpgsql security definer set search_path = public
+as $$
+declare
+  p payments;
+begin
+  select * into p from payments where partner_ref = p_partner_ref;
+  if not found or p.amount is distinct from p_amount then
+    return null;
+  end if;
+  return payment_settle(p.id, 'paid', p_detail);
+end;
+$$;
+
+revoke execute on function public.payment_settle_by_ref(text, int, jsonb) from public, anon, authenticated;
+grant execute on function public.payment_settle_by_ref(text, int, jsonb) to service_role;
+revoke execute on function public.payment_begin(text, text) from public, anon, authenticated;
+revoke execute on function public.payment_attach(uuid, text, text, timestamptz, jsonb) from public, anon, authenticated;
+revoke execute on function public.payment_get(text, uuid) from public, anon, authenticated;
+revoke execute on function public.payment_settle(uuid, text, jsonb) from public, anon, authenticated;
+grant execute on function public.payment_begin(text, text) to service_role;
+grant execute on function public.payment_attach(uuid, text, text, timestamptz, jsonb) to service_role;
+grant execute on function public.payment_get(text, uuid) to service_role;
+grant execute on function public.payment_settle(uuid, text, jsonb) to service_role;

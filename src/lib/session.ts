@@ -17,6 +17,8 @@ export interface Draft {
   pkg: PackageDef;
   method: PayMethod;
   voucherCode?: string;
+  /** The automatic QRIS payment that paid for this session, if any. */
+  paymentId?: string;
   /** One entry per slot of the frame; null until that photo is taken. */
   shots: (Shot | null)[];
   style: PhotoStyle;

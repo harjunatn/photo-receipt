@@ -96,15 +96,20 @@ describe('mergeSettings', () => {
 });
 
 describe('paymentChoices', () => {
-  const none = { qris: false, qrisImage: '', cash: false, voucher: false };
+  const none = { qris: false, qrisAuto: false, qrisImage: '', cash: false, voucher: false };
 
   it('offers the methods that are switched on, in a fixed order', () => {
-    expect(paymentChoices({ qris: true, qrisImage: 'data:image/png;base64,AAAA', cash: true, voucher: true })).toEqual(['qris', 'cash', 'voucher']);
+    expect(paymentChoices({ ...none, qris: true, qrisImage: 'data:image/png;base64,AAAA', cash: true, voucher: true })).toEqual(['qris', 'cash', 'voucher']);
     expect(paymentChoices({ ...none, voucher: true })).toEqual(['voucher']);
   });
 
-  it('leaves QRIS out until its image has been uploaded', () => {
+  it('leaves manual QRIS out until its image has been uploaded', () => {
     expect(paymentChoices({ ...none, qris: true, cash: true })).toEqual(['cash']);
+  });
+
+  it('offers automatic QRIS without an image, but only while QRIS itself is on', () => {
+    expect(paymentChoices({ ...none, qris: true, qrisAuto: true })).toEqual(['qris']);
+    expect(paymentChoices({ ...none, qrisAuto: true, cash: true })).toEqual(['cash']);
   });
 
   it('falls back to cash so a paid session can always be started', () => {

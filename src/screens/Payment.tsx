@@ -1,14 +1,15 @@
-import { useState } from 'preact/hooks';
+import { useRef, useState } from 'preact/hooks';
 import { redeemCloudVoucher } from '../lib/cloud/device';
 import type { PayMethod } from '../lib/log';
 import type { FrameDef } from '../lib/receipt/frames';
 import { useFramePreviews } from '../lib/receipt/previews';
 import { formatRupiah, paymentChoices, useSettings, type PackageDef, type PaymentChoice } from '../lib/settings';
 import { CodeKeyboard, PinPad, Steps } from '../ui/components';
+import { AutoQris } from './AutoQris';
 
 interface Props {
   frame: FrameDef;
-  onPaid: (pkg: PackageDef, method: PayMethod, voucherCode?: string) => void;
+  onPaid: (pkg: PackageDef, method: PayMethod, voucherCode?: string, paymentId?: string) => void;
   onBack: () => void;
 }
 
@@ -37,6 +38,15 @@ export function Payment({ frame, onPaid, onBack }: Props) {
   const [error, setError] = useState('');
   const [askPin, setAskPin] = useState(false);
   const [checking, setChecking] = useState(false);
+  // Set by the automatic QRIS panel while a QR is waiting to be paid.
+  const leaveGuard = useRef<(() => Promise<boolean>) | null>(null);
+  const autoQris = settings.payment.qrisAuto;
+
+  /** Leaves the current way of paying, unless a QR turns out to have been paid in the meantime. */
+  const leave = async (then: () => void) => {
+    if (leaveGuard.current && !(await leaveGuard.current())) return;
+    then();
+  };
   const pkg = packages.find((p) => p.id === pkgId) ?? packages[0];
 
   if (!pkg) return null;
@@ -53,7 +63,7 @@ export function Payment({ frame, onPaid, onBack }: Props) {
   return (
     <div class="screen">
       <header class="bar">
-        <button class="btn quiet" onClick={onBack}>
+        <button class="btn quiet" onClick={() => void leave(onBack)}>
           ← Kembali
         </button>
         <Steps current={1} />
@@ -110,17 +120,24 @@ export function Payment({ frame, onPaid, onBack }: Props) {
                 {choices.length > 1 && (
                   <button
                     class="btn quiet small"
-                    onClick={() => {
-                      setChoice(null);
-                      setError('');
-                    }}
+                    onClick={() =>
+                      void leave(() => {
+                        setChoice(null);
+                        setError('');
+                      })
+                    }
                   >
                     Ganti cara bayar
                   </button>
                 )}
               </div>
 
-              {choice === 'qris' && (
+              {choice === 'qris' && autoQris && (
+                // Keyed by price, so that choosing another price makes a new QR for the new amount.
+                <AutoQris key={pkg.id} pkg={pkg} guard={leaveGuard} onPaid={(paymentId) => onPaid(pkg, 'qris', undefined, paymentId)} />
+              )}
+
+              {choice === 'qris' && !autoQris && (
                 <>
                   <img class="qris-img" src={settings.payment.qrisImage} alt="Kode QRIS" />
                   <p class="lead">

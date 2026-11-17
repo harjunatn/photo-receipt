@@ -1,6 +1,6 @@
 import type { PayMethod } from '../lib/log';
 import { normalizeCode, voucherStatus, type VoucherStatus } from '../lib/vouchers';
-import { newDeviceCode, newDevicePin, type Device, type OwnerApi, type Tx, type VoucherRow } from './api';
+import { newDeviceCode, newDevicePin, type Device, type OwnerApi, type PaymentRow, type Tx, type VoucherRow } from './api';
 import { dayKey, type StatRow } from './stats';
 
 /** A small repeatable random source, so the sample data looks the same on every visit. */
@@ -83,6 +83,17 @@ export function createDemoApi(): OwnerApi {
   }));
   let outlet: unknown = {};
 
+  // Every QRIS session has a paid charge; a few charges ran out unpaid, and one was paid without a session.
+  const payments: PaymentRow[] = transactions
+    .filter((tx) => tx.method === 'qris')
+    .slice(0, 60)
+    .flatMap((tx, i) => {
+      const base = { device_name: tx.device_name, package_name: tx.package, amount: tx.price, partner_ref: `FS${String(100000 + i)}`, provider_ref: `DK${String(700000 + i)}` };
+      const paidRow: PaymentRow = { ...base, id: `demo-pay-${i}`, status: 'paid', created_at: tx.at, paid_at: tx.at, has_session: i !== 3 };
+      const unpaid: PaymentRow = { ...base, id: `demo-pay-x${i}`, status: 'expired', created_at: iso(Date.parse(tx.at) - 6 * MINUTE), paid_at: null, has_session: false, provider_ref: `DK${String(800000 + i)}` };
+      return i % 7 === 2 ? [paidRow, unpaid] : [paidRow];
+    });
+
   const statusOf = (v: VoucherRow, at: number): VoucherStatus =>
     voucherStatus(
       { code: v.code, createdAt: 0, expiresAt: v.expires_at ? Date.parse(v.expires_at) : null, usedAt: v.used_at ? Date.parse(v.used_at) : null },
@@ -145,6 +156,12 @@ export function createDemoApi(): OwnerApi {
           (!filter.deviceId || tx.device_id === filter.deviceId)
         );
       });
+      return { rows: rows.slice(offset, offset + limit), total: rows.length };
+    },
+    async listPayments(status, offset, limit) {
+      const rows = payments.filter((row) =>
+        status === 'all' ? true : status === 'orphan' ? row.status === 'paid' && !row.has_session : row.status === status,
+      );
       return { rows: rows.slice(offset, offset + limit), total: rows.length };
     },
     async voucherCounts() {

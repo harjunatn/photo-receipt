@@ -62,12 +62,13 @@ export function App() {
     screen !== 'attract' && screen !== 'admin',
   );
 
-  const begin = (chosen: FrameDef, pkg: PackageDef, method: PayMethod, voucherCode?: string) => {
+  const begin = (chosen: FrameDef, pkg: PackageDef, method: PayMethod, voucherCode?: string, paymentId?: string) => {
     setDraft({
       frame: chosen,
       pkg,
       method,
       voucherCode,
+      paymentId,
       shots: chosen.slots.map(() => null),
       style: 'normal',
       when: new Date(),
@@ -100,7 +101,7 @@ export function App() {
         <Payment
           frame={frame}
           onBack={() => (frames.length > 1 ? setScreen('frames') : reset())}
-          onPaid={(pkg, method, voucherCode) => begin(frame, pkg, method, voucherCode)}
+          onPaid={(pkg, method, voucherCode, paymentId) => begin(frame, pkg, method, voucherCode, paymentId)}
         />
       )}
       {screen === 'capture' && draft && (
