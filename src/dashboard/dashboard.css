@@ -1,0 +1,489 @@
+/*
+ * The owner's dashboard. It shares the booth's "gallery" tokens and components
+ * (panels, pills, hairlines) but is a normal web page: it scrolls, text can be
+ * selected, and it has to work on a phone as well as on a laptop.
+ */
+
+html.dash-page,
+html.dash-page body,
+html.dash-page #app {
+  height: auto;
+  min-height: 100%;
+}
+
+html.dash-page body {
+  overflow: auto;
+  overscroll-behavior: auto;
+  touch-action: auto;
+  user-select: text;
+  -webkit-user-select: text;
+  font-size: 16px;
+}
+
+.dash {
+  display: grid;
+  grid-template-columns: 236px minmax(0, 1fr);
+  min-height: 100vh;
+}
+
+.dash-nav {
+  position: sticky;
+  top: 0;
+  align-self: start;
+  display: flex;
+  flex-direction: column;
+  gap: 28px;
+  height: 100vh;
+  padding: 28px 20px;
+  border-right: 1px solid var(--line);
+}
+
+.dash-brand {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.dash-brand b {
+  font-family: var(--display);
+  font-size: 30px;
+  font-weight: 400;
+  line-height: 1;
+}
+
+.dash-brand b::after {
+  content: '.';
+  color: var(--accent);
+}
+
+.dash-links {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.dash-links button {
+  min-height: 42px;
+  padding: 8px 12px;
+  border: 0;
+  border-left: 1px solid transparent;
+  background: none;
+  color: var(--ink-2);
+  font-weight: 500;
+  font-size: 15px;
+  text-align: left;
+}
+
+.dash-links button:hover {
+  color: var(--ink);
+}
+
+.dash-links button.on {
+  border-left-color: var(--ink);
+  color: var(--ink);
+}
+
+.dash-user {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 4px;
+  overflow-wrap: anywhere;
+}
+
+.dash-main {
+  display: flex;
+  flex-direction: column;
+  gap: 18px;
+  width: 100%;
+  max-width: 1160px;
+  padding: 32px clamp(16px, 4vw, 44px) 72px;
+}
+
+.dash-main .admin-grid {
+  width: 100%;
+  max-width: none;
+  margin: 0;
+}
+
+.dash-head {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: flex-end;
+  justify-content: space-between;
+  gap: 14px;
+}
+
+.dash-head > div:first-child {
+  flex: 1;
+  min-width: min(100%, 260px);
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.dash-gate {
+  min-height: 100vh;
+  display: grid;
+  place-items: center;
+  padding: 20px;
+}
+
+.dash-gate .panel {
+  width: min(100%, 420px);
+}
+
+/* Pills on the dashboard are tools, not the booth's finger-sized targets. */
+.dash .btn.small,
+.dash-gate .btn.small {
+  min-height: 40px;
+  padding: 6px 16px;
+  font-size: 14px;
+}
+
+.chips.tight .chip {
+  min-height: 38px;
+  padding: 6px 16px;
+  font-size: 14px;
+}
+
+.dash .field input[type='email'],
+.dash .field input[type='password'],
+.dash .field input[type='date'],
+.dash .field input[type='search'],
+.dash-gate .field input {
+  width: 100%;
+  min-height: 46px;
+  padding: 10px 14px;
+  border: 1px solid var(--line);
+  border-radius: var(--radius-sm);
+  background: var(--page);
+  outline: none;
+}
+
+.dash .field input.mono {
+  font-family: var(--mono);
+}
+
+.dash .panel.busy {
+  opacity: 0.6;
+}
+
+.dash .link.danger {
+  color: var(--err);
+}
+
+.filters {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(170px, 1fr));
+  gap: 12px;
+}
+
+.pager {
+  justify-content: space-between;
+}
+
+/* ---------- Headline numbers ---------- */
+
+.tiles {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(190px, 1fr));
+  border: 1px solid var(--line);
+  border-radius: var(--radius-md);
+  overflow: hidden;
+}
+
+/* Each tile draws its right and bottom hairline; the outer ones slip under the frame, however the tiles wrap. */
+.tile {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  margin: 0 -1px -1px 0;
+  padding: 20px 22px;
+  border-right: 1px solid var(--line);
+  border-bottom: 1px solid var(--line);
+}
+
+.tile span {
+  color: var(--ink-2);
+  font-size: 12px;
+  font-weight: 500;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+}
+
+.tile b {
+  font-family: var(--display);
+  font-size: clamp(30px, 3.4vw, 40px);
+  font-weight: 400;
+  line-height: 1.05;
+}
+
+.tile small {
+  color: var(--ink-2);
+  font-size: 13px;
+}
+
+/* ---------- Revenue per day ---------- */
+
+.chart {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.chart-readout {
+  color: var(--ink-2);
+  font-size: 14px;
+}
+
+.chart-readout b {
+  color: var(--ink);
+  font-weight: 600;
+}
+
+.chart-plot {
+  position: relative;
+  height: 220px;
+  /* Room for the scale's labels, which sit left of the bars, and for the top label above the plot. */
+  margin: 8px 0 0 58px;
+}
+
+.chart-grid span {
+  position: absolute;
+  left: 0;
+  right: 0;
+  border-top: 1px solid var(--soft);
+}
+
+.chart-grid span:last-child {
+  border-top-color: var(--line);
+}
+
+.chart-grid i {
+  position: absolute;
+  right: 100%;
+  top: -0.7em;
+  padding-right: 10px;
+  color: var(--ink-2);
+  font-style: normal;
+  font-size: 12px;
+  white-space: nowrap;
+}
+
+.chart-bars {
+  position: absolute;
+  inset: 0;
+  display: flex;
+}
+
+/* The whole column is the target, so thin bars and empty days are still easy to point at. */
+.chart-col {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  align-items: flex-end;
+  justify-content: center;
+  padding: 0 1px;
+  border: 0;
+  background: none;
+  outline: none;
+}
+
+.chart-col i {
+  width: 100%;
+  max-width: 30px;
+  border-radius: 4px 4px 0 0;
+  background: var(--ink);
+}
+
+.chart-col.on {
+  background: var(--soft);
+}
+
+.chart-col.on i {
+  background: var(--accent);
+}
+
+.chart-axis {
+  display: flex;
+  margin-left: 58px;
+}
+
+.chart-axis span {
+  flex: 1;
+  min-width: 0;
+  overflow: visible;
+  color: var(--ink-2);
+  font-size: 12px;
+  text-align: center;
+  white-space: nowrap;
+}
+
+/* ---------- Ranked shares ---------- */
+
+.shares {
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+}
+
+.share {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  font-size: 15px;
+}
+
+.share-track {
+  height: 6px;
+  border-radius: 3px;
+  background: var(--soft);
+}
+
+.share-track i {
+  display: block;
+  height: 100%;
+  min-width: 2px;
+  border-radius: 3px;
+  background: var(--ink);
+}
+
+/* ---------- Tables and facts ---------- */
+
+.table-wrap {
+  overflow-x: auto;
+}
+
+.table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 14px;
+}
+
+.table th,
+.table td {
+  padding: 11px 14px 11px 0;
+  border-top: 1px solid var(--line);
+  text-align: left;
+  vertical-align: middle;
+  white-space: nowrap;
+}
+
+.table th {
+  border-top: 0;
+  color: var(--ink-2);
+  font-size: 12px;
+  font-weight: 500;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+}
+
+.table tbody:first-child tr:first-child td {
+  border-top: 0;
+}
+
+.table .num {
+  padding-right: 0;
+  text-align: right;
+  font-variant-numeric: tabular-nums;
+}
+
+.table small {
+  color: var(--ink-2);
+}
+
+.facts {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 12px 16px;
+  margin: 0;
+}
+
+.facts dt {
+  color: var(--ink-2);
+  font-size: 12px;
+  font-weight: 500;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+}
+
+.facts dd {
+  margin: 2px 0 0;
+  font-size: 16px;
+}
+
+.facts dd.mono {
+  font-size: 18px;
+  letter-spacing: 0.08em;
+}
+
+.codes {
+  font-size: 14px;
+  line-height: 2;
+  overflow-wrap: anywhere;
+  user-select: all;
+}
+
+/* ---------- Phones and upright tablets ---------- */
+
+@media (max-width: 880px) {
+  .dash {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .dash-nav {
+    z-index: 5;
+    flex-flow: row wrap;
+    align-items: center;
+    justify-content: space-between;
+    gap: 4px 14px;
+    height: auto;
+    padding: 10px 16px 0;
+    border-right: 0;
+    border-bottom: 1px solid var(--line);
+    background: var(--page);
+  }
+
+  .dash-brand .pill,
+  .dash-user .hint {
+    display: none;
+  }
+
+  .dash-brand b {
+    font-size: 24px;
+    white-space: nowrap;
+  }
+
+  /* The menu gets a row of its own under the name, and swipes sideways when it does not fit. */
+  .dash-links {
+    order: 3;
+    flex: none;
+    width: 100%;
+    flex-direction: row;
+    gap: 4px;
+    overflow-x: auto;
+    scrollbar-width: none;
+  }
+
+  .dash-links button {
+    flex: none;
+    padding: 8px 9px;
+    font-size: 14px;
+    border-left: 0;
+    border-bottom: 1px solid transparent;
+  }
+
+  .dash-links button.on {
+    border-bottom-color: var(--ink);
+  }
+
+  .dash-main {
+    padding-top: 22px;
+  }
+
+  .chart-plot {
+    height: 180px;
+  }
+}

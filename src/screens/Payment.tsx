@@ -1,4 +1,5 @@
 import { useState } from 'preact/hooks';
+import { pairingStore, redeemCloudVoucher } from '../lib/cloud/device';
 import type { PayMethod } from '../lib/log';
 import type { FrameDef } from '../lib/receipt/frames';
 import { useFramePreviews } from '../lib/receipt/previews';
@@ -16,6 +17,7 @@ const VOUCHER_ERRORS = {
   'not-found': 'Kode tidak ditemukan. Coba periksa lagi.',
   used: 'Voucher ini sudah pernah dipakai.',
   expired: 'Voucher ini sudah kedaluwarsa.',
+  offline: 'Voucher butuh internet, dan tablet ini sedang tidak tersambung. Mohon panggil petugas.',
 };
 
 const METHODS: Record<PaymentChoice, { icon: string; title: string; hint: string }> = {
@@ -35,11 +37,21 @@ export function Payment({ frame, onPaid, onBack }: Props) {
   const [code, setCode] = useState('');
   const [error, setError] = useState('');
   const [askPin, setAskPin] = useState(false);
+  const [checking, setChecking] = useState(false);
   const pkg = packages.find((p) => p.id === pkgId) ?? packages[0];
 
   if (!pkg) return null;
 
-  const applyVoucher = () => {
+  const applyVoucher = async () => {
+    // A paired tablet asks the server, which hands each code out exactly once across all tablets.
+    if (pairingStore.get()) {
+      setChecking(true);
+      const result = await redeemCloudVoucher(code);
+      setChecking(false);
+      if (result.status === 'ok') onPaid(pkg, 'voucher', result.code);
+      else setError(VOUCHER_ERRORS[result.status]);
+      return;
+    }
     const result = checkVoucher(voucherStore.get(), code, Date.now());
     if (result.ok) onPaid(pkg, 'voucher', result.voucher.code);
     else setError(VOUCHER_ERRORS[result.reason]);
@@ -149,8 +161,8 @@ export function Payment({ frame, onPaid, onBack }: Props) {
                       setError('');
                     }}
                   />
-                  <button class="btn primary" disabled={code.length < 4} onClick={applyVoucher}>
-                    Pakai voucher →
+                  <button class="btn primary" disabled={code.length < 4 || checking} onClick={() => void applyVoucher()}>
+                    {checking ? 'Memeriksa…' : 'Pakai voucher →'}
                   </button>
                 </>
               )}

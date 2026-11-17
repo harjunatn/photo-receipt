@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState } from 'preact/hooks';
 import { Admin } from './admin/Admin';
+import { refetchSettings, setBoothIdle } from './lib/cloud/device';
 import { useIdle } from './lib/kiosk';
 import type { PayMethod } from './lib/log';
 import { activeFrames, type FrameDef } from './lib/receipt/frames';
@@ -41,6 +42,9 @@ export function App() {
   useEffect(() => {
     if (hasUpdate && screen === 'attract' && !askPin) applyUpdate();
   }, [hasUpdate, screen, askPin]);
+
+  // Prices and frames set in the dashboard arrive between guests, never under one.
+  useEffect(() => setBoothIdle(screen === 'attract'), [screen]);
 
   const reset = () => {
     setFrame(null);
@@ -124,7 +128,15 @@ export function App() {
         />
       )}
       {screen === 'result' && draft && <Result draft={draft} onFinish={reset} />}
-      {screen === 'admin' && <Admin onExit={reset} />}
+      {screen === 'admin' && (
+        <Admin
+          onExit={() => {
+            // What the dashboard manages wins over edits made on the tablet.
+            refetchSettings();
+            reset();
+          }}
+        />
+      )}
       {askPin && (
         <PinPad
           title="Masuk pengaturan"

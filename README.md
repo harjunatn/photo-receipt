@@ -76,9 +76,9 @@ aplikasi tersimpan di tablet dan **tetap jalan saat internet putus**.
 4. Setiap `git push` ke `main` otomatis men-deploy versi baru. Booth yang sedang menyala mengambil versi baru itu
    sendiri saat layar sambutan sedang menganggur — tidak pernah di tengah sesi tamu.
 
-Alamat itu bisa dibuka siapa saja, tapi itu tidak membuka data booth-mu: pengaturan, voucher, dan foto tersimpan di
-masing-masing perangkat, bukan di server. Orang lain yang membuka alamatnya hanya mendapat aplikasi kosong miliknya
-sendiri.
+Alamat itu bisa dibuka siapa saja, tapi itu tidak membuka data booth-mu: foto dan pengaturan tablet tersimpan di
+masing-masing perangkat, dan data dashboard hanya terbuka untuk akun pemilik. Orang lain yang membuka alamatnya hanya
+mendapat aplikasi kosong miliknya sendiri.
 
 ### B. Untuk uji cepat: lewat WiFi yang sama
 
@@ -101,6 +101,55 @@ hanya untuk percobaan: komputer harus tetap menyala.
 5. **Kunci tablet di aplikasi ini**: Pengaturan Android → Keamanan → *Sematkan aplikasi* (App pinning), lalu sematkan
    Struk Booth. Tamu tidak bisa keluar ke aplikasi lain.
 6. Atur layar agar **tidak mati otomatis** dan kecerahan cukup; aplikasi juga menahan layar tetap menyala.
+
+## Dashboard pemilik dan beberapa tablet (Supabase)
+
+Tanpa langkah ini aplikasi tetap jalan, tetapi tiap tablet berdiri sendiri. Dengan Supabase, semua tablet mengirim
+transaksinya ke satu tempat dan kamu melihat serta mengaturnya dari **dashboard**: alamat aplikasi dengan akhiran
+`#dashboard` (misalnya `https://<nama-proyek>.vercel.app/#dashboard`), dibuka dari HP atau laptop.
+
+| Menu dashboard | Isi |
+| --- | --- |
+| Dashboard | Omzet hari ini, 7 hari, bulan ini; grafik per hari; cara bayar; per perangkat; transaksi terbaru |
+| Perangkat | Daftar tablet, kode perangkat + PIN, online/offline, status printer |
+| Transaksi | Semua sesi dari semua tablet, saring tanggal / cara bayar / perangkat, unduh CSV |
+| Voucher | Buat massal, status aktif / terpakai / kedaluwarsa; berlaku di semua tablet, sekali pakai |
+| Koleksi Frame | Frame yang ditawarkan, per perangkat |
+| Pengaturan | Nama outlet, teks struk, harga, cara bayar + gambar QRIS, password |
+
+### Menyiapkan (sekali saja)
+
+1. Buat proyek di [supabase.com](https://supabase.com) (paket gratis cukup untuk mulai).
+2. **SQL Editor → New query**: tempel seluruh isi [`supabase/schema.sql`](supabase/schema.sql), tekan **Run**.
+3. **Authentication → Users → Add user**: buat akun pemilik (email + password, centang *Auto Confirm User*).
+4. **Authentication → Sign In / Providers**: matikan *Allow new users to sign up*. Dashboard hanya menerima akun pertama
+   yang masuk sebagai pemilik, tetapi tidak ada alasan membiarkan orang lain mendaftar.
+5. **Project Settings → API**: salin *Project URL* dan *anon / publishable key*. Jangan pernah memakai `service_role`
+   key di aplikasi ini.
+6. Di Vercel: **Settings → Environment Variables**, tambahkan `VITE_SUPABASE_URL` dan `VITE_SUPABASE_ANON_KEY`, lalu
+   **Redeploy**. (Untuk mencoba di komputer: salin `.env.example` menjadi `.env.local` dan isi di sana.)
+7. Buka `…/#dashboard`, masuk dengan akun tadi. **Masuklah segera setelah deploy**: akun pertama yang masuk menjadi
+   pemilik.
+
+### Memasangkan tablet
+
+1. Dashboard → **Perangkat** → tambah perangkat. Muncul **kode perangkat** dan **PIN**.
+2. Di tablet: ⚙ → PIN petugas → tab **Dashboard** → ketik kode dan PIN itu → **Pasangkan**.
+
+Sesudah terpasang:
+
+- Setiap sesi yang selesai dikirim ke dashboard. Kalau internet putus, transaksi **menunggu di tablet** dan terkirim
+  sendiri saat internet kembali; booth tetap bisa dipakai.
+- Harga, cara bayar, nama outlet dan teks struk mengikuti menu **Pengaturan** dashboard; frame mengikuti **Koleksi
+  Frame**. Perubahan sampai ke tablet dalam satu-dua menit, saat layar sambutan (tidak pernah di tengah sesi tamu).
+  Printer, kamera, logo, warna dan PIN petugas tetap diatur di tiap tablet.
+- **Voucher** diperiksa ke server supaya satu kode tidak bisa dipakai di dua tablet. Karena itu voucher **butuh
+  internet**; QRIS dan tunai tidak.
+- Satu kode perangkat untuk satu tablet. Memasangkan tablet lain dengan kode yang sama melepas tablet sebelumnya.
+- Foto tamu **tidak** dikirim ke server; hanya catatan transaksinya.
+
+Paket gratis Supabase menjeda proyek yang tidak dipakai sekitar seminggu. Booth yang dipakai rutin tidak kena; setelah
+libur panjang, bangunkan proyeknya dari dashboard Supabase (transaksi yang menunggu di tablet akan terkirim sesudahnya).
 
 ## Menghubungkan printer
 
@@ -159,12 +208,15 @@ atas nama usahamu (Midtrans, Xendit, Tripay, dsb.) dan sebuah server kecil untuk
   QR, dan akun media sosial di struk bisa diatur sendiri.
 - Stiker dan tulisan dari tamu di langkah edit — saat ini tamu bisa mengganti gaya foto, mengganti frame, dan foto ulang.
 - Deteksi kertas habis — printer tidak dilaporkan statusnya; siapkan kertas cadangan dan cek berkala.
-- Voucher dan riwayat tersimpan **per tablet** (tidak tersinkron antar perangkat). Gunakan *Cadangan pengaturan* di tab
-  **Sistem** untuk menyalin pengaturan ke tablet lain.
+- Mencetak slip voucher untuk voucher yang dibuat di dashboard — saat ini kodenya disalin atau diunduh sebagai CSV.
+  (Voucher yang dibuat di tablet yang tidak terpasang masih bisa dicetak sebagai slip.)
+- Voucher saat tablet terpasang tetapi sedang tanpa internet.
+- Menu Event, dan pencairan dana: uang QRIS dan tunai langsung masuk ke kamu, jadi dashboard hanya mencatatnya.
 
 ## Privasi
 
-Foto tamu hanya disimpan di tablet (untuk cetak ulang) dan tidak dikirim ke mana pun. Jumlah sesi yang disimpan bisa
+Foto tamu hanya disimpan di tablet (untuk cetak ulang) dan tidak dikirim ke mana pun. Kalau dashboard dipakai, yang
+dikirim ke Supabase hanya catatan transaksi (waktu, frame, harga, cara bayar, kode voucher) dan status tablet. Jumlah sesi yang disimpan bisa
 diatur, dan penyimpanan bisa dimatikan sepenuhnya di tab **Riwayat**.
 
 ## Untuk pengembangan
@@ -184,4 +236,7 @@ npm run icons      # buat ulang ikon aplikasi
 | `src/lib/image/` | Pengolahan foto menjadi titik hitam-putih (tone, dithering, gaya foto). |
 | `src/lib/receipt/` | Penyusun tata letak struk dan desain frame (`frames.ts`). |
 | `src/lib/printer/` | Perintah ESC/POS, koneksi USB/Bluetooth/serial, dan printer simulasi. |
-| `tests/` | Tes untuk pengolahan gambar, ESC/POS, voucher, dan pembukuan. |
+| `src/lib/cloud/` | Sambungan tablet ke Supabase: pemasangan, antrean kirim transaksi, voucher, pengaturan bersama. |
+| `src/dashboard/` | Dashboard pemilik (`#dashboard`); `?demo#dashboard` menampilkannya dengan data contoh. |
+| `supabase/schema.sql` | Tabel, hak akses, dan fungsi di Supabase. |
+| `tests/` | Tes untuk pengolahan gambar, ESC/POS, voucher, pembukuan, dan ringkasan dashboard. |

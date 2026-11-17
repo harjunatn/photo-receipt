@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState } from 'preact/hooks';
 import { canvasToBlob } from '../lib/camera';
+import { queueTransaction } from '../lib/cloud/device';
 import { saveSession } from '../lib/db';
 import type { BitImage } from '../lib/image/types';
 import { pokeIdle } from '../lib/kiosk';
@@ -71,6 +72,17 @@ export function Result({ draft, onFinish }: Props) {
           price: draft.pkg.price,
           method: draft.method,
           voucher: draft.voucherCode,
+          prints: draft.pkg.prints,
+        });
+        queueTransaction({
+          id: crypto.randomUUID(),
+          at: draft.when.toISOString(),
+          session_no: sessionNo,
+          frame: draft.frame.name,
+          package: draft.pkg.name,
+          price: draft.pkg.price,
+          method: draft.method,
+          voucher_code: draft.voucherCode ?? null,
           prints: draft.pkg.prints,
         });
         if (settings.storage.keepPhotos) {

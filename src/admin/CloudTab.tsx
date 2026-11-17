@@ -1,0 +1,159 @@
+import { useState } from 'preact/hooks';
+import { outboxStore, pairDevice, pairingStore, syncNow, syncState, unpairDevice } from '../lib/cloud/device';
+import { cloudConfigured } from '../lib/cloud/shared';
+import { formatDateTime } from '../lib/receipt/compose';
+import { useStore } from '../lib/store';
+import { toast } from '../ui/components';
+
+/** Pairs this tablet with the owner's dashboard and shows whether its sales are getting through. */
+export function CloudTab() {
+  const pairing = useStore(pairingStore);
+  const queued = useStore(outboxStore).length;
+  const sync = useStore(syncState);
+  const [code, setCode] = useState('');
+  const [pin, setPin] = useState('');
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState('');
+  const [confirmUnpair, setConfirmUnpair] = useState(false);
+
+  const pair = async () => {
+    setBusy(true);
+    const problem = await pairDevice(code, pin);
+    setBusy(false);
+    setError(problem);
+    if (!problem) {
+      setCode('');
+      setPin('');
+      toast('Tablet terpasang ke dashboard.');
+    }
+  };
+
+  const syncAgain = async () => {
+    setBusy(true);
+    const ok = await syncNow();
+    setBusy(false);
+    toast(ok ? 'Sinkron dengan dashboard.' : 'Belum berhasil tersambung ke server.');
+  };
+
+  if (!cloudConfigured) {
+    return (
+      <div class="admin-grid">
+        <section class="panel span">
+          <h2>Dashboard belum disambungkan</h2>
+          <p class="hint">
+            Aplikasi ini belum diberi alamat Supabase, jadi tablet bekerja sendiri: transaksi dan voucher hanya tersimpan
+            di tablet ini. Untuk memakai dashboard dan beberapa tablet sekaligus, isi <b class="mono">VITE_SUPABASE_URL</b>{' '}
+            dan <b class="mono">VITE_SUPABASE_ANON_KEY</b> di Vercel lalu deploy ulang. Langkahnya ada di README.
+          </p>
+        </section>
+      </div>
+    );
+  }
+
+  return (
+    <div class="admin-grid">
+      {pairing ? (
+        <section class="panel">
+          <div class="row">
+            <h2 class="grow">{pairing.name || 'Tablet ini'}</h2>
+            <span class={`tag ${sync.error ? 'warn' : 'ok'}`}>{sync.error ? 'Belum tersambung' : 'Terpasang'}</span>
+          </div>
+          <p class="hint">
+            Kode perangkat <b class="mono">{pairing.code}</b>. Setiap sesi yang selesai dikirim ke dashboard; harga, cara
+            bayar, voucher dan frame diambil dari sana.
+          </p>
+          <div class="stats">
+            <div class="stat">
+              <b>{queued}</b>
+              <span>transaksi menunggu dikirim</span>
+            </div>
+            <div class="stat">
+              <b style={{ fontSize: '20px', lineHeight: '1.7' }}>{sync.lastOk ? formatDateTime(new Date(sync.lastOk)) : '—'}</b>
+              <span>terakhir tersambung</span>
+            </div>
+          </div>
+          {sync.error && (
+            <p class="banner">
+              {sync.error} Booth tetap bisa dipakai: transaksi disimpan dulu di tablet dan dikirim saat internet kembali.
+              Voucher tidak bisa dipakai selama tidak tersambung.
+            </p>
+          )}
+          <div class="row">
+            <button class="btn small primary" disabled={busy} onClick={() => void syncAgain()}>
+              Sinkronkan sekarang
+            </button>
+            {confirmUnpair ? (
+              <>
+                <button
+                  class="btn small danger"
+                  onClick={() => {
+                    unpairDevice();
+                    setConfirmUnpair(false);
+                  }}
+                >
+                  Ya, lepas tablet ini
+                </button>
+                <button class="btn small" onClick={() => setConfirmUnpair(false)}>
+                  Batal
+                </button>
+              </>
+            ) : (
+              <button class="btn small" onClick={() => setConfirmUnpair(true)}>
+                Lepas dari dashboard
+              </button>
+            )}
+          </div>
+        </section>
+      ) : (
+        <section class="panel">
+          <h2>Pasangkan tablet ini</h2>
+          <p class="hint">
+            Buat perangkat baru di dashboard (menu Perangkat), lalu ketik kode perangkat dan PIN-nya di sini. Satu kode
+            untuk satu tablet: memasangkan tablet lain dengan kode yang sama melepas tablet sebelumnya.
+          </p>
+          {sync.revoked && <p class="banner err">Tablet ini dilepas atau dinonaktifkan dari dashboard. Pasangkan lagi untuk melanjutkan.</p>}
+          <label class="field">
+            <span>Kode perangkat</span>
+            <input
+              type="text"
+              class="mono"
+              autocapitalize="characters"
+              autocomplete="off"
+              maxLength={12}
+              value={code}
+              onInput={(event) => setCode(event.currentTarget.value.toUpperCase().replace(/[^A-Z0-9]/g, ''))}
+            />
+          </label>
+          <label class="field">
+            <span>PIN perangkat</span>
+            <input
+              type="text"
+              class="mono"
+              inputMode="numeric"
+              autocomplete="off"
+              maxLength={8}
+              value={pin}
+              onInput={(event) => setPin(event.currentTarget.value.replace(/\D/g, ''))}
+            />
+          </label>
+          {error && <p class="banner err">{error}</p>}
+          <button class="btn small primary" disabled={busy || code.length < 4 || pin.length < 4} onClick={() => void pair()}>
+            {busy ? 'Memasangkan…' : 'Pasangkan'}
+          </button>
+          {queued > 0 && <p class="hint">{queued} transaksi dari pemasangan sebelumnya akan ikut terkirim.</p>}
+        </section>
+      )}
+
+      <section class="panel">
+        <h2>Membuka dashboard</h2>
+        <p class="hint">
+          Dashboard dibuka dari HP atau laptop pemilik, bukan dari tablet booth: buka alamat aplikasi ini dengan akhiran{' '}
+          <b class="mono">#dashboard</b>, lalu masuk dengan email dan password pemilik.
+        </p>
+        <p class="hint mono" style={{ overflowWrap: 'anywhere' }}>
+          {location.origin + location.pathname}#dashboard
+        </p>
+      </section>
+    </div>
+  );
+}
