@@ -94,18 +94,20 @@ hanya untuk percobaan: komputer harus tetap menyala.
 
 1. **Pasang ke layar utama**: menu ⋮ Chrome → *Tambahkan ke layar utama* / *Instal aplikasi*. Aplikasi lalu tampil layar
    penuh tanpa bilah alamat.
-2. **Izinkan kamera**: jalankan satu sesi percobaan dan pilih *Izinkan* saat Chrome bertanya.
-3. **Hubungkan printer**: ⚙ → PIN → tab **Printer** → pilih USB atau Bluetooth → **Hubungkan** → pilih printernya →
+2. **Sambungkan ke dashboard**: ⚙ → PIN → tab **Sambungan** (lihat *Memasangkan tablet* di bawah). Sebelum tersambung,
+   layar tamu tidak menampilkan tombol mulai.
+3. **Izinkan kamera**: jalankan satu sesi percobaan dan pilih *Izinkan* saat Chrome bertanya.
+4. **Hubungkan printer**: ⚙ → PIN → tab **Printer** → pilih USB atau Bluetooth → **Hubungkan** → pilih printernya →
    **Tes cetak**.
-4. **Ganti PIN** di tab **Sistem** (bawaan: `1234`).
-5. **Kunci tablet di aplikasi ini**: Pengaturan Android → Keamanan → *Sematkan aplikasi* (App pinning), lalu sematkan
+5. **Ganti PIN petugas** di tab **Sistem** (bawaan: `1234`). PIN ini per tablet, tidak diatur dari dashboard.
+6. **Kunci tablet di aplikasi ini**: Pengaturan Android → Keamanan → *Sematkan aplikasi* (App pinning), lalu sematkan
    Struk Booth. Tamu tidak bisa keluar ke aplikasi lain.
-6. Atur layar agar **tidak mati otomatis** dan kecerahan cukup; aplikasi juga menahan layar tetap menyala.
+7. Atur layar agar **tidak mati otomatis** dan kecerahan cukup; aplikasi juga menahan layar tetap menyala.
 
 ## Dashboard pemilik dan beberapa tablet (Supabase)
 
-Tanpa langkah ini aplikasi tetap jalan, tetapi tiap tablet berdiri sendiri. Dengan Supabase, semua tablet mengirim
-transaksinya ke satu tempat dan kamu melihat serta mengaturnya dari **dashboard**: alamat aplikasi dengan akhiran
+**Wajib.** Setiap tablet harus tersambung ke dashboard sebelum bisa dipakai tamu, supaya semua sesi tercatat. Semua
+tablet mengirim transaksinya ke satu tempat dan kamu melihat serta mengaturnya dari **dashboard**: alamat aplikasi dengan akhiran
 `#dashboard` (misalnya `https://<nama-proyek>.vercel.app/#dashboard`), dibuka dari HP atau laptop.
 
 | Menu dashboard | Isi |
@@ -115,7 +117,14 @@ transaksinya ke satu tempat dan kamu melihat serta mengaturnya dari **dashboard*
 | Transaksi | Semua sesi dari semua tablet, saring tanggal / cara bayar / perangkat, unduh CSV |
 | Voucher | Buat massal, status aktif / terpakai / kedaluwarsa; berlaku di semua tablet, sekali pakai |
 | Koleksi Frame | Frame yang ditawarkan, per perangkat |
-| Pengaturan | Nama outlet, teks struk, harga, cara bayar + gambar QRIS, password |
+| Pengaturan | Nama outlet, warna, logo, teks struk, harga, cara bayar + gambar QRIS, password |
+
+| Diatur di dashboard (sama untuk semua booth) | Diatur di tiap tablet (tergantung alatnya) |
+| --- | --- |
+| Harga, cara bayar, gambar QRIS, voucher | Printer dan kualitas cetak |
+| Nama outlet, warna, logo, teks struk | Kamera, cermin, hitung mundur, suara, batas menganggur |
+| Frame per perangkat | PIN petugas, layar penuh |
+| Laporan semua booth | Ringkasan penjualan tablet itu, foto untuk cetak ulang |
 
 ### Menyiapkan (sekali saja)
 
@@ -134,15 +143,16 @@ transaksinya ke satu tempat dan kamu melihat serta mengaturnya dari **dashboard*
 ### Memasangkan tablet
 
 1. Dashboard → **Perangkat** → tambah perangkat. Muncul **kode perangkat** dan **PIN**.
-2. Di tablet: ⚙ → PIN petugas → tab **Dashboard** → ketik kode dan PIN itu → **Pasangkan**.
+2. Di tablet: ⚙ → PIN petugas → tab **Sambungan** → ketik kode dan PIN itu → **Pasangkan**. Tablet yang belum
+   tersambung langsung membuka tab ini.
 
 Sesudah terpasang:
 
 - Setiap sesi yang selesai dikirim ke dashboard. Kalau internet putus, transaksi **menunggu di tablet** dan terkirim
   sendiri saat internet kembali; booth tetap bisa dipakai.
-- Harga, cara bayar, nama outlet dan teks struk mengikuti menu **Pengaturan** dashboard; frame mengikuti **Koleksi
-  Frame**. Perubahan sampai ke tablet dalam satu-dua menit, saat layar sambutan (tidak pernah di tengah sesi tamu).
-  Printer, kamera, logo, warna dan PIN petugas tetap diatur di tiap tablet.
+- Perubahan di dashboard sampai ke tablet dalam satu-dua menit, saat layar sambutan (tidak pernah di tengah sesi tamu).
+- Kalau perangkatnya dilepas atau dinonaktifkan di dashboard, booth berhenti menerima tamu baru. Tamu yang sedang di
+  tengah sesi tetap bisa menyelesaikannya, dan transaksinya terkirim setelah tablet dipasangkan lagi.
 - **Voucher** diperiksa ke server supaya satu kode tidak bisa dipakai di dua tablet. Karena itu voucher **butuh
   internet**; QRIS dan tunai tidak.
 - Satu kode perangkat untuk satu tablet. Memasangkan tablet lain dengan kode yang sama melepas tablet sebelumnya.
@@ -184,15 +194,15 @@ titik-titik yang benar-benar dikirim ke printer. Ubah satu pengaturan, tekan **T
 
 ## Pembayaran
 
-Cara bayar yang dinyalakan di tab **Bayar & Voucher** muncul sebagai pilihan di langkah pembayaran:
+Cara bayar yang dinyalakan di dashboard (menu **Pengaturan**) muncul sebagai pilihan di langkah pembayaran:
 
 - **QRIS** — gambar QRIS toko kamu ditampilkan di layar. Tamu membayar, lalu petugas mengecek buktinya dan menekan
   *Petugas: konfirmasi bayar* dengan PIN. Pilihan ini baru muncul setelah gambar QRIS diunggah.
 - **Tunai** — tamu membayar ke petugas, lalu petugas mengonfirmasi dengan PIN.
-- **Voucher** — kode sekali pakai yang dibuat di tab yang sama (bisa dicetak sebagai slip di printer struk). Tamu
-  mengetik kodenya sendiri, jadi booth bisa jalan tanpa penjaga.
+- **Voucher** — kode sekali pakai yang dibuat di dashboard (menu **Voucher**), berlaku di semua tablet. Tamu mengetik
+  kodenya sendiri, jadi booth bisa jalan tanpa penjaga. Butuh internet.
 
-Harga diatur di tab **Harga** dan berlaku untuk semua frame. Dengan satu pilihan harga aktif, tamu langsung melihat harga
+Harga diatur di dashboard (menu **Pengaturan**) dan berlaku untuk semua frame. Dengan satu pilihan harga aktif, tamu langsung melihat harga
 itu; dengan beberapa pilihan (misalnya 1 lembar dan 2 lembar), tamu memilihnya di langkah pembayaran. Harga 0 berarti
 gratis: sesi langsung mulai.
 
@@ -208,9 +218,9 @@ atas nama usahamu (Midtrans, Xendit, Tripay, dsb.) dan sebuah server kecil untuk
   QR, dan akun media sosial di struk bisa diatur sendiri.
 - Stiker dan tulisan dari tamu di langkah edit — saat ini tamu bisa mengganti gaya foto, mengganti frame, dan foto ulang.
 - Deteksi kertas habis — printer tidak dilaporkan statusnya; siapkan kertas cadangan dan cek berkala.
-- Mencetak slip voucher untuk voucher yang dibuat di dashboard — saat ini kodenya disalin atau diunduh sebagai CSV.
-  (Voucher yang dibuat di tablet yang tidak terpasang masih bisa dicetak sebagai slip.)
-- Voucher saat tablet terpasang tetapi sedang tanpa internet.
+- Mencetak slip voucher di printer struk — saat ini kodenya disalin atau diunduh sebagai CSV dari dashboard.
+- Voucher saat tablet sedang tanpa internet.
+- Voucher yang bisa dipakai berkali-kali (satu kode untuk banyak tamu).
 - Menu Event, dan pencairan dana: uang QRIS dan tunai langsung masuk ke kamu, jadi dashboard hanya mencatatnya.
 
 ## Privasi

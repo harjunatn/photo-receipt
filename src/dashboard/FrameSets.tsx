@@ -12,12 +12,12 @@ export function FrameSets({ api }: PageProps) {
   const load = useLoad(() => api.listDevices(), [api]);
   const previews = useFramePreviews(FRAMES, DEFAULT_SETTINGS);
   const [deviceId, setDeviceId] = useState('');
-  // null: the tablet keeps the choice made in its own settings.
-  const [draft, setDraft] = useState<string[] | null>(null);
+  const [draft, setDraft] = useState<string[]>([]);
   const [busy, setBusy] = useState(false);
   const devices = load.data ?? [];
   const device = devices.find((d) => d.id === deviceId) ?? devices[0];
-  const saved = device?.frames ?? null;
+  // A device whose frames were never chosen offers the standard set.
+  const saved = device?.frames ?? DEFAULT_SETTINGS.frames.active;
   const dirty = JSON.stringify(draft) !== JSON.stringify(saved);
 
   useEffect(() => setDraft(saved), [device?.id, JSON.stringify(saved)]);
@@ -34,7 +34,7 @@ export function FrameSets({ api }: PageProps) {
     setBusy(false);
   };
 
-  const list = draft ?? [];
+  const list = draft;
   const ordered = [...list.flatMap((id) => FRAMES.filter((f) => f.id === id)), ...FRAMES.filter((f) => !list.includes(f.id))];
   const move = (id: string, step: -1 | 1) => {
     const next = list.slice();
@@ -61,13 +61,7 @@ export function FrameSets({ api }: PageProps) {
                 </button>
               ))}
             </div>
-            <Check
-              label="Atur frame tablet ini dari dashboard"
-              hint="Kalau dimatikan, tablet memakai pilihan frame di pengaturannya sendiri."
-              checked={draft !== null}
-              onChange={(on) => setDraft(on ? DEFAULT_SETTINGS.frames.active.slice() : null)}
-            />
-            {draft !== null && draft.length === 0 && <p class="banner">Tidak ada frame yang dipilih, jadi tablet menawarkan semua frame.</p>}
+            {draft.length === 0 && <p class="banner">Tidak ada frame yang dipilih, jadi tablet menawarkan semua frame.</p>}
             <div class="row">
               <button class="btn small primary" disabled={busy || !dirty} onClick={() => void save([device.id])}>
                 Simpan untuk {device.name}
@@ -80,38 +74,36 @@ export function FrameSets({ api }: PageProps) {
             </div>
           </section>
 
-          {draft !== null && (
-            <div class="admin-grid">
-              {ordered.map((frame) => {
-                const position = draft.indexOf(frame.id);
-                return (
-                  <section class="panel frame-panel" key={frame.id}>
-                    <div class="frame-thumb">{previews[frame.id] ? <img src={previews[frame.id]} alt="" /> : <div class="strip-loading" />}</div>
-                    <div class="frame-panel-info">
-                      <h2>{frame.name}</h2>
-                      <p class="hint">{frame.blurb}</p>
-                      <Check
-                        label="Ditawarkan ke tamu"
-                        checked={position >= 0}
-                        onChange={(on) => setDraft(on ? [...draft, frame.id] : draft.filter((id) => id !== frame.id))}
-                      />
-                      {position >= 0 && (
-                        <div class="row">
-                          <button class="btn small" disabled={position === 0} onClick={() => move(frame.id, -1)}>
-                            ↑ Naik
-                          </button>
-                          <button class="btn small" disabled={position === draft.length - 1} onClick={() => move(frame.id, 1)}>
-                            ↓ Turun
-                          </button>
-                          <span class="tag">Urutan {position + 1}</span>
-                        </div>
-                      )}
-                    </div>
-                  </section>
-                );
-              })}
-            </div>
-          )}
+          <div class="admin-grid">
+            {ordered.map((frame) => {
+              const position = draft.indexOf(frame.id);
+              return (
+                <section class="panel frame-panel" key={frame.id}>
+                  <div class="frame-thumb">{previews[frame.id] ? <img src={previews[frame.id]} alt="" /> : <div class="strip-loading" />}</div>
+                  <div class="frame-panel-info">
+                    <h2>{frame.name}</h2>
+                    <p class="hint">{frame.blurb}</p>
+                    <Check
+                      label="Ditawarkan ke tamu"
+                      checked={position >= 0}
+                      onChange={(on) => setDraft(on ? [...draft, frame.id] : draft.filter((id) => id !== frame.id))}
+                    />
+                    {position >= 0 && (
+                      <div class="row">
+                        <button class="btn small" disabled={position === 0} onClick={() => move(frame.id, -1)}>
+                          ↑ Naik
+                        </button>
+                        <button class="btn small" disabled={position === draft.length - 1} onClick={() => move(frame.id, 1)}>
+                          ↓ Turun
+                        </button>
+                        <span class="tag">Urutan {position + 1}</span>
+                      </div>
+                    )}
+                  </div>
+                </section>
+              );
+            })}
+          </div>
         </>
       )}
     </>

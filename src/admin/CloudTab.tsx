@@ -41,9 +41,9 @@ export function CloudTab() {
         <section class="panel span">
           <h2>Dashboard belum disambungkan</h2>
           <p class="hint">
-            Aplikasi ini belum diberi alamat Supabase, jadi tablet bekerja sendiri: transaksi dan voucher hanya tersimpan
-            di tablet ini. Untuk memakai dashboard dan beberapa tablet sekaligus, isi <b class="mono">VITE_SUPABASE_URL</b>{' '}
-            dan <b class="mono">VITE_SUPABASE_ANON_KEY</b> di Vercel lalu deploy ulang. Langkahnya ada di README.
+            Aplikasi ini belum diberi alamat Supabase, jadi tablet tidak bisa disambungkan dan booth belum bisa dipakai
+            tamu. Isi <b class="mono">VITE_SUPABASE_URL</b> dan <b class="mono">VITE_SUPABASE_ANON_KEY</b> di Vercel lalu
+            deploy ulang. Langkahnya ada di README.
           </p>
         </section>
       </div>
@@ -60,7 +60,7 @@ export function CloudTab() {
           </div>
           <p class="hint">
             Kode perangkat <b class="mono">{pairing.code}</b>. Setiap sesi yang selesai dikirim ke dashboard; harga, cara
-            bayar, voucher dan frame diambil dari sana.
+            bayar, voucher, frame, teks struk dan logo diambil dari sana.
           </p>
           <div class="stats">
             <div class="stat">
@@ -91,7 +91,7 @@ export function CloudTab() {
                     setConfirmUnpair(false);
                   }}
                 >
-                  Ya, lepas tablet ini
+                  Ya, lepas — booth berhenti menerima tamu
                 </button>
                 <button class="btn small" onClick={() => setConfirmUnpair(false)}>
                   Batal
@@ -108,8 +108,9 @@ export function CloudTab() {
         <section class="panel">
           <h2>Pasangkan tablet ini</h2>
           <p class="hint">
-            Buat perangkat baru di dashboard (menu Perangkat), lalu ketik kode perangkat dan PIN-nya di sini. Satu kode
-            untuk satu tablet: memasangkan tablet lain dengan kode yang sama melepas tablet sebelumnya.
+            Tablet harus tersambung ke dashboard sebelum bisa dipakai tamu, supaya setiap sesi tercatat. Buat perangkat
+            baru di dashboard pemilik (menu Perangkat), lalu ketik kode perangkat dan PIN-nya di sini. Satu kode untuk
+            satu tablet: memasangkan tablet lain dengan kode yang sama melepas tablet sebelumnya.
           </p>
           {sync.revoked && <p class="banner err">Tablet ini dilepas atau dinonaktifkan dari dashboard. Pasangkan lagi untuk melanjutkan.</p>}
           <label class="field">

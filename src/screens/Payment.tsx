@@ -1,10 +1,9 @@
 import { useState } from 'preact/hooks';
-import { pairingStore, redeemCloudVoucher } from '../lib/cloud/device';
+import { redeemCloudVoucher } from '../lib/cloud/device';
 import type { PayMethod } from '../lib/log';
 import type { FrameDef } from '../lib/receipt/frames';
 import { useFramePreviews } from '../lib/receipt/previews';
 import { formatRupiah, paymentChoices, useSettings, type PackageDef, type PaymentChoice } from '../lib/settings';
-import { checkVoucher, voucherStore } from '../lib/vouchers';
 import { CodeKeyboard, PinPad, Steps } from '../ui/components';
 
 interface Props {
@@ -42,19 +41,13 @@ export function Payment({ frame, onPaid, onBack }: Props) {
 
   if (!pkg) return null;
 
+  // The server hands each code out exactly once, across all tablets.
   const applyVoucher = async () => {
-    // A paired tablet asks the server, which hands each code out exactly once across all tablets.
-    if (pairingStore.get()) {
-      setChecking(true);
-      const result = await redeemCloudVoucher(code);
-      setChecking(false);
-      if (result.status === 'ok') onPaid(pkg, 'voucher', result.code);
-      else setError(VOUCHER_ERRORS[result.status]);
-      return;
-    }
-    const result = checkVoucher(voucherStore.get(), code, Date.now());
-    if (result.ok) onPaid(pkg, 'voucher', result.voucher.code);
-    else setError(VOUCHER_ERRORS[result.reason]);
+    setChecking(true);
+    const result = await redeemCloudVoucher(code);
+    setChecking(false);
+    if (result.status === 'ok') onPaid(pkg, 'voucher', result.code);
+    else setError(VOUCHER_ERRORS[result.status]);
   };
 
   return (

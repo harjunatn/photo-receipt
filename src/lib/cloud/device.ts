@@ -86,9 +86,12 @@ function revoked(): void {
   syncState.set({ ...syncState.get(), error: '', revoked: true });
 }
 
-/** Records a finished session for the dashboard. It is sent now if possible, later if not. */
+/**
+ * Records a finished session for the dashboard. It is sent now if possible,
+ * later if not — also after the tablet is paired again, should the dashboard
+ * have unpaired it while a guest was still in the booth.
+ */
 export function queueTransaction(tx: CloudTx): void {
-  if (!pairingStore.get()) return;
   outboxStore.set([...outboxStore.get(), tx].slice(-MAX_QUEUED));
   void syncNow();
 }

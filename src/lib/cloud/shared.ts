@@ -1,4 +1,4 @@
-import { mergeSettings, type PackageDef, type Settings } from '../settings';
+import { DEFAULT_SETTINGS, mergeSettings, type PackageDef, type Settings } from '../settings';
 
 /** The Supabase project this build talks to. Both values are public by design. */
 export const SUPABASE_URL: string = (import.meta.env?.VITE_SUPABASE_URL ?? '').replace(/\/+$/, '');
@@ -7,17 +7,16 @@ export const cloudConfigured = SUPABASE_URL !== '' && SUPABASE_KEY !== '';
 
 /** The settings the owner manages once, in the dashboard, for every tablet. */
 export interface OutletConfig {
-  brand: Pick<Settings['brand'], 'title' | 'subtitle'>;
-  receipt: Omit<Settings['receipt'], 'logo'>;
+  brand: Settings['brand'];
+  receipt: Settings['receipt'];
   packages: PackageDef[];
   payment: Settings['payment'];
 }
 
 export function outletFromSettings(settings: Settings): OutletConfig {
-  const { logo: _logo, ...receipt } = settings.receipt;
   return structuredClone({
-    brand: { title: settings.brand.title, subtitle: settings.brand.subtitle },
-    receipt,
+    brand: settings.brand,
+    receipt: settings.receipt,
     packages: settings.packages,
     payment: settings.payment,
   });
@@ -56,7 +55,7 @@ export function completeOutlet(saved: unknown, fallback: OutletConfig): OutletCo
 /**
  * Lays what the dashboard decides over a tablet's own settings. Only the parts
  * the owner has actually saved are taken; everything about this particular
- * tablet (printer, camera, PIN) is left alone.
+ * tablet (printer, camera, session timing, PIN) is left alone.
  */
 export function applyRemote(settings: Settings, outlet: unknown, frames: unknown): Settings {
   const next = structuredClone(settings);
@@ -69,7 +68,9 @@ export function applyRemote(settings: Settings, outlet: unknown, frames: unknown
       if (packages.length > 0) next.packages = packages;
     }
   }
-  // null means the dashboard leaves the choice of frames to the tablet.
-  if (Array.isArray(frames)) next.frames.active = frames.filter((id): id is string => typeof id === 'string');
+  // A device whose frames were never chosen in the dashboard offers the standard set.
+  next.frames.active = Array.isArray(frames)
+    ? frames.filter((id): id is string => typeof id === 'string')
+    : DEFAULT_SETTINGS.frames.active.slice();
   return next;
 }

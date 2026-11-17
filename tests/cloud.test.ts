@@ -23,32 +23,41 @@ describe('applyRemote', () => {
     expect(applyRemote(DEFAULT_SETTINGS, null, null)).toEqual(DEFAULT_SETTINGS);
   });
 
-  it('takes prices, payment and texts from the dashboard but leaves the tablet its own printer and PIN', () => {
+  it('offers the standard frames when the dashboard has not chosen any for the device', () => {
+    const local = structuredClone(DEFAULT_SETTINGS);
+    local.frames.active = ['film'];
+    expect(applyRemote(local, {}, null).frames.active).toEqual(DEFAULT_SETTINGS.frames.active);
+  });
+
+  it('takes prices, payment, texts and logo from the dashboard but leaves the tablet its own printer, camera and PIN', () => {
     const local = structuredClone(DEFAULT_SETTINGS);
     local.printer.transport = 'bluetooth';
     local.admin.pin = '9999';
-    local.receipt.logo = 'data:image/png;base64,AAAA';
+    local.session.countdownSec = 8;
     const outlet = outletFromSettings(DEFAULT_SETTINGS);
     outlet.brand.title = 'SENJA BOOTH';
+    outlet.brand.accent = '#225588';
+    outlet.receipt.logo = 'data:image/png;base64,AAAA';
     outlet.packages = [{ id: 'a', name: 'Satu', description: '', price: 20000, prints: 1, active: true }];
     outlet.payment.cash = false;
     outlet.receipt.closing = 'Sampai jumpa';
 
     const next = applyRemote(local, outlet, ['film', 'klasik']);
     expect(next.brand.title).toBe('SENJA BOOTH');
-    expect(next.brand.accent).toBe(local.brand.accent);
+    expect(next.brand.accent).toBe('#225588');
     expect(next.packages).toEqual(outlet.packages);
     expect(next.payment.cash).toBe(false);
     expect(next.receipt.closing).toBe('Sampai jumpa');
-    expect(next.receipt.logo).toBe(local.receipt.logo);
+    expect(next.receipt.logo).toBe('data:image/png;base64,AAAA');
+    expect(next.session.countdownSec).toBe(8);
     expect(next.frames.active).toEqual(['film', 'klasik']);
     expect(next.printer.transport).toBe('bluetooth');
     expect(next.admin.pin).toBe('9999');
   });
 
   it('keeps the tablet working when the dashboard sends damaged data', () => {
-    const next = applyRemote(DEFAULT_SETTINGS, { packages: [{ name: 'tanpa harga' }], payment: { cash: 'ya' }, brand: 'x' }, 'film');
-    expect(next).toEqual(DEFAULT_SETTINGS);
+    const next = applyRemote(DEFAULT_SETTINGS, { packages: [{ name: 'tanpa harga' }], payment: { cash: 'ya' }, brand: 'x' }, [7, 'film']);
+    expect(next).toEqual({ ...DEFAULT_SETTINGS, frames: { active: ['film'] } });
   });
 
   it('does not alter the settings it was given', () => {
@@ -62,11 +71,7 @@ describe('completeOutlet', () => {
   it('falls back to the defaults for an outlet that was never saved', () => {
     const fallback = outletFromSettings(DEFAULT_SETTINGS);
     expect(completeOutlet({}, fallback)).toEqual(fallback);
-    expect(completeOutlet({ brand: { title: 'X' } }, fallback).brand).toEqual({ title: 'X', subtitle: fallback.brand.subtitle });
-  });
-
-  it('leaves the logo out of what is shared between tablets', () => {
-    expect('logo' in outletFromSettings(DEFAULT_SETTINGS).receipt).toBe(false);
+    expect(completeOutlet({ brand: { title: 'X' } }, fallback).brand).toEqual({ ...fallback.brand, title: 'X' });
   });
 });
 

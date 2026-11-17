@@ -7,12 +7,15 @@ import { activeFrames } from '../lib/receipt/frames';
 import { useSettings } from '../lib/settings';
 import { ReceiptPaper } from '../ui/components';
 import { edit } from './actions';
-import { AreaField, Check, ImageField, NumberField, Segmented, TextField } from './fields';
+import { Check, NumberField, Segmented } from './fields';
 
-/** Everything guests see: the welcome screen, the session rules and the text printed on the receipt. */
-export function LookTab() {
+/**
+ * How a session runs on this tablet: camera, countdown, sound. What the receipt
+ * says is decided in the owner's dashboard; it is only previewed here.
+ */
+export function SessionTab() {
   const settings = useSettings();
-  const { brand, receipt, session, printer } = settings;
+  const { receipt, session, printer } = settings;
   // The sample receipt uses whichever frame guests are offered first.
   const frame = activeFrames(settings.frames.active)[0];
   const [cameras, setCameras] = useState<{ id: string; label: string }[]>([]);
@@ -48,16 +51,6 @@ export function LookTab() {
 
   return (
     <div class="admin-grid">
-      <section class="panel">
-        <h2>Layar sambutan</h2>
-        <TextField label="Judul besar" value={brand.title} onChange={(v) => edit((s) => void (s.brand.title = v))} />
-        <TextField label="Kalimat pendek di bawahnya" value={brand.subtitle} onChange={(v) => edit((s) => void (s.brand.subtitle = v))} />
-        <label class="field">
-          <span>Warna aksen</span>
-          <input type="color" value={brand.accent} onChange={(event) => edit((s) => void (s.brand.accent = event.currentTarget.value))} />
-        </label>
-      </section>
-
       <section class="panel">
         <h2>Sesi foto</h2>
         <Segmented
@@ -99,33 +92,11 @@ export function LookTab() {
       </section>
 
       <section class="panel">
-        <h2>Isi struk</h2>
-        <ImageField label="Logo (opsional)" hint="Paling bagus logo hitam-putih tanpa gradasi." value={receipt.logo} maxSide={480} onChange={(v) => edit((s) => void (s.receipt.logo = v))} />
-        <TextField label="Judul" value={receipt.title} onChange={(v) => edit((s) => void (s.receipt.title = v))} />
-        <TextField label="Sub-judul" value={receipt.subtitle} onChange={(v) => edit((s) => void (s.receipt.subtitle = v))} />
-        <Check label="Cetak tanggal, jam & nomor sesi" checked={receipt.showMeta} onChange={(v) => edit((s) => void (s.receipt.showMeta = v))} />
-        <TextField label="Judul kutipan" value={receipt.quoteTitle} onChange={(v) => edit((s) => void (s.receipt.quoteTitle = v))} />
-        <AreaField
-          label="Daftar kutipan"
-          hint="Satu kutipan per baris. Tiap struk mendapat satu secara acak. Kosongkan untuk tanpa kutipan."
-          value={receipt.quotes.join('\n')}
-          onChange={(v) => edit((s) => void (s.receipt.quotes = v.split('\n').map((q) => q.trim()).filter(Boolean)))}
-        />
-        <TextField label="Kalimat penutup" value={receipt.closing} onChange={(v) => edit((s) => void (s.receipt.closing = v))} />
-        <TextField label="Akun media sosial" placeholder="@namabooth" value={receipt.social} onChange={(v) => edit((s) => void (s.receipt.social = v))} />
-        <TextField
-          label="Tautan untuk kode QR (opsional)"
-          placeholder="https://instagram.com/namabooth"
-          value={receipt.qrUrl}
-          onChange={(v) => edit((s) => void (s.receipt.qrUrl = v.trim()))}
-        />
-        <TextField label="Tulisan di bawah kode QR" value={receipt.qrCaption} onChange={(v) => edit((s) => void (s.receipt.qrCaption = v))} />
-        <Check label="Hiasan barcode di bagian bawah" checked={receipt.barcode} onChange={(v) => edit((s) => void (s.receipt.barcode = v))} />
-      </section>
-
-      <section class="panel">
         <h2>Pratinjau struk</h2>
-        <p class="hint">Contoh frame {frame.name} dengan foto uji. Beginilah titik-titik yang dikirim ke printer.</p>
+        <p class="hint">
+          Contoh frame {frame.name} dengan foto uji, persis titik-titik yang dikirim ke printer. Teks, logo dan frame
+          diatur di dashboard pemilik.
+        </p>
         <div class="preview-box">
           <ReceiptPaper bits={preview} />
         </div>

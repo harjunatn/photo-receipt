@@ -77,7 +77,7 @@ export function SystemTab() {
 
       <section class="panel">
         <h2>Cadangan pengaturan</h2>
-        <p class="hint">Simpan semua pengaturan (paket, teks struk, printer) ke sebuah berkas, atau pulihkan dari berkas itu — misalnya untuk menyalin ke tablet lain.</p>
+        <p class="hint">Simpan pengaturan tablet ini (printer, kamera, sesi) ke sebuah berkas, atau pulihkan dari berkas itu — misalnya untuk menyalin setelan printer ke tablet lain dengan printer yang sama. Harga, teks struk dan frame tetap mengikuti dashboard.</p>
         <div class="row">
           <button class="btn small" onClick={backup}>
             Unduh cadangan
@@ -101,7 +101,7 @@ export function SystemTab() {
 
       <section class="panel">
         <h2>Mulai dari awal</h2>
-        <p class="hint">Mengembalikan semua pengaturan ke bawaan dan mengosongkan catatan transaksi. Voucher dan foto tersimpan tidak ikut dihapus.</p>
+        <p class="hint">Mengembalikan pengaturan tablet ini ke bawaan dan mengosongkan catatan penjualan di tablet ini. Transaksi yang sudah terkirim ke dashboard, sambungan ke dashboard, dan foto tersimpan tidak ikut dihapus.</p>
         {confirmReset ? (
           <div class="row">
             <button

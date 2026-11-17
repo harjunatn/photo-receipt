@@ -1,4 +1,5 @@
 import { useEffect, useState } from 'preact/hooks';
+import { pairingStore } from '../lib/cloud/device';
 import { download, isInstalled } from '../lib/kiosk';
 import { logStore, paidAmount, PAY_METHOD_LABEL, startOfToday, toCsv, totalsSince, type Totals } from '../lib/log';
 import { usePrinter } from '../lib/printer/manager';
@@ -36,6 +37,7 @@ export function SummaryTab() {
   const settings = useSettings();
   const printer = usePrinter();
   const log = useStore(logStore);
+  const paired = useStore(pairingStore) !== null;
   const now = Date.now();
   const [camera, setCamera] = useState<PermissionState | null>(null);
 
@@ -47,6 +49,7 @@ export function SummaryTab() {
   }, []);
 
   const problems: string[] = [];
+  if (!paired) problems.push('Tablet ini belum disambungkan ke dashboard, jadi tamu belum bisa memulai sesi. Sambungkan di tab Sambungan.');
   if (camera === 'denied') {
     problems.push('Izin kamera ditolak. Ketuk ikon gembok/pengaturan di bilah alamat Chrome → Izin → Kamera → Izinkan.');
   }
@@ -59,7 +62,7 @@ export function SummaryTab() {
   if (settings.admin.pin === DEFAULT_PIN) {
     problems.push(`PIN petugas masih bawaan (${DEFAULT_PIN}). Ganti di tab Sistem sebelum booth dipakai umum.`);
   }
-  if (settings.packages.every((p) => !p.active)) problems.push('Belum ada paket yang aktif.');
+  if (settings.packages.every((p) => !p.active)) problems.push('Belum ada harga yang aktif. Atur di dashboard pemilik (menu Pengaturan).');
 
   const exportCsv = () => {
     const rows = [
@@ -103,11 +106,11 @@ export function SummaryTab() {
       </section>
 
       <section class="panel">
-        <h2>Penjualan</h2>
+        <h2>Penjualan di tablet ini</h2>
         <TotalsRow title="Hari ini" totals={totalsSince(log, startOfToday())} />
         <TotalsRow title="7 hari terakhir" totals={totalsSince(log, now - 7 * 86_400_000)} />
         <TotalsRow title="Sejak awal" totals={totalsSince(log, 0)} />
-        <p class="hint">Pemasukan hanya menghitung sesi yang dibayar (QRIS / ke petugas). Voucher dan sesi gratis dihitung Rp0.</p>
+        <p class="hint">Pemasukan hanya menghitung sesi yang dibayar (QRIS / ke petugas). Voucher dan sesi gratis dihitung Rp0. Gabungan semua booth ada di dashboard pemilik.</p>
         <button class="btn small" disabled={log.length === 0} onClick={exportCsv}>
           Ekspor transaksi (CSV)
         </button>

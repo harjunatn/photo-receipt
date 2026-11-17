@@ -1,5 +1,3 @@
-import { createPersistedStore } from './store';
-
 export interface Voucher {
   /** Shown as PREFIX-XXXXXX. */
   code: string;
@@ -10,7 +8,6 @@ export interface Voucher {
 }
 
 export type VoucherStatus = 'active' | 'used' | 'expired';
-export type VoucherCheck = { ok: true; voucher: Voucher } | { ok: false; reason: 'not-found' | 'used' | 'expired' };
 
 /** Letters and digits that cannot be confused when read off a slip of paper (no I/1, O/0). */
 const ALPHABET = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789';
@@ -55,20 +52,3 @@ export function generateVouchers(existing: Voucher[], options: BatchOptions): Vo
   }
   return created;
 }
-
-export function checkVoucher(list: Voucher[], input: string, now: number): VoucherCheck {
-  const wanted = normalizeCode(input);
-  const voucher = wanted ? list.find((v) => normalizeCode(v.code) === wanted) : undefined;
-  if (!voucher) return { ok: false, reason: 'not-found' };
-  const status = voucherStatus(voucher, now);
-  if (status !== 'active') return { ok: false, reason: status };
-  return { ok: true, voucher };
-}
-
-/** Returns the list with the given code marked as used. */
-export function redeemVoucher(list: Voucher[], code: string, now: number): Voucher[] {
-  const wanted = normalizeCode(code);
-  return list.map((v) => (normalizeCode(v.code) === wanted ? { ...v, usedAt: now } : v));
-}
-
-export const voucherStore = createPersistedStore<Voucher[]>('booth.vouchers.v1', []);

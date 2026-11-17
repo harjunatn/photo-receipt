@@ -60,7 +60,7 @@ export function OutletSettings({ api }: PageProps) {
 
   return (
     <>
-      <PageHead title="Pengaturan" lead="Berlaku untuk semua tablet yang terpasang. Printer, kamera, logo dan PIN petugas tetap diatur di tiap tablet.">
+      <PageHead title="Pengaturan" lead="Berlaku untuk semua tablet yang terpasang. Printer, kamera, waktu sesi dan PIN petugas tetap diatur di tiap tablet.">
         {dirty && (
           <button class="btn small" disabled={busy} onClick={() => setDraft(structuredClone(load.data))}>
             Batalkan perubahan
@@ -76,6 +76,17 @@ export function OutletSettings({ api }: PageProps) {
           <h2>Outlet</h2>
           <TextField label="Nama di layar tamu" value={draft.brand.title} onChange={(v) => edit((d) => void (d.brand.title = v))} />
           <TextField label="Kalimat di bawah nama" value={draft.brand.subtitle} onChange={(v) => edit((d) => void (d.brand.subtitle = v))} />
+          <label class="field">
+            <span>Warna aksen</span>
+            <input type="color" value={draft.brand.accent} onInput={(event) => edit((d) => void (d.brand.accent = event.currentTarget.value))} />
+          </label>
+          <ImageField
+            label="Logo di struk (opsional)"
+            hint="Paling bagus logo hitam-putih tanpa gradasi."
+            value={draft.receipt.logo}
+            maxSide={480}
+            onChange={(v) => edit((d) => void (d.receipt.logo = v))}
+          />
         </section>
 
         <section class="panel">

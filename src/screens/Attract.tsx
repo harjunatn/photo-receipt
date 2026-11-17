@@ -1,7 +1,10 @@
+import { pairingStore } from '../lib/cloud/device';
+import { cloudConfigured } from '../lib/cloud/shared';
 import { usePrinter } from '../lib/printer/manager';
 import { activeFrames } from '../lib/receipt/frames';
 import { useFramePreviews } from '../lib/receipt/previews';
 import { formatRupiah, useSettings } from '../lib/settings';
+import { useStore } from '../lib/store';
 
 interface Props {
   onStart: () => void;
@@ -12,6 +15,7 @@ interface Props {
 export function Attract({ onStart, onAdmin }: Props) {
   const settings = useSettings();
   const printer = usePrinter();
+  const paired = useStore(pairingStore) !== null;
   const showcase = activeFrames(settings.frames.active).slice(0, 3);
   const previews = useFramePreviews(showcase, settings);
   const prices = settings.packages.filter((p) => p.active).map((p) => p.price);
@@ -23,7 +27,14 @@ export function Attract({ onStart, onAdmin }: Props) {
         <span class="pill">Photobooth struk — cetak instan</span>
         <h1 class="display">{settings.brand.title}</h1>
         <p class="lead">{settings.brand.subtitle}</p>
-        {prices.length > 0 ? (
+        {!cloudConfigured ? (
+          <p class="banner err">Aplikasi ini belum disambungkan ke Supabase. Isi alamat dan kuncinya di Vercel, lalu deploy ulang.</p>
+        ) : !paired ? (
+          <p class="banner">
+            Tablet ini belum disambungkan ke dashboard, jadi belum bisa dipakai tamu. Petugas: ketuk ⚙ di pojok kanan
+            bawah → <b>Sambungan</b>.
+          </p>
+        ) : prices.length > 0 ? (
           <>
             <button class="btn primary huge glow" onClick={onStart}>
               Mulai foto
@@ -34,7 +45,7 @@ export function Attract({ onStart, onAdmin }: Props) {
             </p>
           </>
         ) : (
-          <p class="banner">Belum ada harga yang aktif. Petugas: buka pengaturan (ikon ⚙ di pojok kanan bawah).</p>
+          <p class="banner">Belum ada harga yang aktif. Atur harga di dashboard pemilik (menu Pengaturan).</p>
         )}
       </div>
 

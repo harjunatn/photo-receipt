@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
-import { checkVoucher, generateVouchers, normalizeCode, redeemVoucher, voucherStatus, type Voucher } from '../src/lib/vouchers';
+import { generateVouchers, normalizeCode, voucherStatus, type Voucher } from '../src/lib/vouchers';
 
 const NOW = Date.UTC(2026, 10, 16);
 const DAY = 86_400_000;
@@ -43,49 +43,19 @@ describe('generateVouchers', () => {
   });
 });
 
-describe('checkVoucher', () => {
-  const list = [
-    voucher('FOTO-ABC234'),
-    voucher('FOTO-USED22', { usedAt: NOW - DAY }),
-    voucher('FOTO-OLD222', { expiresAt: NOW - 1 }),
-    voucher('FOTO-SOON22', { expiresAt: NOW + DAY }),
-  ];
-
-  it('accepts a code typed in lower case, with spaces or without the dash', () => {
-    for (const typed of ['FOTO-ABC234', 'foto-abc234', 'FOTOABC234', ' foto abc 234 ']) {
-      const result = checkVoucher(list, typed, NOW);
-      expect(result).toEqual({ ok: true, voucher: list[0] });
-    }
-  });
-
-  it('explains why a code is refused', () => {
-    expect(checkVoucher(list, 'FOTO-NOPE22', NOW)).toEqual({ ok: false, reason: 'not-found' });
-    expect(checkVoucher(list, '', NOW)).toEqual({ ok: false, reason: 'not-found' });
-    expect(checkVoucher(list, '---', NOW)).toEqual({ ok: false, reason: 'not-found' });
-    expect(checkVoucher(list, 'FOTO-USED22', NOW)).toEqual({ ok: false, reason: 'used' });
-    expect(checkVoucher(list, 'FOTO-OLD222', NOW)).toEqual({ ok: false, reason: 'expired' });
-  });
-
-  it('accepts a code right up to its expiry', () => {
-    expect(checkVoucher(list, 'FOTO-SOON22', NOW + DAY).ok).toBe(true);
-    expect(checkVoucher(list, 'FOTO-SOON22', NOW + DAY + 1).ok).toBe(false);
-  });
-});
-
-describe('redeemVoucher', () => {
-  it('marks only the matching code as used, after which it is refused', () => {
-    const list = [voucher('FOTO-ABC234'), voucher('FOTO-XYZ789')];
-    const after = redeemVoucher(list, 'foto abc234', NOW);
-    expect(after[0].usedAt).toBe(NOW);
-    expect(after[1].usedAt).toBeNull();
-    expect(list[0].usedAt).toBeNull(); // the original list is left untouched
-    expect(checkVoucher(after, 'FOTO-ABC234', NOW)).toEqual({ ok: false, reason: 'used' });
-    expect(voucherStatus(after[1], NOW)).toBe('active');
-  });
-});
-
 describe('normalizeCode', () => {
   it('keeps only letters and digits, upper-cased', () => {
     expect(normalizeCode(' fo-to_12 3!')).toBe('FOTO123');
+  });
+});
+
+describe('voucherStatus', () => {
+  it('tells active, used and expired codes apart, with a code valid right up to its expiry', () => {
+    expect(voucherStatus(voucher('FOTO-AAAAAA'), NOW)).toBe('active');
+    expect(voucherStatus(voucher('FOTO-AAAAAA', { usedAt: NOW - DAY }), NOW)).toBe('used');
+    expect(voucherStatus(voucher('FOTO-AAAAAA', { expiresAt: NOW }), NOW)).toBe('active');
+    expect(voucherStatus(voucher('FOTO-AAAAAA', { expiresAt: NOW }), NOW + 1)).toBe('expired');
+    // A code used before it ran out still counts as used, not expired.
+    expect(voucherStatus(voucher('FOTO-AAAAAA', { usedAt: NOW - DAY, expiresAt: NOW - 1 }), NOW)).toBe('used');
   });
 });

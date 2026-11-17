@@ -135,38 +135,6 @@ export function composePhotoOnly(width: number, photo: CanvasImageSource, aspect
   return page.finish();
 }
 
-export interface VoucherSlip {
-  brand: string;
-  code: string;
-  expiresAt: number | null;
-}
-
-/** A small slip with one voucher code, for handing out or selling at the counter. */
-export function composeVoucherSlip(width: number, slip: VoucherSlip): ComposedReceipt {
-  const page = new Page(width, 900);
-  page.gap(16);
-  if (slip.brand.trim()) page.title(slip.brand.trim());
-  page.gap(4);
-  page.text('VOUCHER 1X SESI FOTO', 24, { bold: true });
-  page.gap(10);
-  page.dashed();
-  page.gap(14);
-  page.text('KODE VOUCHER', 18);
-  page.gap(4);
-  page.title(slip.code);
-  page.gap(10);
-  page.text('Ketik kode ini di layar photobooth.', 18);
-  page.text(
-    slip.expiresAt === null ? 'Berlaku sampai dipakai.' : `Berlaku s/d ${formatDateTime(new Date(slip.expiresAt)).slice(0, 10)}`,
-    18,
-  );
-  page.text('Hanya bisa dipakai satu kali.', 18);
-  page.gap(12);
-  page.dashed();
-  page.gap(14);
-  return page.finish();
-}
-
 /** Converts a composed receipt into the dots the printer will actually put on paper. */
 export function receiptToBits(composed: ComposedReceipt, raster: RasterSettings, style: PhotoStyle = 'normal'): BitImage {
   const { width, height } = composed.canvas;

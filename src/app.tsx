@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from 'preact/hooks';
 import { Admin } from './admin/Admin';
-import { refetchSettings, setBoothIdle } from './lib/cloud/device';
+import { pairingStore, refetchSettings, setBoothIdle } from './lib/cloud/device';
 import { useIdle } from './lib/kiosk';
 import type { PayMethod } from './lib/log';
 import { activeFrames, type FrameDef } from './lib/receipt/frames';
@@ -85,6 +85,8 @@ export function App() {
   };
 
   const start = () => {
+    // Every session must be recorded in the dashboard, so an unpaired tablet takes no guests.
+    if (!pairingStore.get()) return;
     sound.unlock();
     if (frames.length === 1) pickFrame(frames[0]);
     else setScreen('frames');

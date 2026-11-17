@@ -9,7 +9,6 @@ import { printer, usePrinter } from '../lib/printer/manager';
 import { renderDraft, type Draft } from '../lib/session';
 import { settingsStore } from '../lib/settings';
 import { sound } from '../lib/sound';
-import { redeemVoucher, voucherStore } from '../lib/vouchers';
 import { PinPad, ReceiptPaper, Steps } from '../ui/components';
 
 interface Props {
@@ -62,9 +61,6 @@ export function Result({ draft, onFinish }: Props) {
         const image = await renderDraft(draft, sessionNo, settings);
         setBits(image);
 
-        if (draft.voucherCode) {
-          voucherStore.set(redeemVoucher(voucherStore.get(), draft.voucherCode, Date.now()));
-        }
         addLogEntry({
           at: draft.when.getTime(),
           no: sessionNo,
