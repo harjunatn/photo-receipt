@@ -43,7 +43,8 @@ export function Dashboard() {
   const [api, setApi] = useState<OwnerApi | null>(null);
   const [page, setPage] = useState<PageId>(pageFromHash);
   const hasUpdate = useStore(updateReady);
-  const signedInAs = useRef<string | null>(null);
+  // undefined = not checked yet, so that "nobody signed in" (null) still shows the login form.
+  const signedInAs = useRef<string | null | undefined>(undefined);
 
   useEffect(() => {
     if (demo) {
