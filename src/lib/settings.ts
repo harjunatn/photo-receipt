@@ -106,7 +106,7 @@ export const DEFAULT_PIN = '1234';
 
 export const DEFAULT_SETTINGS: Settings = {
   brand: {
-    title: 'FOTO STRUK',
+    title: 'Hello Snaply',
     subtitle: 'Foto seru, langsung tercetak ala struk belanja',
     accent: '#c2552d',
   },
@@ -123,7 +123,7 @@ export const DEFAULT_SETTINGS: Settings = {
     active: ['klasik', 'kolase', 'film', 'polaroid', 'nota', 'pesta', 'potret'],
   },
   receipt: {
-    title: 'FOTO STRUK',
+    title: 'HELLO SNAPLY',
     subtitle: 'Terima kasih sudah mampir!',
     logo: '',
     showMeta: true,

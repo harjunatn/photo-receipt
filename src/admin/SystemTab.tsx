@@ -59,6 +59,17 @@ export function SystemTab() {
       </section>
 
       <section class="panel">
+        <h2>Tentang aplikasi</h2>
+        <p class="hint">
+          Hello Snaply · versi <b class="mono">{__BUILT_AT__}</b>
+        </p>
+        <p class="hint">
+          Versi baru dipasang sendiri saat booth menganggur di layar sambutan. Tanggal di atas berubah setelah tablet memakai
+          versi terbaru.
+        </p>
+      </section>
+
+      <section class="panel">
         <h2>Layar penuh</h2>
         <p class="hint">
           Untuk booth umum, kunci juga tablet di aplikasi ini lewat fitur Android “Sematkan aplikasi” (Pengaturan →

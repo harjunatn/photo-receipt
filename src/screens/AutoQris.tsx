@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from 'preact/hooks';
-import { checkQris, createQris, type QrisCharge, type QrisError } from '../lib/cloud/device';
+import { cancelQris, checkQris, createQris, type QrisCharge, type QrisError } from '../lib/cloud/device';
 import { pokeIdle } from '../lib/kiosk';
 import { qrShape } from '../lib/qr';
 import { formatRupiah, type PackageDef } from '../lib/settings';
@@ -41,6 +41,7 @@ export function AutoQris({ pkg, onPaid, guard }: Props) {
   const [error, setError] = useState('');
   const [ended, setEnded] = useState<'expired' | 'failed' | null>(null);
   const [lost, setLost] = useState(false);
+  const [leaving, setLeaving] = useState(false);
   const [now, setNow] = useState(Date.now());
   const done = useRef(false);
   const shape = useMemo(() => (charge ? qrShape(charge.qr) : null), [charge]);
@@ -89,11 +90,15 @@ export function AutoQris({ pkg, onPaid, guard }: Props) {
     };
   }, [charge, ended]);
 
-  // Before the guest walks away from an unpaid QR, look once more: the money may have just arrived.
+  // A guest who leaves an unpaid QR has it cancelled, also at DOKU, so it can no longer be paid.
+  // If the money arrived in the meantime, the session starts instead.
   useEffect(() => {
     guard.current = async () => {
       if (!charge || ended || done.current) return !done.current;
-      if ((await checkQris(charge.id)) === 'paid') {
+      setLeaving(true);
+      const status = await cancelQris(charge.id);
+      setLeaving(false);
+      if (status === 'paid') {
         paid(charge.id);
         return false;
       }
@@ -149,7 +154,9 @@ export function AutoQris({ pkg, onPaid, guard }: Props) {
         Scan dan bayar <b>{formatRupiah(charge.amount)}</b>. Sesi foto mulai sendiri begitu pembayaran masuk.
       </p>
       <p class="note">
-        {lost
+        {leaving
+          ? 'Membatalkan kode QR…'
+          : lost
           ? 'Sambungan terputus, mencoba lagi…'
           : left > 0
             ? `Menunggu pembayaran · berlaku ${clock(left)} lagi`

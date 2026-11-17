@@ -53,13 +53,14 @@ export function App() {
   };
 
   // A guest who walks away mid-edit has already paid and posed: print what
-  // they have rather than throw it away. Anywhere else, start over.
+  // they have rather than throw it away. The camera step looks after its own
+  // timeout for the same reason (see Capture). Anywhere else, start over.
   const current = useRef(screen);
   current.current = screen;
   useIdle(
     settings.session.idleSec,
     () => (current.current === 'edit' ? setScreen('result') : reset()),
-    screen !== 'attract' && screen !== 'admin',
+    screen !== 'attract' && screen !== 'admin' && screen !== 'capture',
   );
 
   const begin = (chosen: FrameDef, pkg: PackageDef, method: PayMethod, voucherCode?: string, paymentId?: string) => {

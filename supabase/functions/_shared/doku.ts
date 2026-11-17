@@ -38,6 +38,7 @@ export class DokuError extends Error {
 const TOKEN_PATH = '/authorization/v1/access-token/b2b';
 const GENERATE_PATH = '/snap-adapter/b2b/v1.0/qr/qr-mpm-generate';
 const QUERY_PATH = '/snap-adapter/b2b/v1.0/qr/qr-mpm-query';
+const EXPIRE_PATH = '/snap-adapter/b2b/v1.0/qr/qr-expire';
 
 const encoder = new TextEncoder();
 
@@ -261,6 +262,23 @@ export function createDoku(config: DokuConfig, fetchFn: Fetch = fetch, now: () =
         throw new DokuError(`DOKU menolak pengecekan status: ${String(body.responseMessage ?? `HTTP ${status}`)}`, String(body.responseCode ?? status), body);
       }
       return { state: stateFromStatus(body.latestTransactionStatus), detail: body };
+    },
+
+    /**
+     * Closes a QR at DOKU before its time is up, so that nobody can still pay it.
+     * Throws when DOKU did not confirm; the QR must then be treated as still open.
+     */
+    async expireQr(input: { partnerRef: string; providerRef: string }): Promise<unknown> {
+      const { status, body } = await post(EXPIRE_PATH, {
+        partnerReferenceNo: input.partnerRef,
+        referenceNo: input.providerRef,
+        merchantId: config.merchantId,
+        reason: 'Dibatalkan di booth',
+      });
+      if (status !== 200) {
+        throw new DokuError(`DOKU menolak pembatalan QR: ${String(body.responseMessage ?? `HTTP ${status}`)}`, String(body.responseCode ?? status), body);
+      }
+      return body;
     },
   };
 }

@@ -1,7 +1,7 @@
 import { createHash, createHmac, createVerify, generateKeyPairSync } from 'node:crypto';
 import { beforeEach, describe, expect, it } from 'vitest';
 import { jakartaTimestamp, signRequest, stateFromStatus, verifyNotification } from '../supabase/functions/_shared/doku.ts';
-import { handleCreate, handleNotify, handleStatus, readEnv, type Env } from '../supabase/functions/_shared/handlers.ts';
+import { handleCancel, handleCreate, handleNotify, handleStatus, handleSweep, readEnv, type Env } from '../supabase/functions/_shared/handlers.ts';
 
 const keys = generateKeyPairSync('rsa', { modulusLength: 2048 });
 const PKCS8 = keys.privateKey.export({ type: 'pkcs8', format: 'pem' }).toString();
@@ -34,6 +34,8 @@ function world() {
     generated: [] as Record<string, unknown>[],
     settled: [] as string[],
     dokuDown: false,
+    expired: [] as Record<string, unknown>[],
+    expireRefused: false,
   };
   let token = 0;
 
@@ -61,6 +63,12 @@ function world() {
         state.settled.push(args.p_status);
         if (state.payment!.status === 'pending' || args.p_status === 'paid') state.payment!.status = args.p_status;
         return reply(200, state.payment!.status);
+      }
+      if (name === 'payment_stale') {
+        if (args.p_token !== 'token-tablet') return reply(200, { error: 'unpaired' });
+        const p = state.payment;
+        const stale = p && p.status === 'pending' && Date.parse(String(p.expires_at ?? p.created_at)) + 15_000 < clock.getTime();
+        return reply(200, { payments: stale ? [p] : [] });
       }
       if (name === 'payment_settle_by_ref') {
         if (args.p_partner_ref === 'FS1' && args.p_amount === 15000) {
@@ -103,6 +111,11 @@ function world() {
     if (path === '/snap-adapter/b2b/v1.0/qr/qr-mpm-query') {
       expect(request).toEqual({ originalReferenceNo: 'DOKU-9', originalPartnerReferenceNo: 'FS1', serviceCode: '47', merchantId: '4455' });
       return reply(200, { responseCode: '2004700', latestTransactionStatus: state.paidAtDoku ? '00' : '03' });
+    }
+    if (path === '/snap-adapter/b2b/v1.0/qr/qr-expire') {
+      state.expired.push(request);
+      if (state.expireRefused) return reply(400, { responseCode: '4004701', responseMessage: 'Invalid Field Format' });
+      return reply(200, { responseCode: '2004700', responseMessage: 'Successful' });
     }
     throw new Error(`alamat tak dikenal: ${url}`);
   };
@@ -271,6 +284,79 @@ describe('qris-status', () => {
   it('does not show another payment', async () => {
     const { fetchFn } = world();
     expect((await handleStatus({ token: 'token-tablet', id: 'lain' }, env(), fetchFn, now)).body).toEqual({ error: 'not-found' });
+  });
+});
+
+describe('qris-cancel', () => {
+  it('closes an unpaid QR at DOKU and marks it not paid', async () => {
+    const { state, fetchFn } = world();
+    await handleCreate({ token: 'token-tablet', package_id: 'a' }, env(), fetchFn, now);
+    expect((await handleCancel({ token: 'token-tablet', id: 'pay-1' }, env(), fetchFn, now)).body).toEqual({ status: 'expired' });
+    expect(state.expired[0]).toEqual({ partnerReferenceNo: 'FS1', referenceNo: 'DOKU-9', merchantId: '4455', reason: 'Dibatalkan di booth' });
+    expect(state.payment?.status).toBe('expired');
+  });
+
+  it('reports a QR paid just before the guest left as paid, without closing it', async () => {
+    const { state, fetchFn } = world();
+    await handleCreate({ token: 'token-tablet', package_id: 'a' }, env(), fetchFn, now);
+    state.paidAtDoku = true;
+    expect((await handleCancel({ token: 'token-tablet', id: 'pay-1' }, env(), fetchFn, now)).body).toEqual({ status: 'paid' });
+    expect(state.expired).toHaveLength(0);
+  });
+
+  it('keeps the QR open when DOKU will not close it, so it is checked again later', async () => {
+    const { state, fetchFn } = world();
+    await handleCreate({ token: 'token-tablet', package_id: 'a' }, env(), fetchFn, now);
+    state.expireRefused = true;
+    expect((await handleCancel({ token: 'token-tablet', id: 'pay-1' }, env(), fetchFn, now)).body).toEqual({ status: 'pending', unsure: true });
+    expect(state.payment?.status).toBe('pending');
+  });
+
+  it('also closes a QR at DOKU whose time ran out on screen', async () => {
+    const { state, fetchFn } = world();
+    await handleCreate({ token: 'token-tablet', package_id: 'a' }, env(), fetchFn, now);
+    clock = new Date(clock.getTime() + 6 * 60_000);
+    expect((await handleStatus({ token: 'token-tablet', id: 'pay-1' }, env(), fetchFn, now)).body.status).toBe('expired');
+    expect(state.expired).toHaveLength(1);
+  });
+
+  it('still marks a QR whose time ran out as not paid when DOKU will not close it', async () => {
+    const { state, fetchFn } = world();
+    await handleCreate({ token: 'token-tablet', package_id: 'a' }, env(), fetchFn, now);
+    state.expireRefused = true;
+    clock = new Date(clock.getTime() + 6 * 60_000);
+    expect((await handleStatus({ token: 'token-tablet', id: 'pay-1' }, env(), fetchFn, now)).body.status).toBe('expired');
+  });
+});
+
+describe('qris-sweep', () => {
+  it('leaves a QR alone while it can still be paid', async () => {
+    const { state, fetchFn } = world();
+    await handleCreate({ token: 'token-tablet', package_id: 'a' }, env(), fetchFn, now);
+    expect((await handleSweep({ token: 'token-tablet' }, env(), fetchFn, now)).body).toMatchObject({ checked: 0 });
+    expect(state.payment?.status).toBe('pending');
+  });
+
+  it('records a QR paid after the guest walked away', async () => {
+    const { state, fetchFn } = world();
+    await handleCreate({ token: 'token-tablet', package_id: 'a' }, env(), fetchFn, now);
+    state.paidAtDoku = true;
+    clock = new Date(clock.getTime() + 6 * 60_000);
+    expect((await handleSweep({ token: 'token-tablet' }, env(), fetchFn, now)).body).toMatchObject({ checked: 1, open: 0, results: [{ id: 'pay-1', status: 'paid' }] });
+    expect(state.payment?.status).toBe('paid');
+  });
+
+  it('closes a forgotten unpaid QR', async () => {
+    const { state, fetchFn } = world();
+    await handleCreate({ token: 'token-tablet', package_id: 'a' }, env(), fetchFn, now);
+    clock = new Date(clock.getTime() + 6 * 60_000);
+    expect((await handleSweep({ token: 'token-tablet' }, env(), fetchFn, now)).body).toMatchObject({ results: [{ status: 'expired' }] });
+    expect(state.expired).toHaveLength(1);
+  });
+
+  it('refuses a tablet that is not paired', async () => {
+    const { fetchFn } = world();
+    expect((await handleSweep({ token: 'lain' }, env(), fetchFn, now)).body).toEqual({ error: 'unpaired' });
   });
 });
 

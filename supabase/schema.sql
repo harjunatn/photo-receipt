@@ -1,4 +1,4 @@
--- Struk Booth — skema Supabase.
+-- Hello Snaply — skema Supabase.
 -- Tempel seluruh berkas ini di Supabase → SQL Editor → Run. Aman dijalankan ulang.
 --
 -- Siapa boleh apa:
@@ -458,6 +458,36 @@ begin
 end;
 $$;
 
+-- Tagihan milik satu tablet yang masih menunggu padahal waktunya sudah habis (atau QR-nya tidak
+-- pernah jadi), supaya bisa diselesaikan: dibayar belakangan, atau ditutup sebagai tidak dibayar.
+create or replace function public.payment_stale(p_token text)
+returns jsonb
+language plpgsql security definer set search_path = public
+as $$
+declare
+  d devices;
+begin
+  select * into d from devices where token_hash = token_hash(p_token) and active;
+  if not found then
+    return jsonb_build_object('error', 'unpaired');
+  end if;
+  return jsonb_build_object('payments', coalesce((
+    select jsonb_agg(jsonb_build_object('id', p.id, 'status', p.status, 'partner_ref', p.partner_ref,
+                                        'provider_ref', p.provider_ref, 'expires_at', p.expires_at, 'created_at', p.created_at)
+                     order by p.created_at)
+    from (
+      select * from payments
+      where device_id = d.id and status = 'pending'
+        and coalesce(expires_at, created_at + interval '1 minute') < now() - interval '15 seconds'
+      order by created_at
+      limit 10
+    ) p
+  ), '[]'::jsonb));
+end;
+$$;
+
+revoke execute on function public.payment_stale(text) from public, anon, authenticated;
+grant execute on function public.payment_stale(text) to service_role;
 revoke execute on function public.payment_settle_by_ref(text, int, jsonb) from public, anon, authenticated;
 grant execute on function public.payment_settle_by_ref(text, int, jsonb) to service_role;
 revoke execute on function public.payment_begin(text, text) from public, anon, authenticated;

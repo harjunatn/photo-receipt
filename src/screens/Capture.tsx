@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from 'preact/hooks';
 import { grabFrame, startCamera, type CameraHandle } from '../lib/camera';
-import { pokeIdle } from '../lib/kiosk';
+import { pokeIdle, secondsIdle, useIdle } from '../lib/kiosk';
 import type { FrameDef } from '../lib/receipt/frames';
 import type { Shot } from '../lib/session';
 import { useSettings } from '../lib/settings';
@@ -22,6 +22,9 @@ interface Props {
 
 type Phase = 'loading' | 'error' | 'ready' | 'shooting';
 
+/** The last seconds before an untouched camera starts by itself are counted down on screen. */
+const WARN_SECONDS = 15;
+
 /** Step 3: live preview and a countdown before every photo. */
 export function Capture({ frame, shots: initialShots, targets, retake, onDone, onCancel }: Props) {
   const { session } = useSettings();
@@ -36,6 +39,7 @@ export function Capture({ frame, shots: initialShots, targets, retake, onDone, o
   const [frozen, setFrozen] = useState<string | null>(null);
   const [flash, setFlash] = useState(0);
   const [confirmCancel, setConfirmCancel] = useState(false);
+  const [autoIn, setAutoIn] = useState<number | null>(null);
   const ratio = frame.slots[current] ?? 4 / 3;
 
   useEffect(() => {
@@ -111,6 +115,32 @@ export function Capture({ frame, shots: initialShots, targets, retake, onDone, o
     onDone(result);
   };
 
+  // This session is already paid for, so it must never be thrown away for lack of a touch. A guest
+  // who does not press start gets their photos taken anyway; a guest who walks away from a retake
+  // goes back to the photos they have (and the edit step prints them in turn).
+  useIdle(
+    session.idleSec,
+    () => {
+      // An unanswered "cancel?" question counts as no: the paid session goes on.
+      setConfirmCancel(false);
+      if (phase === 'ready' && !retake) void shoot();
+      else if (phase === 'ready' || phase === 'error' || phase === 'loading') onCancel();
+    },
+    phase !== 'shooting',
+  );
+
+  useEffect(() => {
+    if (phase !== 'ready' || retake) {
+      setAutoIn(null);
+      return;
+    }
+    const timer = setInterval(() => {
+      const left = Math.ceil(session.idleSec - secondsIdle());
+      setAutoIn(left <= WARN_SECONDS ? Math.max(0, left) : null);
+    }, 500);
+    return () => clearInterval(timer);
+  }, [phase, retake, session.idleSec]);
+
   // The preview is mirrored like a selfie camera; the saved photo may not be, so flip the still to match.
   const flipStill = session.mirrorPreview !== session.mirrorPhoto;
   const one = targets.length === 1;
@@ -167,7 +197,9 @@ export function Capture({ frame, shots: initialShots, targets, retake, onDone, o
                 {one ? `Ulangi foto ${targets[0] + 1}` : 'Mulai!'}
               </button>
               <p class="note">
-                {one
+                {autoIn !== null
+                  ? `Kamera mulai sendiri dalam ${autoIn} detik…`
+                  : one
                   ? `Hitung mundur ${session.countdownSec} detik, lalu jepret.`
                   : `Kamera memotret ${targets.length} kali. Ada hitung mundur ${session.countdownSec} detik sebelum tiap foto.`}
               </p>

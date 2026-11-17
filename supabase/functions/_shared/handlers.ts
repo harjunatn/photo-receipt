@@ -98,34 +98,88 @@ export async function handleCreate(input: Record<string, unknown>, env: Env, fet
   }
 }
 
-/** qris-status: tells the tablet whether its QR has been paid, asking DOKU while it is still open. */
-export async function handleStatus(input: Record<string, unknown>, env: Env, fetchFn: Fetch = fetch, now: () => Date = () => new Date()): Promise<Reply> {
-  const payment = await rpc<{ error?: string; id?: string; status?: string; partner_ref?: string; provider_ref?: string | null; expires_at?: string | null; created_at?: string }>(
-    env,
-    fetchFn,
-    'payment_get',
-    { p_token: text(input.token), p_id: text(input.id) },
-  );
-  if (payment.error || !payment.id) return { status: 200, body: { error: payment.error ?? 'not-found' } };
-  if (payment.status !== 'pending') return { status: 200, body: { status: payment.status } };
+interface PendingPayment {
+  id: string;
+  status?: string;
+  partner_ref?: string;
+  provider_ref?: string | null;
+  expires_at?: string | null;
+  created_at?: string;
+}
 
+/**
+ * Settles a charge that is still open, as far as DOKU's answer allows. With `cancel`, an unpaid QR
+ * is closed at DOKU at once; without it, only one whose time is up. Returns the charge's status.
+ */
+async function resolvePending(payment: PendingPayment, env: Env, fetchFn: Fetch, now: () => Date, cancel: boolean): Promise<{ status: string; unsure?: boolean }> {
   const settle = async (status: string, detail: unknown) =>
-    rpc<string>(env, fetchFn, 'payment_settle', { p_id: payment.id, p_status: status, p_detail: { query: detail } });
+    rpc<string>(env, fetchFn, 'payment_settle', { p_id: payment.id, p_status: status, p_detail: detail });
   const ranOut = payment.expires_at ? now().getTime() > Date.parse(payment.expires_at) + GRACE_MS : now().getTime() > Date.parse(payment.created_at ?? '') + 60_000;
 
-  // No QR was ever attached: creating it failed half-way.
-  if (!payment.provider_ref || !env.doku) return { status: 200, body: { status: ranOut ? await settle('failed', null) : 'pending' } };
-
-  try {
-    const asked = await createDoku(env.doku, fetchFn, now).queryQr({ partnerRef: payment.partner_ref ?? '', providerRef: payment.provider_ref });
-    if (asked.state === 'paid') return { status: 200, body: { status: await settle('paid', asked.detail) } };
-    if (asked.state === 'failed') return { status: 200, body: { status: await settle('failed', asked.detail) } };
-    return { status: 200, body: { status: ranOut ? await settle('expired', asked.detail) : 'pending' } };
-  } catch (cause) {
-    // DOKU could not be asked right now. The QR stays open; the tablet asks again in a moment.
-    console.error('qris-status', cause instanceof Error ? cause.message : cause);
-    return { status: 200, body: { status: 'pending', unsure: true } };
+  // No QR was ever attached: creating it failed half-way, so there is nothing anyone could pay.
+  if (!payment.provider_ref || !env.doku) {
+    return { status: ranOut || cancel ? await settle('failed', { reason: 'no-qr' }) : 'pending' };
   }
+
+  const doku = createDoku(env.doku, fetchFn, now);
+  const refs = { partnerRef: payment.partner_ref ?? '', providerRef: payment.provider_ref };
+  let asked: { state: string; detail: unknown };
+  try {
+    asked = await doku.queryQr(refs);
+  } catch (cause) {
+    // DOKU could not be asked right now. The QR stays open; it is asked about again later.
+    console.error('query', cause instanceof Error ? cause.message : cause);
+    return { status: 'pending', unsure: true };
+  }
+  if (asked.state === 'paid') return { status: await settle('paid', { query: asked.detail }) };
+  if (asked.state === 'failed') return { status: await settle('failed', { query: asked.detail }) };
+  if (!ranOut && !cancel) return { status: 'pending' };
+
+  // Unpaid and no longer wanted: close it at DOKU too, so it cannot be paid and does not linger there as pending.
+  try {
+    const closed = await doku.expireQr(refs);
+    return { status: await settle('expired', { query: asked.detail, expire: closed }) };
+  } catch (cause) {
+    console.error('expire', cause instanceof Error ? cause.message : cause);
+    // A QR whose time is up cannot be paid any more anyway. One cancelled early stays open, to be checked again later.
+    if (ranOut) return { status: await settle('expired', { query: asked.detail, expireError: cause instanceof Error ? cause.message : String(cause) }) };
+    return { status: 'pending', unsure: true };
+  }
+}
+
+async function ownPayment(input: Record<string, unknown>, env: Env, fetchFn: Fetch): Promise<PendingPayment & { error?: string }> {
+  return rpc(env, fetchFn, 'payment_get', { p_token: text(input.token), p_id: text(input.id) });
+}
+
+/** qris-status: tells the tablet whether its QR has been paid, asking DOKU while it is still open. */
+export async function handleStatus(input: Record<string, unknown>, env: Env, fetchFn: Fetch = fetch, now: () => Date = () => new Date()): Promise<Reply> {
+  const payment = await ownPayment(input, env, fetchFn);
+  if (payment.error || !payment.id) return { status: 200, body: { error: payment.error ?? 'not-found' } };
+  if (payment.status !== 'pending') return { status: 200, body: { status: payment.status } };
+  return { status: 200, body: await resolvePending(payment, env, fetchFn, now, false) };
+}
+
+/**
+ * qris-cancel: the guest left the QR screen. A QR that turns out to be paid
+ * after all is reported as paid, so that the tablet starts the session instead.
+ */
+export async function handleCancel(input: Record<string, unknown>, env: Env, fetchFn: Fetch = fetch, now: () => Date = () => new Date()): Promise<Reply> {
+  const payment = await ownPayment(input, env, fetchFn);
+  if (payment.error || !payment.id) return { status: 200, body: { error: payment.error ?? 'not-found' } };
+  if (payment.status !== 'pending') return { status: 200, body: { status: payment.status } };
+  return { status: 200, body: await resolvePending(payment, env, fetchFn, now, true) };
+}
+
+/** qris-sweep: settles this tablet's QRs that were left behind unresolved, a few at a time. */
+export async function handleSweep(input: Record<string, unknown>, env: Env, fetchFn: Fetch = fetch, now: () => Date = () => new Date()): Promise<Reply> {
+  const stale = await rpc<{ error?: string; payments?: PendingPayment[] }>(env, fetchFn, 'payment_stale', { p_token: text(input.token) });
+  if (stale.error) return { status: 200, body: { error: stale.error } };
+  const results: { id: string; status: string }[] = [];
+  for (const payment of stale.payments ?? []) {
+    results.push({ id: payment.id, status: (await resolvePending(payment, env, fetchFn, now, false)).status });
+  }
+  const open = results.filter((r) => r.status === 'pending').length;
+  return { status: 200, body: { checked: results.length, open, results } };
 }
 
 /**

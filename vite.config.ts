@@ -87,7 +87,11 @@ self.addEventListener('fetch', (event) => {
   };
 }
 
+/** When this build was made, Jakarta time, shown in the booth's settings to tell versions apart. */
+const BUILT_AT = new Date(Date.now() + 7 * 3_600_000).toISOString().slice(0, 16).replace('T', ' ');
+
 export default defineConfig(({ mode }) => ({
+  define: { __BUILT_AT__: JSON.stringify(BUILT_AT) },
   // Relative base so the build can be hosted at any path (root or sub-folder).
   base: './',
   // "lan" mode serves over HTTPS with a self-signed certificate, because iPad

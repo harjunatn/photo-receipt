@@ -1,4 +1,4 @@
-# Struk Booth
+# Hello Snaply
 
 Aplikasi photobooth mandiri yang mencetak foto di kertas struk thermal. Berjalan sebagai aplikasi web (PWA) di
 **Google Chrome pada tablet Android**, dan berbicara langsung ke printer lewat USB atau Bluetooth — tanpa aplikasi
@@ -63,7 +63,7 @@ aplikasi tersimpan di tablet dan **tetap jalan saat internet putus**.
    ```bash
    git init -b main
    git add .
-   git commit -m "Struk Booth versi pertama"
+   git commit -m "Hello Snaply versi pertama"
    git remote add origin https://github.com/<nama-akun>/<nama-repo>.git
    git push -u origin main
    ```
@@ -101,7 +101,7 @@ hanya untuk percobaan: komputer harus tetap menyala.
    **Tes cetak**.
 5. **Ganti PIN petugas** di tab **Sistem** (bawaan: `1234`). PIN ini per tablet, tidak diatur dari dashboard.
 6. **Kunci tablet di aplikasi ini**: Pengaturan Android → Keamanan → *Sematkan aplikasi* (App pinning), lalu sematkan
-   Struk Booth. Tamu tidak bisa keluar ke aplikasi lain.
+   Hello Snaply. Tamu tidak bisa keluar ke aplikasi lain.
 7. Atur layar agar **tidak mati otomatis** dan kecerahan cukup; aplikasi juga menahan layar tetap menyala.
 
 ## Dashboard pemilik dan beberapa tablet (Supabase)

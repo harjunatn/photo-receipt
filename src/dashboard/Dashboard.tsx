@@ -161,7 +161,7 @@ export function Dashboard() {
     <div class="dash">
       <nav class="dash-nav">
         <div class="dash-brand">
-          <b>Foto Struk</b>
+          <b>Hello Snaply</b>
           <span class="pill">Dashboard</span>
         </div>
         <div class="dash-links">

@@ -38,6 +38,8 @@ export interface SyncState {
 export const pairingStore = createPersistedStore<Pairing | null>('booth.device.v1', null);
 export const outboxStore = createPersistedStore<CloudTx[]>('booth.outbox.v1', []);
 export const syncState = createStore<SyncState>({ lastOk: null, error: '', revoked: false });
+/** QRs this tablet made that have no final status yet, with when they were made. */
+const openQrStore = createPersistedStore<Record<string, number>>('booth.qris-open.v1', {});
 
 const MAX_QUEUED = 5000;
 const BATCH = 100;
@@ -96,6 +98,37 @@ function revoked(): void {
 export function queueTransaction(tx: CloudTx): void {
   outboxStore.set([...outboxStore.get(), tx].slice(-MAX_QUEUED));
   void syncNow();
+}
+
+let sweepOnStart = false;
+
+/** Forgets QRs that have a final status, and ones too old to matter. */
+function closeQr(id: string): void {
+  const open = { ...openQrStore.get() };
+  delete open[id];
+  openQrStore.set(open);
+}
+
+/**
+ * Settles QRs left behind without a final status, e.g. when the guest walked
+ * away or the tablet lost its connection while waiting. A QR paid after all is
+ * recorded as paid; an unpaid one is closed, also at DOKU.
+ */
+async function sweepQris(token: string): Promise<void> {
+  const open = openQrStore.get();
+  const dayAgo = Date.now() - 86_400_000;
+  for (const [id, made] of Object.entries(open)) if (made < dayAgo) closeQr(id);
+  if (!sweepOnStart && Object.keys(openQrStore.get()).length === 0) return;
+  try {
+    const result = await callFunction<{ results?: { id: string; status: string }[]; open?: number; error?: string }>('qris-sweep', { token });
+    if (result.error) return;
+    sweepOnStart = false;
+    for (const row of result.results ?? []) if (row.status !== 'pending') closeQr(row.id);
+    // The server only hands back QRs whose time is up; any others still on the list are settled through their own screen.
+    if (!result.open) for (const id of Object.keys(openQrStore.get())) if (openQrStore.get()[id] < Date.now() - 10 * 60_000) closeQr(id);
+  } catch {
+    // Tried again on the next sync.
+  }
 }
 
 // Settings from the dashboard wait here while a guest is using the booth.
@@ -171,6 +204,7 @@ export async function syncNow(): Promise<boolean> {
     };
     applyPending();
     syncState.set({ lastOk: Date.now(), error: '', revoked: false });
+    await sweepQris(pairing.token);
     return true;
   } catch (cause) {
     const offline = cause instanceof TypeError || (cause instanceof DOMException && cause.name === 'TimeoutError');
@@ -187,6 +221,8 @@ export async function syncNow(): Promise<boolean> {
 /** Keeps this tablet in step with the dashboard for as long as the page is open. */
 export function startCloudSync(): void {
   if (!cloudConfigured) return;
+  // Once per start, also QRs left open by an earlier run of the booth.
+  sweepOnStart = true;
   void syncNow();
   setInterval(() => void syncNow(), SYNC_EVERY_MS);
   window.addEventListener('online', () => void syncNow());
@@ -248,6 +284,7 @@ export async function createQris(packageId: string): Promise<QrisCharge | { erro
     );
     if (result.error === 'unpaired') revoked();
     if (result.error || !result.id || !result.qr) return { error: result.error ?? 'provider', message: result.message };
+    openQrStore.set({ ...openQrStore.get(), [result.id]: Date.now() });
     return { id: result.id, qr: result.qr, amount: result.amount ?? 0, expiresAt: Date.parse(result.expires_at ?? '') || Date.now() + 5 * 60_000 };
   } catch {
     return { error: 'offline' };
@@ -262,9 +299,33 @@ export async function checkQris(id: string): Promise<QrisStatus> {
   if (!pairing) return 'offline';
   try {
     const result = await callFunction<{ status?: QrisStatus; error?: string }>('qris-status', { token: pairing.token, id });
-    if (result.status === 'paid' || result.status === 'pending' || result.status === 'expired' || result.status === 'failed') return result.status;
-    return result.error === 'not-found' ? 'failed' : 'offline';
+    return finalOrOpen(id, result);
   } catch {
+    return 'offline';
+  }
+}
+
+function finalOrOpen(id: string, result: { status?: QrisStatus; error?: string }): QrisStatus {
+  if (result.status === 'paid' || result.status === 'expired' || result.status === 'failed') {
+    closeQr(id);
+    return result.status;
+  }
+  if (result.status === 'pending') return 'pending';
+  return result.error === 'not-found' ? 'failed' : 'offline';
+}
+
+/**
+ * The guest left the QR screen: closes the QR, also at DOKU, so it can no longer
+ * be paid. Answers 'paid' when the money turned out to have arrived already.
+ */
+export async function cancelQris(id: string): Promise<QrisStatus> {
+  const pairing = pairingStore.get();
+  if (!pairing) return 'offline';
+  try {
+    const result = await callFunction<{ status?: QrisStatus; error?: string }>('qris-cancel', { token: pairing.token, id });
+    return finalOrOpen(id, result);
+  } catch {
+    // Left on the open list; the background sync settles it later.
     return 'offline';
   }
 }

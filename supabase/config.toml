@@ -9,3 +9,9 @@ verify_jwt = false
 
 [functions.doku-notify]
 verify_jwt = false
+
+[functions.qris-cancel]
+verify_jwt = false
+
+[functions.qris-sweep]
+verify_jwt = false

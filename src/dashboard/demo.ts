@@ -102,7 +102,7 @@ export function createDemoApi(): OwnerApi {
 
   return {
     demo: true,
-    email: 'contoh@fotostruk.id',
+    email: 'contoh@hellosnaply.id',
     async signOut() {},
     async changePassword() {},
     async listDevices() {

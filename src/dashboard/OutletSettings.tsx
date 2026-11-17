@@ -178,7 +178,7 @@ export function OutletSettings({ api }: PageProps) {
           <TextField label="Judul" value={draft.receipt.title} onChange={(v) => edit((d) => void (d.receipt.title = v))} />
           <TextField label="Sub-judul" value={draft.receipt.subtitle} onChange={(v) => edit((d) => void (d.receipt.subtitle = v))} />
           <TextField label="Kalimat penutup" value={draft.receipt.closing} onChange={(v) => edit((d) => void (d.receipt.closing = v))} />
-          <TextField label="Media sosial" value={draft.receipt.social} placeholder="@fotostruk" onChange={(v) => edit((d) => void (d.receipt.social = v))} />
+          <TextField label="Media sosial" value={draft.receipt.social} placeholder="@hellosnaply" onChange={(v) => edit((d) => void (d.receipt.social = v))} />
           <Check label="Tampilkan tanggal dan nomor sesi" checked={draft.receipt.showMeta} onChange={(v) => edit((d) => void (d.receipt.showMeta = v))} />
           <Check label="Tampilkan barcode hiasan" checked={draft.receipt.barcode} onChange={(v) => edit((d) => void (d.receipt.barcode = v))} />
         </section>

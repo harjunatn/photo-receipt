@@ -1,6 +1,6 @@
 {
-  "name": "Struk Booth",
-  "short_name": "Struk Booth",
+  "name": "Hello Snaply",
+  "short_name": "Hello Snaply",
   "description": "Photobooth mandiri yang mencetak foto di kertas struk thermal.",
   "lang": "id",
   "start_url": "./",
