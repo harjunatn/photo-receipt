@@ -1,6 +1,7 @@
-import { useState } from 'preact/hooks';
+import { useEffect, useState } from 'preact/hooks';
 import { outboxStore, pairDevice, pairingStore, syncNow, syncState, unpairDevice } from '../lib/cloud/device';
 import { cloudConfigured } from '../lib/cloud/shared';
+import { pumpUploads, uploadsWaiting } from '../lib/cloud/upload';
 import { formatDateTime } from '../lib/receipt/compose';
 import { useStore } from '../lib/store';
 import { toast } from '../ui/components';
@@ -10,6 +11,10 @@ export function CloudTab() {
   const pairing = useStore(pairingStore);
   const queued = useStore(outboxStore).length;
   const sync = useStore(syncState);
+  const uploads = useStore(uploadsWaiting);
+
+  // Also refreshes the count of files waiting to be uploaded.
+  useEffect(() => void pumpUploads(), []);
   const [code, setCode] = useState('');
   const [pin, setPin] = useState('');
   const [busy, setBusy] = useState(false);
@@ -66,6 +71,10 @@ export function CloudTab() {
             <div class="stat">
               <b>{queued}</b>
               <span>transaksi menunggu dikirim</span>
+            </div>
+            <div class="stat">
+              <b>{uploads}</b>
+              <span>file foto tamu menunggu diunggah</span>
             </div>
             <div class="stat">
               <b style={{ fontSize: '20px', lineHeight: '1.7' }}>{sync.lastOk ? formatDateTime(new Date(sync.lastOk)) : '—'}</b>

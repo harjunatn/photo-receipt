@@ -11,6 +11,7 @@ export interface OutletConfig {
   receipt: Settings['receipt'];
   packages: PackageDef[];
   payment: Settings['payment'];
+  share: Settings['share'];
 }
 
 export function outletFromSettings(settings: Settings): OutletConfig {
@@ -19,6 +20,7 @@ export function outletFromSettings(settings: Settings): OutletConfig {
     receipt: settings.receipt,
     packages: settings.packages,
     payment: settings.payment,
+    share: settings.share,
   });
 }
 
@@ -49,6 +51,7 @@ export function completeOutlet(saved: unknown, fallback: OutletConfig): OutletCo
     receipt: mergeSettings(fallback.receipt, source.receipt),
     packages: packages.length > 0 ? packages : fallback.packages,
     payment: mergeSettings(fallback.payment, source.payment),
+    share: mergeSettings(fallback.share, source.share),
   });
 }
 
@@ -63,6 +66,7 @@ export function applyRemote(settings: Settings, outlet: unknown, frames: unknown
     if (isObject(outlet.brand)) next.brand = mergeSettings(next.brand, outlet.brand);
     if (isObject(outlet.receipt)) next.receipt = mergeSettings(next.receipt, outlet.receipt);
     if (isObject(outlet.payment)) next.payment = mergeSettings(next.payment, outlet.payment);
+    if (isObject(outlet.share)) next.share = mergeSettings(next.share, outlet.share);
     if (Array.isArray(outlet.packages)) {
       const packages = outlet.packages.filter(isPackage);
       if (packages.length > 0) next.packages = packages;
@@ -73,4 +77,21 @@ export function applyRemote(settings: Settings, outlet: unknown, frames: unknown
     ? frames.filter((id): id is string => typeof id === 'string')
     : DEFAULT_SETTINGS.frames.active.slice();
   return next;
+}
+
+/** Days a guest's digital copies stay downloadable; R2 deletes them after this. */
+export const SHARE_DAYS = 7;
+
+/** Lower-case letters and digits that cannot be confused with each other (no l/1, o/0). */
+const SHARE_ALPHABET = 'abcdefghijkmnpqrstuvwxyz23456789';
+
+/** A new unguessable code for one session's digital copies: 12 characters, 60 bits. */
+export function newShareCode(): string {
+  // 256 is a multiple of the 32-letter alphabet, so the modulo is unbiased.
+  return Array.from(crypto.getRandomValues(new Uint8Array(12)), (b) => SHARE_ALPHABET[b % SHARE_ALPHABET.length]).join('');
+}
+
+/** The page a guest opens by scanning the QR code on the receipt. */
+export function shareUrl(code: string, base: { origin: string; pathname: string } = location): string {
+  return `${base.origin}${base.pathname}#s/${code}`;
 }

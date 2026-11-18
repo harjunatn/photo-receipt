@@ -92,6 +92,10 @@ export interface Settings {
     usbShowAll: boolean;
     raster: RasterSettings;
   };
+  /** Digital copies guests download by scanning a QR code on their receipt. */
+  share: {
+    enabled: boolean;
+  };
   storage: {
     /** Keep session photos on this device so they can be reprinted. */
     keepPhotos: boolean;
@@ -186,6 +190,9 @@ export const DEFAULT_SETTINGS: Settings = {
       autoLevels: true,
       dither: 'atkinson',
     },
+  },
+  share: {
+    enabled: false,
   },
   storage: {
     keepPhotos: true,

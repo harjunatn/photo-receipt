@@ -1,4 +1,5 @@
 import type { PayMethod } from '../lib/log';
+import { newShareCode } from '../lib/cloud/shared';
 import { normalizeCode, voucherStatus, type VoucherStatus } from '../lib/vouchers';
 import { newDeviceCode, newDevicePin, type Device, type OwnerApi, type PaymentRow, type Tx, type VoucherRow } from './api';
 import { dayKey, type StatRow } from './stats';
@@ -68,6 +69,7 @@ export function createDemoApi(): OwnerApi {
         method,
         voucher_code: method === 'voucher' ? `FOTO-${newDeviceCode()}` : null,
         prints: double ? 2 : 1,
+        share_code: back < 7 ? newShareCode() : null,
       });
     }
   }
@@ -163,6 +165,9 @@ export function createDemoApi(): OwnerApi {
         status === 'all' ? true : status === 'orphan' ? row.status === 'paid' && !row.has_session : row.status === status,
       );
       return { rows: rows.slice(offset, offset + limit), total: rows.length };
+    },
+    async shareStates(codes) {
+      return Object.fromEntries(codes.map((code) => [code, { status: 'pending' as const }]));
     },
     async voucherCounts() {
       const counts = { active: 0, used: 0, expired: 0 };

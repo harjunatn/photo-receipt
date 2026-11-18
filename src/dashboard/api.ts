@@ -32,6 +32,15 @@ export interface Tx {
   method: PayMethod;
   voucher_code: string | null;
   prints: number;
+  /** Code of the guest's digital copies, when they were made. */
+  share_code: string | null;
+}
+
+/** What the guest's download page holds for one session, as the dashboard shows it. */
+export interface ShareState {
+  status: 'ready' | 'pending' | 'expired';
+  /** A small picture of the photo, while it is still stored. */
+  thumb?: string;
 }
 
 export interface VoucherRow {
@@ -92,6 +101,8 @@ export interface OwnerApi {
   deleteDevice(id: string): Promise<void>;
   dailyStats(from: Date, to: Date): Promise<StatRow[]>;
   listTransactions(filter: TxFilter, offset: number, limit: number): Promise<Page<Tx>>;
+  /** The download state of several sessions at once, keyed by share code. */
+  shareStates(codes: string[]): Promise<Record<string, ShareState>>;
   listPayments(status: PaymentStatus | 'all' | 'orphan', offset: number, limit: number): Promise<Page<PaymentRow>>;
   voucherCounts(): Promise<Record<VoucherStatus, number>>;
   listVouchers(filter: VoucherFilter, offset: number, limit: number): Promise<Page<VoucherRow>>;
@@ -173,7 +184,7 @@ export function createSupabaseApi(db: SupabaseClient, email: string): OwnerApi {
     async listTransactions(filter, offset, limit) {
       let query = db
         .from('transactions')
-        .select('id,device_id,device_name,at,session_no,frame,package,price,method,voucher_code,prints', { count: 'exact' })
+        .select('id,device_id,device_name,at,session_no,frame,package,price,method,voucher_code,prints,share_code', { count: 'exact' })
         .gte('at', filter.from.toISOString())
         .lt('at', filter.to.toISOString());
       if (filter.method) query = query.eq('method', filter.method);
@@ -198,6 +209,22 @@ export function createSupabaseApi(db: SupabaseClient, email: string): OwnerApi {
         })),
         total: result.count ?? 0,
       };
+    },
+    async shareStates(codes) {
+      if (codes.length === 0) return {};
+      const response = await fetch(`${SUPABASE_URL}/functions/v1/share-get`, {
+        method: 'POST',
+        headers: { apikey: SUPABASE_KEY, Authorization: `Bearer ${SUPABASE_KEY}`, 'Content-Type': 'application/json' },
+        body: JSON.stringify({ codes }),
+      });
+      const answer = (await response.json().catch(() => ({}))) as {
+        shares?: { code: string; status: ShareState['status']; files?: { thumb?: { view: string }; photo?: { view: string } } }[];
+      };
+      const states: Record<string, ShareState> = {};
+      for (const share of answer.shares ?? []) {
+        states[share.code] = { status: share.status, thumb: share.files?.thumb?.view ?? share.files?.photo?.view };
+      }
+      return states;
     },
     async voucherCounts() {
       return unwrap(await db.rpc('voucher_counts')) as Record<VoucherStatus, number>;

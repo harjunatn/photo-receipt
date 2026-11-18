@@ -384,8 +384,12 @@ html.dash-page body {
   border-top: 0;
 }
 
-.table .num {
+.table th:last-child,
+.table td:last-child {
   padding-right: 0;
+}
+
+.table .num {
   text-align: right;
   font-variant-numeric: tabular-nums;
 }
@@ -486,4 +490,49 @@ html.dash-page body {
   .chart-plot {
     height: 180px;
   }
+}
+
+/* ---------- Guest downloads: thumbnails, row actions, the QR dialog ---------- */
+
+.share-thumb {
+  display: block;
+  width: 36px;
+  height: 48px;
+  object-fit: cover;
+  object-position: top;
+  border: 1px solid var(--line);
+  border-radius: 4px;
+  background: #fff;
+}
+
+.actions {
+  display: inline-flex;
+  gap: 6px;
+}
+
+.icon-btn {
+  display: inline-grid;
+  place-items: center;
+  width: 38px;
+  height: 38px;
+  padding: 0;
+  border: 1px solid var(--line);
+  border-radius: 999px;
+  background: transparent;
+  color: var(--ink);
+}
+
+.icon-btn:hover {
+  border-color: var(--ink);
+}
+
+.share-qr svg {
+  width: min(100%, 280px);
+  height: auto;
+}
+
+.share-qr-url {
+  max-width: 100%;
+  overflow-wrap: anywhere;
+  user-select: all;
 }

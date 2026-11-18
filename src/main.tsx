@@ -9,12 +9,14 @@ import { printer } from './lib/printer/manager';
 import { registerServiceWorker } from './lib/update';
 
 const root = document.getElementById('app')!;
-const isDashboard = () => location.hash.startsWith('#dashboard');
-const startedAsDashboard = isDashboard();
 
-// The booth and the owner's dashboard are two different apps behind one address.
+/** One address serves three apps: the booth, the owner's dashboard, and the guest's download page. */
+type Mode = 'booth' | 'dashboard' | 'share';
+const modeOf = (hash: string): Mode => (hash.startsWith('#dashboard') ? 'dashboard' : hash.startsWith('#s/') ? 'share' : 'booth');
+const mode = modeOf(location.hash);
+
 window.addEventListener('hashchange', () => {
-  if (isDashboard() !== startedAsDashboard) location.reload();
+  if (modeOf(location.hash) !== mode) location.reload();
 });
 
 function startBooth(): void {
@@ -34,12 +36,16 @@ function startBooth(): void {
   render(<App />, root);
 }
 
-if (startedAsDashboard) {
+if (mode === 'dashboard') {
   // Loaded on demand, so the booth's tablets never run the dashboard's code.
   document.documentElement.classList.add('dash-page');
   void import('./dashboard/Dashboard').then(({ Dashboard }) => render(<Dashboard />, root));
+} else if (mode === 'share') {
+  // A guest's phone: just the download page, nothing of the booth, and no offline copy of the app.
+  document.documentElement.classList.add('dash-page');
+  void import('./share/SharePage').then(({ SharePage }) => render(<SharePage />, root));
 } else {
   startBooth();
 }
 
-if (import.meta.env.PROD) registerServiceWorker();
+if (import.meta.env.PROD && mode !== 'share') registerServiceWorker();

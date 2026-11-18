@@ -3,6 +3,9 @@ import { download } from '../lib/kiosk';
 import { PAY_METHOD_LABEL, toCsv, type PayMethod } from '../lib/log';
 import { formatRupiah } from '../lib/settings';
 import { toast } from '../ui/components';
+import { EyeIcon, QrIcon } from '../ui/icons';
+import { ShareQrDialog } from '../ui/ShareQr';
+import { shareUrl } from '../lib/cloud/shared';
 import type { Tx, TxFilter } from './api';
 import type { PageProps } from './Dashboard';
 import { dayKey, total } from './stats';
@@ -38,6 +41,7 @@ export function Transactions({ api }: PageProps) {
   const [deviceId, setDeviceId] = useState('');
   const [offset, setOffset] = useState(0);
   const [exporting, setExporting] = useState(false);
+  const [qrFor, setQrFor] = useState<Tx | null>(null);
   const devices = useLoad(() => api.listDevices(), [api]);
 
   const filter = useMemo<TxFilter | null>(() => {
@@ -53,6 +57,9 @@ export function Transactions({ api }: PageProps) {
     const sum = total(stats, (row) => (!filter.method || row.method === filter.method) && (!filter.deviceId || row.device_id === filter.deviceId));
     return { ...page, sum };
   }, [api, filter, offset]);
+
+  const codes = (load.data?.rows ?? []).flatMap((tx) => (tx.share_code ? [tx.share_code] : []));
+  const shares = useLoad(() => api.shareStates(codes), [api, codes.join(',')]);
 
   const change = (apply: () => void) => {
     apply();
@@ -186,6 +193,8 @@ export function Transactions({ api }: PageProps) {
                       <th>Frame · pilihan</th>
                       <th>Cara bayar</th>
                       <th class="num">Harga</th>
+                      <th>Hasil foto</th>
+                      <th class="num">Aksi</th>
                     </tr>
                   </thead>
                   <tbody>
@@ -201,6 +210,21 @@ export function Transactions({ api }: PageProps) {
                           {tx.voucher_code && <small class="mono"> {tx.voucher_code}</small>}
                         </td>
                         <td class="num">{formatRupiah(tx.price)}</td>
+                        <td>
+                          <ShareThumb code={tx.share_code} state={tx.share_code ? shares.data?.[tx.share_code] : undefined} />
+                        </td>
+                        <td class="num">
+                          {tx.share_code && (
+                            <div class="actions">
+                              <button class="icon-btn" title="Tampilkan QR unduhan" aria-label="Tampilkan QR unduhan" onClick={() => setQrFor(tx)}>
+                                <QrIcon />
+                              </button>
+                              <a class="icon-btn" title="Lihat hasil foto" aria-label="Lihat hasil foto" href={shareUrl(tx.share_code)} target="_blank" rel="noopener">
+                                <EyeIcon />
+                              </a>
+                            </div>
+                          )}
+                        </td>
                       </tr>
                     ))}
                   </tbody>
@@ -209,8 +233,17 @@ export function Transactions({ api }: PageProps) {
             )}
             <Pager offset={offset} limit={PAGE_SIZE} total={load.data.total} onChange={setOffset} />
           </section>
+          {qrFor?.share_code && <ShareQrDialog code={qrFor.share_code} sessionAt={qrFor.at} onClose={() => setQrFor(null)} />}
         </>
       )}
     </>
   );
+}
+
+/** The small picture of a session's digital copy, or why there is none. */
+function ShareThumb({ code, state }: { code: string | null; state: { status: string; thumb?: string } | undefined }) {
+  if (!code) return <span class="hint">—</span>;
+  if (state?.thumb) return <img class="share-thumb" src={state.thumb} alt="" loading="lazy" />;
+  if (state?.status === 'expired') return <span class="hint">Kedaluwarsa</span>;
+  return <span class="hint">{state ? 'Belum terunggah' : '…'}</span>;
 }

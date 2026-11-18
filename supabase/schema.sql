@@ -134,6 +134,23 @@ create index if not exists payments_created on public.payments (created_at desc)
 create index if not exists payments_device on public.payments (device_id, created_at desc);
 
 alter table public.transactions add column if not exists payment_id uuid references public.payments (id) on delete set null;
+
+-- Hasil foto digital yang bisa diunduh tamu lewat QR di struk, selama 7 hari. Berkasnya ada di
+-- Cloudflare R2; di sini hanya catatan berkas mana yang sudah terunggah.
+create table if not exists public.shares (
+  -- Kode acak yang tercetak di struk (12 huruf/angka kecil). Sulit ditebak, jadi menjadi kuncinya.
+  code text primary key check (code ~ '^[a-z0-9]{12}$'),
+  device_id uuid references public.devices (id) on delete set null,
+  device_name text not null,
+  -- Per jenis berkas (photo, thumb, live, slideshow): {key, size, type, at}.
+  files jsonb not null default '{}'::jsonb,
+  created_at timestamptz not null default now(),
+  expires_at timestamptz not null
+);
+create index if not exists shares_created on public.shares (created_at desc);
+
+alter table public.transactions add column if not exists share_code text;
+create index if not exists transactions_share on public.transactions (share_code) where share_code is not null;
 -- Satu pembayaran hanya untuk satu sesi.
 create unique index if not exists transactions_payment on public.transactions (payment_id) where payment_id is not null;
 
@@ -145,6 +162,7 @@ alter table public.devices enable row level security;
 alter table public.transactions enable row level security;
 alter table public.vouchers enable row level security;
 alter table public.payments enable row level security;
+alter table public.shares enable row level security;
 
 drop policy if exists owner_all on public.outlet;
 create policy owner_all on public.outlet for all to authenticated using (public.is_owner()) with check (public.is_owner());
@@ -159,6 +177,11 @@ drop policy if exists owner_read on public.payments;
 create policy owner_read on public.payments for select to authenticated using (public.is_owner());
 revoke all on public.payments from anon, authenticated;
 grant select on public.payments to authenticated;
+-- Hasil foto: pemilik hanya membaca; yang menulis adalah Edge Functions.
+drop policy if exists owner_read on public.shares;
+create policy owner_read on public.shares for select to authenticated using (public.is_owner());
+revoke all on public.shares from anon, authenticated;
+grant select on public.shares to authenticated;
 -- owners: tanpa policy, jadi hanya bisa disentuh lewat claim_owner().
 
 revoke all on public.owners, public.outlet, public.devices, public.transactions, public.vouchers from anon;
@@ -252,15 +275,16 @@ begin
   if jsonb_typeof(p_rows) is distinct from 'array' or jsonb_array_length(p_rows) > 500 then
     return jsonb_build_object('error', 'bad-request');
   end if;
-  insert into transactions (id, device_id, device_name, at, session_no, frame, package, price, method, voucher_code, prints, payment_id)
+  insert into transactions (id, device_id, device_name, at, session_no, frame, package, price, method, voucher_code, prints, payment_id, share_code)
   select r.id, d.id, d.name, r.at, r.session_no, left(r.frame, 80), left(r.package, 80),
          greatest(coalesce(r.price, 0), 0), r.method, left(r.voucher_code, 40), greatest(coalesce(r.prints, 1), 1),
          -- Hanya pembayaran lunas milik tablet ini, dan yang belum dipakai sesi lain, yang boleh ditautkan.
          (select p.id from payments p
            where p.id = r.payment_id and p.device_id = d.id and p.status = 'paid'
-             and not exists (select 1 from transactions t where t.payment_id = p.id))
+             and not exists (select 1 from transactions t where t.payment_id = p.id)),
+         case when r.share_code ~ '^[a-z0-9]{12}$' then r.share_code end
   from jsonb_to_recordset(p_rows)
-    as r(id uuid, at timestamptz, session_no int, frame text, package text, price int, method text, voucher_code text, prints int, payment_id uuid)
+    as r(id uuid, at timestamptz, session_no int, frame text, package text, price int, method text, voucher_code text, prints int, payment_id uuid, share_code text)
   where r.id is not null and r.at is not null and r.method in ('free', 'voucher', 'qris', 'cash')
   on conflict (id) do nothing;
   return jsonb_build_object('ok', true);
@@ -342,7 +366,7 @@ begin
     'rows', coalesce((
       select jsonb_agg(to_jsonb(x) order by x.at desc)
       from (
-        select t.id, t.device_id, t.device_name, t.at, t.session_no, t.frame, t.package, t.price, t.method, t.voucher_code, t.prints
+        select t.id, t.device_id, t.device_name, t.at, t.session_no, t.frame, t.package, t.price, t.method, t.voucher_code, t.prints, t.share_code
         from transactions t
         where t.device_id = d.id and t.at >= p_from and t.at < p_to and (p_method is null or t.method = p_method)
         order by t.at desc
@@ -558,3 +582,80 @@ grant execute on function public.payment_begin(text, text) to service_role;
 grant execute on function public.payment_attach(uuid, text, text, timestamptz, jsonb) to service_role;
 grant execute on function public.payment_get(text, uuid) to service_role;
 grant execute on function public.payment_settle(uuid, text, jsonb) to service_role;
+
+-- ---------------------------------------------------------------- hasil foto (hanya untuk Edge Functions)
+
+-- Mendaftarkan kode hasil foto untuk tablet ini sebelum berkasnya diunggah. Kode yang sudah
+-- dipakai tablet lain ditolak. Masa simpan 7 hari dihitung sejak pendaftaran pertama.
+create or replace function public.share_claim(p_token text, p_code text)
+returns jsonb
+language plpgsql security definer set search_path = public
+as $$
+declare
+  d devices;
+  s shares;
+begin
+  select * into d from devices where token_hash = token_hash(p_token) and active;
+  if not found then
+    return jsonb_build_object('error', 'unpaired');
+  end if;
+  if coalesce(p_code, '') !~ '^[a-z0-9]{12}$' then
+    return jsonb_build_object('error', 'bad-code');
+  end if;
+  insert into shares (code, device_id, device_name, expires_at)
+  values (p_code, d.id, d.name, now() + interval '7 days')
+  on conflict (code) do nothing;
+  select * into s from shares where code = p_code;
+  if s.device_id is distinct from d.id then
+    return jsonb_build_object('error', 'taken');
+  end if;
+  if s.expires_at < now() then
+    return jsonb_build_object('error', 'expired');
+  end if;
+  return jsonb_build_object('ok', true, 'expires_at', s.expires_at);
+end;
+$$;
+
+-- Mencatat satu berkas yang sudah terunggah.
+create or replace function public.share_add_file(p_token text, p_code text, p_kind text, p_file jsonb)
+returns jsonb
+language plpgsql security definer set search_path = public
+as $$
+declare
+  d devices;
+begin
+  select * into d from devices where token_hash = token_hash(p_token) and active;
+  if not found then
+    return jsonb_build_object('error', 'unpaired');
+  end if;
+  update shares set files = files || jsonb_build_object(p_kind, p_file)
+    where code = p_code and device_id = d.id;
+  if not found then
+    return jsonb_build_object('error', 'not-found');
+  end if;
+  return jsonb_build_object('ok', true);
+end;
+$$;
+
+-- Hasil foto untuk halaman unduh tamu dan dashboard, beserta nama dan warna outlet.
+create or replace function public.share_lookup(p_codes text[])
+returns jsonb
+language sql stable security definer set search_path = public
+as $$
+  select jsonb_build_object(
+    'brand', (select config -> 'brand' from outlet where id = 1),
+    'shares', coalesce((
+      select jsonb_agg(jsonb_build_object('code', s.code, 'files', s.files, 'created_at', s.created_at,
+                                          'expires_at', s.expires_at, 'device_name', s.device_name))
+      from shares s
+      where s.code = any (p_codes[1:60])
+    ), '[]'::jsonb)
+  );
+$$;
+
+revoke execute on function public.share_claim(text, text) from public, anon, authenticated;
+revoke execute on function public.share_add_file(text, text, text, jsonb) from public, anon, authenticated;
+revoke execute on function public.share_lookup(text[]) from public, anon, authenticated;
+grant execute on function public.share_claim(text, text) to service_role;
+grant execute on function public.share_add_file(text, text, text, jsonb) to service_role;
+grant execute on function public.share_lookup(text[]) to service_role;

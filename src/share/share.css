@@ -1,0 +1,69 @@
+/* The guest's download page: one column, made for a phone held in one hand. */
+
+.share {
+  width: min(100%, 480px);
+  min-height: 100vh;
+  margin: 0 auto;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 18px;
+  padding: 32px 16px calc(32px + env(safe-area-inset-bottom));
+  text-align: center;
+}
+
+.share-head {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 6px;
+}
+
+.share-head .heading::after {
+  content: '.';
+  color: var(--accent);
+}
+
+.share-tabs {
+  justify-content: center;
+}
+
+.share-media {
+  width: 100%;
+  margin: 0;
+  padding: 10px;
+  border: 1px solid var(--line);
+  border-radius: var(--radius-md);
+  background: #fff;
+}
+
+.share-media img,
+.share-media video {
+  display: block;
+  width: 100%;
+  height: auto;
+  /* Long strips are scrolled through on the page rather than shrunk to nothing. */
+  max-height: none;
+}
+
+.share-download {
+  width: 100%;
+  min-height: 56px;
+}
+
+.share-note {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 10px;
+  padding: 32px 8px;
+}
+
+.share-hint {
+  max-width: 34ch;
+}
+
+.share-foot {
+  margin-top: auto;
+  padding-top: 24px;
+}

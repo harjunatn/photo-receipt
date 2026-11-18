@@ -15,3 +15,9 @@ verify_jwt = false
 
 [functions.qris-sweep]
 verify_jwt = false
+
+[functions.share-upload]
+verify_jwt = false
+
+[functions.share-get]
+verify_jwt = false

@@ -26,6 +26,8 @@ export interface CloudTx {
   prints: number;
   /** The automatic QRIS payment behind this session, so the dashboard can match money to sessions. */
   payment_id: string | null;
+  /** The code of this session's digital copies, printed as a QR code on the receipt. */
+  share_code: string | null;
 }
 
 export interface SyncState {
@@ -206,6 +208,8 @@ export async function syncNow(): Promise<boolean> {
     applyPending();
     syncState.set({ lastOk: Date.now(), error: '', revoked: false });
     await sweepQris(pairing.token);
+    // Loaded on demand: the upload queue is only needed once a session has files to send.
+    void import('./upload').then(({ pumpUploads }) => pumpUploads());
     return true;
   } catch (cause) {
     const offline = cause instanceof TypeError || (cause instanceof DOMException && cause.name === 'TimeoutError');
@@ -250,7 +254,7 @@ export async function redeemCloudVoucher(input: string): Promise<CloudVoucherRes
 }
 
 /** Calls one of the project's Edge Functions, which hold the payment provider's secret keys. */
-async function callFunction<T>(name: string, body: Record<string, unknown>): Promise<T> {
+export async function callFunction<T>(name: string, body: Record<string, unknown>): Promise<T> {
   const response = await fetch(`${SUPABASE_URL}/functions/v1/${name}`, {
     method: 'POST',
     headers: { apikey: SUPABASE_KEY, Authorization: `Bearer ${SUPABASE_KEY}`, 'Content-Type': 'application/json' },
@@ -342,6 +346,7 @@ export interface BoothTx {
   method: PayMethod;
   voucher_code: string | null;
   prints: number;
+  share_code: string | null;
 }
 
 const zone = () => Intl.DateTimeFormat().resolvedOptions().timeZone || 'Asia/Jakarta';

@@ -8,6 +8,8 @@ import { PAY_METHOD_LABEL, toCsv, type PayMethod } from '../lib/log';
 import { formatRupiah } from '../lib/settings';
 import { useStore } from '../lib/store';
 import { toast } from '../ui/components';
+import { ShareQrDialog } from '../ui/ShareQr';
+import { QrIcon } from '../ui/icons';
 
 const PAGE_SIZE = 30;
 const METHODS: PayMethod[] = ['qris', 'cash', 'voucher', 'free'];
@@ -25,6 +27,7 @@ export function BoothTxTab() {
   const [method, setMethod] = useState<PayMethod | ''>('');
   const [offset, setOffset] = useState(0);
   const [exporting, setExporting] = useState(false);
+  const [qrFor, setQrFor] = useState<BoothTx | null>(null);
 
   const range = useMemo(() => {
     const now = new Date();
@@ -135,6 +138,7 @@ export function BoothTxTab() {
                   <th>Frame · pilihan</th>
                   <th>Cara bayar</th>
                   <th class="num">Harga</th>
+                  <th class="num">QR</th>
                 </tr>
               </thead>
               <tbody>
@@ -150,6 +154,13 @@ export function BoothTxTab() {
                       {tx.voucher_code && <small class="mono"> {tx.voucher_code}</small>}
                     </td>
                     <td class="num">{formatRupiah(tx.price)}</td>
+                    <td class="num">
+                      {tx.share_code && (
+                        <button class="icon-btn" title="Tampilkan QR unduhan" aria-label="Tampilkan QR unduhan" onClick={() => setQrFor(tx)}>
+                          <QrIcon />
+                        </button>
+                      )}
+                    </td>
                   </tr>
                 ))}
               </tbody>
@@ -158,6 +169,7 @@ export function BoothTxTab() {
         )}
         {load.data && <Pager offset={offset} limit={PAGE_SIZE} total={load.data.total} onChange={setOffset} />}
       </section>
+      {qrFor?.share_code && <ShareQrDialog code={qrFor.share_code} sessionAt={qrFor.at} onClose={() => setQrFor(null)} />}
     </div>
   );
 }

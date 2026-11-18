@@ -51,7 +51,8 @@ export function readEnv(get: (name: string) => string | undefined): Env {
   };
 }
 
-async function rpc<T>(env: Env, fetchFn: Fetch, name: string, args: Record<string, unknown>): Promise<T> {
+/** Calls a database function with the service role key. */
+export async function rpc<T>(env: Pick<Env, 'supabaseUrl' | 'serviceKey'>, fetchFn: Fetch, name: string, args: Record<string, unknown>): Promise<T> {
   const response = await fetchFn(`${env.supabaseUrl}/rest/v1/rpc/${name}`, {
     method: 'POST',
     headers: { apikey: env.serviceKey, Authorization: `Bearer ${env.serviceKey}`, 'Content-Type': 'application/json' },

@@ -1,0 +1,195 @@
+/**
+ * The guest's digital copies: tablets upload them straight to Cloudflare R2 with
+ * URLs signed here, and guests (and the owner) get short-lived links to view
+ * and download them. The R2 keys never leave the server.
+ */
+import { rpc, type Reply } from './handlers.ts';
+import { presignUrl } from './s3.ts';
+
+export interface ShareEnv {
+  supabaseUrl: string;
+  serviceKey: string;
+  /** null while the R2 keys have not been filled in. */
+  r2: { origin: string; bucket: string; accessKeyId: string; secretAccessKey: string } | null;
+}
+
+type Fetch = (url: string, init: RequestInit) => Promise<Response>;
+
+/** What a tablet may upload for one session, and how large each may be. */
+export const KINDS = {
+  photo: { ext: 'jpg', type: 'image/jpeg', max: 15_000_000 },
+  thumb: { ext: 'jpg', type: 'image/jpeg', max: 1_000_000 },
+  live: { ext: 'mp4', type: 'video/mp4', max: 40_000_000 },
+  slideshow: { ext: 'mp4', type: 'video/mp4', max: 40_000_000 },
+} as const;
+export type ShareKind = keyof typeof KINDS;
+
+const CODE = /^[a-z0-9]{12}$/;
+const UPLOAD_SECONDS = 15 * 60;
+const VIEW_SECONDS = 60 * 60;
+
+/**
+ * The account id on its own, also when the whole S3 endpoint was pasted
+ * (https://<id>.r2.cloudflarestorage.com/...).
+ */
+export function accountIdFrom(input: string): string {
+  return input
+    .trim()
+    .replace(/^https?:\/\//i, '')
+    .replace(/[/?#].*$/, '')
+    .replace(/\.r2\.cloudflarestorage\.com$/i, '')
+    .replace(/\.(eu|fedramp)$/i, '');
+}
+
+/** R2 bucket names are 3–63 lower-case letters, digits and hyphens. */
+export const BUCKET_NAME = /^[a-z0-9][a-z0-9-]{1,61}[a-z0-9]$/;
+
+export function readShareEnv(get: (name: string) => string | undefined): ShareEnv {
+  const value = (name: string) => (get(name) ?? '').trim();
+  const account = accountIdFrom(value('R2_ACCOUNT_ID'));
+  const complete = ['R2_ACCESS_KEY_ID', 'R2_SECRET_ACCESS_KEY', 'R2_BUCKET'].every((name) => value(name) !== '') && (account || value('R2_ENDPOINT'));
+  return {
+    supabaseUrl: value('SUPABASE_URL').replace(/\/+$/, ''),
+    serviceKey: value('SUPABASE_SERVICE_ROLE_KEY'),
+    r2: complete
+      ? {
+          origin: (value('R2_ENDPOINT') || `https://${account}.r2.cloudflarestorage.com`).replace(/\/+$/, ''),
+          bucket: value('R2_BUCKET').replace(/^\/+|\/+$/g, ''),
+          accessKeyId: value('R2_ACCESS_KEY_ID'),
+          secretAccessKey: value('R2_SECRET_ACCESS_KEY'),
+        }
+      : null,
+  };
+}
+
+const text = (value: unknown) => (typeof value === 'string' ? value : '');
+const isKind = (value: unknown): value is ShareKind => typeof value === 'string' && value in KINDS;
+const objectKey = (code: string, kind: ShareKind) => `s/${code}/${kind}.${KINDS[kind].ext}`;
+
+function sign(env: ShareEnv, method: 'GET' | 'PUT' | 'HEAD', key: string, expiresIn: number, now: Date, query?: Record<string, string>) {
+  const r2 = env.r2!;
+  return presignUrl({
+    method,
+    origin: r2.origin,
+    path: `/${r2.bucket}/${key}`,
+    region: 'auto',
+    accessKeyId: r2.accessKeyId,
+    secretAccessKey: r2.secretAccessKey,
+    expiresIn,
+    now,
+    query,
+  });
+}
+
+/**
+ * share-upload, called by a paired tablet:
+ *  - action "sign": a URL to PUT one file to, valid for a quarter of an hour;
+ *  - action "done": checks the file really arrived and records it.
+ */
+export async function handleShareUpload(input: Record<string, unknown>, env: ShareEnv, fetchFn: Fetch = fetch, now: () => Date = () => new Date()): Promise<Reply> {
+  if (!env.r2) return { status: 200, body: { error: 'not-configured' } };
+  if (!BUCKET_NAME.test(env.r2.bucket)) {
+    return { status: 200, body: { error: 'not-configured', message: 'R2_BUCKET bukan nama bucket R2 yang sah (huruf kecil, angka, tanda hubung).' } };
+  }
+  const code = text(input.code);
+  const kind = input.kind;
+  if (!CODE.test(code) || !isKind(kind)) return { status: 200, body: { error: 'bad-request' } };
+  const token = text(input.token);
+  const key = objectKey(code, kind);
+
+  if (input.action === 'sign') {
+    const size = Number(input.size);
+    if (!Number.isFinite(size) || size <= 0 || size > KINDS[kind].max) return { status: 200, body: { error: 'too-large' } };
+    const claim = await rpc<{ ok?: boolean; error?: string }>(env, fetchFn, 'share_claim', { p_token: token, p_code: code });
+    if (!claim.ok) return { status: 200, body: { error: claim.error ?? 'refused' } };
+    return {
+      status: 200,
+      body: { url: await sign(env, 'PUT', key, UPLOAD_SECONDS, now()), method: 'PUT', headers: { 'Content-Type': KINDS[kind].type } },
+    };
+  }
+
+  if (input.action === 'done') {
+    let head: Response;
+    try {
+      head = await fetchFn(await sign(env, 'HEAD', key, 60, now()), { method: 'HEAD' });
+    } catch {
+      // The address itself is wrong, e.g. an account id that is not one. The URL is not repeated: it carries the key id.
+      return { status: 200, body: { error: 'storage', message: 'R2 tidak bisa dihubungi. Periksa R2_ACCOUNT_ID.' } };
+    }
+    if (head.status === 404) {
+      // HEAD has no body, so ask once more to tell a missing file from a missing bucket.
+      const probe = await fetchFn(await sign(env, 'GET', key, 60, now()), { method: 'GET' }).catch(() => null);
+      const reason = probe ? await probe.text().catch(() => '') : '';
+      if (reason.includes('NoSuchBucket')) return { status: 200, body: { error: 'storage', message: 'Bucket R2 tidak ditemukan. Periksa R2_BUCKET.' } };
+      return { status: 200, body: { error: 'missing' } };
+    }
+    if (head.status === 401 || head.status === 403) {
+      return { status: 200, body: { error: 'storage', message: 'R2 menolak kunci akses. Periksa R2_ACCESS_KEY_ID, R2_SECRET_ACCESS_KEY, dan izin token ke bucket ini.' } };
+    }
+    if (!head.ok) return { status: 200, body: { error: 'storage', message: `R2 menjawab ${head.status}` } };
+    const size = Number(head.headers.get('content-length') ?? 0);
+    const recorded = await rpc<{ ok?: boolean; error?: string }>(env, fetchFn, 'share_add_file', {
+      p_token: token,
+      p_code: code,
+      p_kind: kind,
+      p_file: { key, size, type: KINDS[kind].type, at: now().toISOString() },
+    });
+    return { status: 200, body: recorded.ok ? { ok: true } : { error: recorded.error ?? 'refused' } };
+  }
+
+  return { status: 200, body: { error: 'bad-request' } };
+}
+
+interface ShareRow {
+  code: string;
+  files: Partial<Record<ShareKind, { key: string; size: number; type: string }>>;
+  created_at: string;
+  expires_at: string;
+  device_name: string;
+}
+
+/** A file name for downloads: the outlet's name in plain letters, then the code. */
+function fileName(brand: string, code: string, kind: ShareKind): string {
+  const base = brand.toLowerCase().normalize('NFKD').replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '') || 'foto';
+  return `${base}-${code}${kind === 'photo' ? '' : `-${kind}`}.${KINDS[kind].ext}`;
+}
+
+/**
+ * share-get, public: the files behind one or more codes, as links that last an
+ * hour. A code nobody has uploaded to yet answers "pending"; one past its seven
+ * days answers "expired".
+ */
+export async function handleShareGet(input: Record<string, unknown>, env: ShareEnv, fetchFn: Fetch = fetch, now: () => Date = () => new Date()): Promise<Reply> {
+  if (!env.r2 || !BUCKET_NAME.test(env.r2.bucket)) return { status: 200, body: { error: 'not-configured' } };
+  const asked = Array.isArray(input.codes) ? input.codes : [input.code];
+  const codes = [...new Set(asked.map(text).filter((code) => CODE.test(code)))].slice(0, 60);
+  if (codes.length === 0) return { status: 200, body: { error: 'bad-request' } };
+
+  const found = await rpc<{ brand?: { title?: string; accent?: string } | null; shares?: ShareRow[] }>(env, fetchFn, 'share_lookup', { p_codes: codes });
+  const brand = { title: text(found.brand?.title) || 'Hello Snaply', accent: text(found.brand?.accent) || '' };
+  const rows = new Map((found.shares ?? []).map((row) => [row.code, row]));
+  const at = now();
+
+  const shares = await Promise.all(
+    codes.map(async (code) => {
+      const row = rows.get(code);
+      if (!row) return { code, status: 'pending' };
+      if (Date.parse(row.expires_at) < at.getTime()) return { code, status: 'expired', expires_at: row.expires_at };
+      const files: Record<string, { view: string; download: string; size: number; type: string }> = {};
+      for (const kind of Object.keys(KINDS) as ShareKind[]) {
+        const file = row.files[kind];
+        if (!file) continue;
+        files[kind] = {
+          view: await sign(env, 'GET', file.key, VIEW_SECONDS, at),
+          download: await sign(env, 'GET', file.key, VIEW_SECONDS, at, {
+            'response-content-disposition': `attachment; filename="${fileName(brand.title, code, kind)}"`,
+          }),
+          size: file.size,
+          type: file.type,
+        };
+      }
+      return { code, status: files.photo ? 'ready' : 'pending', created_at: row.created_at, expires_at: row.expires_at, files };
+    }),
+  );
+  return { status: 200, body: { brand, shares } };
+}

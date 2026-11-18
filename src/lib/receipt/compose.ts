@@ -20,6 +20,8 @@ export interface ReceiptInput {
   logo: CanvasImageSource | null;
   /** Only the title and the photos — used for the small pictures of each frame. */
   compact?: boolean;
+  /** Where the guest downloads the digital copies, printed as a QR code; and for how many days. */
+  share?: { url: string; days: number };
 }
 
 /** Lays out one printed receipt: header, the frame with its photos, quote, QR code and footer. */
@@ -68,6 +70,18 @@ export function composeReceipt(input: ReceiptInput): ComposedReceipt {
   }
   if (t.closing.trim()) {
     page.text(t.closing.trim(), 20);
+    page.gap(14);
+  }
+  if (input.share) {
+    page.dashed();
+    page.gap(14);
+    page.text('SCAN UNTUK UNDUH FOTOMU', 24, { bold: true });
+    page.gap(8);
+    page.qr(input.share.url, 260);
+    page.gap(6);
+    page.text(`Foto digital berwarna, tersedia ${input.share.days} hari.`, 18);
+    page.gap(14);
+    page.dashed();
     page.gap(14);
   }
   if (t.qrUrl.trim()) {

@@ -127,6 +127,22 @@ export function OutletSettings({ api }: PageProps) {
           <Check label="Voucher" hint="Kode sekali pakai dari menu Voucher." checked={draft.payment.voucher} onChange={(v) => edit((d) => void (d.payment.voucher = v))} />
         </section>
 
+        <section class="panel">
+          <h2>Unduh foto lewat QR</h2>
+          <Check
+            label="Tamu bisa mengunduh hasil fotonya"
+            hint="Struk mencetak kode QR. Tamu membuka halaman berisi foto berwarna dengan frame, bisa diunduh selama 7 hari, lalu dihapus otomatis."
+            checked={draft.share.enabled}
+            onChange={(v) => edit((d) => void (d.share.enabled = v))}
+          />
+          {draft.share.enabled && (
+            <p class="banner">
+              Butuh Cloudflare R2 yang sudah disetel di Supabase (lihat README). Kalau belum, tablet tetap mencetak QR, tetapi
+              fotonya menunggu di tablet sampai R2 siap.
+            </p>
+          )}
+        </section>
+
         <section class="panel span">
           <div class="row">
             <h2 class="grow">Harga</h2>

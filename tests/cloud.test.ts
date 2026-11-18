@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { applyRemote, completeOutlet, outletFromSettings } from '../src/lib/cloud/shared';
+import { applyRemote, completeOutlet, newShareCode, outletFromSettings, shareUrl } from '../src/lib/cloud/shared';
 import { DEFAULT_SETTINGS } from '../src/lib/settings';
 import {
   compactRupiah,
@@ -64,6 +64,24 @@ describe('applyRemote', () => {
     const before = structuredClone(DEFAULT_SETTINGS);
     applyRemote(DEFAULT_SETTINGS, { brand: { title: 'LAIN' } }, ['film']);
     expect(DEFAULT_SETTINGS).toEqual(before);
+  });
+});
+
+describe('guest downloads', () => {
+  it('makes unguessable codes the server accepts', () => {
+    const codes = new Set(Array.from({ length: 500 }, () => newShareCode()));
+    expect(codes.size).toBe(500);
+    for (const code of codes) expect(code).toMatch(/^[a-z0-9]{12}$/);
+  });
+
+  it('points the QR code at the download page of the same app', () => {
+    expect(shareUrl('abc234defg56', { origin: 'https://booth.vercel.app', pathname: '/' })).toBe('https://booth.vercel.app/#s/abc234defg56');
+  });
+
+  it('takes the download switch from the dashboard and stays off until then', () => {
+    expect(DEFAULT_SETTINGS.share.enabled).toBe(false);
+    expect(applyRemote(DEFAULT_SETTINGS, { share: { enabled: true } }, null).share.enabled).toBe(true);
+    expect(applyRemote(DEFAULT_SETTINGS, { share: { enabled: 'ya' } }, null).share.enabled).toBe(false);
   });
 });
 

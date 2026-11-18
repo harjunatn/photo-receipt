@@ -6,7 +6,7 @@ import type { BitImage } from '../lib/image/types';
 import { pokeIdle } from '../lib/kiosk';
 import { addLogEntry, nextSessionNumber } from '../lib/log';
 import { printer, usePrinter } from '../lib/printer/manager';
-import { renderDraft, type Draft } from '../lib/session';
+import { renderDigital, renderDraft, type Draft } from '../lib/session';
 import { settingsStore } from '../lib/settings';
 import { sound } from '../lib/sound';
 import { PinPad, ReceiptPaper, Steps } from '../ui/components';
@@ -81,7 +81,24 @@ export function Result({ draft, onFinish }: Props) {
           voucher_code: draft.voucherCode ?? null,
           prints: draft.pkg.prints,
           payment_id: draft.paymentId ?? null,
+          share_code: draft.shareCode ?? null,
         });
+        if (draft.shareCode) {
+          const code = draft.shareCode;
+          // Made a moment later, so that building the colour copy never holds up the print.
+          setTimeout(() => {
+            void renderDigital(draft, sessionNo, settings)
+              .then(({ photo, thumb }) =>
+                import('../lib/cloud/upload').then(({ queueShareFiles }) =>
+                  queueShareFiles(code, [
+                    { kind: 'thumb', blob: thumb },
+                    { kind: 'photo', blob: photo },
+                  ]),
+                ),
+              )
+              .catch(() => undefined);
+          }, 1500);
+        }
         if (settings.storage.keepPhotos) {
           // Saved in the background: a full disk must not stop the guest's print.
           const taken = draft.shots.flatMap((shot) => (shot ? [shot.canvas] : []));

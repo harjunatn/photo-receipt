@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState } from 'preact/hooks';
 import { Admin } from './admin/Admin';
 import { pairingStore, refetchSettings, setBoothIdle } from './lib/cloud/device';
+import { cloudConfigured, newShareCode } from './lib/cloud/shared';
 import { useIdle } from './lib/kiosk';
 import type { PayMethod } from './lib/log';
 import { activeFrames, type FrameDef } from './lib/receipt/frames';
@@ -70,6 +71,7 @@ export function App() {
       method,
       voucherCode,
       paymentId,
+      shareCode: settings.share.enabled && cloudConfigured ? newShareCode() : undefined,
       shots: chosen.slots.map(() => null),
       style: 'normal',
       when: new Date(),

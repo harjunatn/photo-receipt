@@ -167,6 +167,47 @@ Sesudah terpasang:
 Paket gratis Supabase menjeda proyek yang tidak dipakai sekitar seminggu. Booth yang dipakai rutin tidak kena; setelah
 libur panjang, bangunkan proyeknya dari dashboard Supabase (transaksi yang menunggu di tablet akan terkirim sesudahnya).
 
+## Unduh foto lewat QR (Cloudflare R2)
+
+Kalau dinyalakan, struk mencetak kode QR. Tamu men-scan-nya dan membuka halaman berisi **foto berwarna dengan frame**
+(tata letak sama dengan struk, resolusi 1080 piksel), bisa diunduh selama **7 hari**. Setelah itu berkasnya dihapus
+otomatis. Tahap berikutnya: Live Foto (boomerang) dan video slideshow, keduanya MP4.
+
+Cara kerjanya:
+
+- Setiap sesi mendapat kode acak 12 huruf yang sulit ditebak. Kode itulah isi QR-nya (`…/#s/kodenya`).
+- Setelah sesi selesai, tablet membuat foto berwarna dan mengunggahnya **langsung ke R2** lewat alamat sementara dari
+  Supabase. Kunci R2 tidak pernah ada di tablet. Kalau internet putus, berkasnya menunggu di tablet (tab
+  **Sambungan** menunjukkan jumlahnya) dan terkirim sendiri nanti.
+- Halaman unduh meminta tautan sementara (berlaku 1 jam) ke Supabase setiap kali dibuka. Bucket-nya tetap privat.
+- Dashboard → **Transaksi** menampilkan gambar kecil hasil foto, tombol **QR** (menampilkan kode QR-nya lagi kalau
+  struk tamu hilang) dan tombol **mata** (membuka halaman hasilnya). Tab **Transaksi** di tablet juga punya tombol QR.
+
+### Menyiapkan R2 (sekali saja)
+
+Letak menu di bawah ini ditulis dari ingatan dan bisa sedikit berbeda di dashboard Cloudflare.
+
+1. Cloudflare → **R2** → aktifkan R2 (Cloudflare biasanya meminta kartu atau PayPal walaupun tetap di kuota gratis).
+2. **Create bucket**, misalnya `hello-snaply-hasil`.
+3. Bucket → **Settings → Object lifecycle rules → Add rule**: awalan (prefix) `s/`, hapus objek setelah **7 hari**.
+4. Bucket → **Settings → CORS policy**, isi (ganti alamatnya dengan alamat Vercel-mu):
+
+   ```json
+   [
+     {
+       "AllowedOrigins": ["https://<nama-proyek>.vercel.app"],
+       "AllowedMethods": ["PUT", "GET", "HEAD"],
+       "AllowedHeaders": ["content-type"],
+       "MaxAgeSeconds": 3600
+     }
+   ]
+   ```
+
+5. R2 → **Manage R2 API Tokens → Create API token**: izin *Object Read & Write*, batasi ke bucket tadi. Catat
+   **Access Key ID** dan **Secret Access Key** (hanya ditampilkan sekali). **Account ID** ada di halaman R2.
+6. Supabase → Edge Functions → Secrets: isi `R2_ACCOUNT_ID`, `R2_ACCESS_KEY_ID`, `R2_SECRET_ACCESS_KEY`, `R2_BUCKET`.
+7. Dashboard → **Pengaturan → Unduh foto lewat QR** → nyalakan, lalu Simpan.
+
 ## Menghubungkan printer
 
 - **USB** — paling stabil dan paling cepat. Sambungkan lewat OTG/hub, tekan **Hubungkan**, pilih printer di jendela
@@ -302,8 +343,7 @@ Yang perlu diketahui:
 ## Yang belum ada
 
 - Pengembalian uang QRIS dari dashboard — saat ini dilakukan di DOKU Back Office.
-- Unduh foto lewat QR untuk tamu — butuh penyimpanan online. Saat ini petugas bisa mengunduh struk sebagai gambar dari
-  tab **Riwayat**.
+- Live Foto (boomerang) dan video slideshow untuk diunduh tamu — tahap berikutnya dari *Unduh foto lewat QR*.
 - Frame buatan sendiri (mengunggah desain bingkai) — saat ini tersedia tujuh frame bawaan; logo, judul, kutipan, kode
   QR, dan akun media sosial di struk bisa diatur sendiri.
 - Stiker dan tulisan dari tamu di langkah edit — saat ini tamu bisa mengganti gaya foto, mengganti frame, dan foto ulang.
