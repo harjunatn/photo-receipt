@@ -65,12 +65,20 @@ const BLE_PRINT_SERVICES = [
 /** Bytes that fit in one Bluetooth LE packet on every link, however little the two sides negotiated. */
 const BLE_SAFE_PACKET = 20;
 
-/** How long one attempt to open the Bluetooth link may take before it is abandoned. */
-export const BLE_ATTEMPT_MS = 8000;
+/**
+ * How long opening the Bluetooth link may take. This is where a printer that
+ * still believes in an old link hangs, so it is cut off fairly soon.
+ */
+export const BLE_LINK_MS = 12_000;
+/**
+ * How long reading the printer's services may take once the link is open.
+ * Android can need 10–15 s for this the first time, so it gets much longer.
+ */
+export const BLE_SERVICES_MS = 25_000;
 /** Attempts before giving up; a printer that still thinks it is connected often answers the second or third. */
 const BLE_ATTEMPTS = 3;
-/** Pause after closing a stale link, so the printer notices before the next attempt. */
-const BLE_SETTLE_MS = 600;
+/** Pause after closing a stale link, so the printer and Android's Bluetooth both notice before the next attempt. */
+const BLE_SETTLE_MS = 1000;
 
 const BLE_NOT_ANSWERING =
   'Printer Bluetooth tidak menjawab. Matikan printer, tunggu 5 detik, nyalakan lagi sampai lampunya berkedip, lalu tekan Hubungkan.';
@@ -83,13 +91,16 @@ class BluetoothTransport implements Transport {
   /** Set once this printer has refused a larger packet, so later prints skip the failed attempt. */
   private smallPacketsOnly = false;
 
+  /** The attempt in progress, so a manual connect and the automatic retry never open the link at the same time. */
+  private opening: Promise<void> | null = null;
+
   private readonly handleDisconnect = () => {
+    // While a link is being opened, its own closing of stale links fires this
+    // event too; that is not the printer going away.
+    if (this.opening) return;
     this.characteristic = null;
     this.onDisconnect?.();
   };
-
-  /** The attempt in progress, so a manual connect and the automatic retry never open the link at the same time. */
-  private opening: Promise<void> | null = null;
 
   async connect(): Promise<string> {
     const device = await navigator.bluetooth.requestDevice({
@@ -108,13 +119,16 @@ class BluetoothTransport implements Transport {
    */
   private open(device: BluetoothDevice): Promise<void> {
     const run = async () => {
+      // Already connected and working (e.g. an automatic retry queued behind a successful connect): leave it be.
+      if (device === this.device && device.gatt?.connected && this.characteristic) return;
       for (let attempt = 0; attempt < BLE_ATTEMPTS; attempt++) {
+        // A link the browser still holds without a working print channel is stale: close it first.
         if (device.gatt?.connected || attempt > 0) {
           device.gatt?.disconnect();
           await sleep(BLE_SETTLE_MS);
         }
         try {
-          await withTimeout(this.attach(device), BLE_ATTEMPT_MS, BLE_NOT_ANSWERING);
+          await this.attach(device);
           return;
         } catch (error) {
           // An attempt that timed out may still be pending inside the browser; close it before the next one.
@@ -156,9 +170,13 @@ class BluetoothTransport implements Transport {
     device.addEventListener('gattserverdisconnected', this.handleDisconnect);
     this.device = device;
 
-    const server = await device.gatt.connect();
-    // Throws when the device offers none of the print services, which lands in the same error below.
-    const services = await server.getPrimaryServices().catch(() => []);
+    const server = await withTimeout(device.gatt.connect(), BLE_LINK_MS, BLE_NOT_ANSWERING);
+    // Rejects when the device offers none of the print services, which lands in the same error below;
+    // only taking too long counts as not answering.
+    const services = await withTimeout(server.getPrimaryServices(), BLE_SERVICES_MS, BLE_NOT_ANSWERING).catch((error: unknown) => {
+      if (error instanceof Error && error.message === BLE_NOT_ANSWERING) throw error;
+      return [];
+    });
     for (const service of services) {
       const characteristics = await service.getCharacteristics().catch(() => []);
       const writable =

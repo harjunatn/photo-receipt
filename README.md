@@ -226,8 +226,8 @@ cadangan.
 - **Simulasi** — tidak mencetak; hasil tampil di layar.
 
 **Printer Bluetooth terputus dan tidak mau tersambung lagi** (lampu printer tetap menyala biru, tablet terus
-"menghubungkan"): printer masih menganggap sambungan lama aktif. Aplikasi mencoba tiga kali, masing-masing paling lama
-8 detik, dan menutup sambungan lama di antaranya. Kalau tetap gagal:
+"menghubungkan"): printer masih menganggap sambungan lama aktif. Aplikasi mencoba tiga kali (membuka sambungan paling
+lama 12 detik, membaca isi printer paling lama 25 detik), dan menutup sambungan lama di antaranya. Kalau tetap gagal:
 
 1. Matikan printer, tunggu 5 detik, nyalakan lagi sampai lampunya **berkedip** (siap disambungkan).
 2. Tekan **Hubungkan** di tab Printer.

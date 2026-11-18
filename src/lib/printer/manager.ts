@@ -29,10 +29,10 @@ const state = createStore<PrinterState>({
 
 let transport: Transport | null = null;
 /**
- * Counts connection attempts. A slow automatic reconnect that finishes after the
- * operator already pressed Connect must not overwrite the newer outcome.
+ * Goes up when the operator disconnects on purpose, so that an attempt still
+ * running from before does not connect the printer again behind their back.
  */
-let attempt = 0;
+let generation = 0;
 /** False once the operator disconnects on purpose, so the booth stops trying to reconnect. */
 let wanted = false;
 let retryTimer: ReturnType<typeof setTimeout> | undefined;
@@ -85,17 +85,18 @@ export const printer = {
   /** Opens the browser's printer chooser. Must be called from a tap handler. */
   async connect(): Promise<boolean> {
     clearTimeout(retryTimer);
-    const mine = ++attempt;
+    const mine = generation;
     patch({ status: 'connecting', error: '', kind: settingsStore.get().printer.transport });
     try {
       const active = ensureTransport();
       const deviceName = await active.connect(connectOptions());
-      if (mine !== attempt) return state.get().status === 'connected';
+      if (mine !== generation) return false;
       wanted = true;
       patch({ status: 'connected', deviceName, error: '' });
       return true;
     } catch (error) {
-      if (mine !== attempt) return false;
+      // Another attempt may have connected meanwhile; a late failure must not undo that.
+      if (mine !== generation || state.get().status === 'connected') return state.get().status === 'connected';
       patch({ status: 'disconnected', error: describe(error) });
       // The operator asked for this printer, so keep trying in the background too.
       if (wanted) scheduleRetry(5000);
@@ -107,27 +108,27 @@ export const printer = {
   async reconnect(): Promise<boolean> {
     const kind = settingsStore.get().printer.transport;
     if (!transportSupported(kind) || state.get().status !== 'disconnected') return false;
-    const mine = ++attempt;
+    const mine = generation;
     patch({ status: 'connecting', kind });
     try {
       const deviceName = await ensureTransport().reconnect(connectOptions());
-      if (mine !== attempt) return state.get().status === 'connected';
+      if (mine !== generation) return false;
       if (deviceName === null) {
-        patch({ status: 'disconnected' });
-        return false;
+        if (state.get().status !== 'connected') patch({ status: 'disconnected' });
+        return state.get().status === 'connected';
       }
       wanted = true;
       patch({ status: 'connected', deviceName, error: '' });
       return true;
     } catch {
-      if (mine === attempt) patch({ status: 'disconnected' });
+      if (mine === generation && state.get().status !== 'connected') patch({ status: 'disconnected' });
       return false;
     }
   },
 
   async disconnect(): Promise<void> {
     wanted = false;
-    attempt += 1;
+    generation += 1;
     clearTimeout(retryTimer);
     await transport?.disconnect().catch(() => undefined);
     transport = null;
