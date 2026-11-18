@@ -1,6 +1,8 @@
-import { useEffect, useRef, useState } from 'preact/hooks';
+import { useEffect, useMemo, useRef, useState } from 'preact/hooks';
 import { canvasToBlob } from '../lib/camera';
 import { queueTransaction } from '../lib/cloud/device';
+import { SHARE_DAYS, shareUrl } from '../lib/cloud/shared';
+import { qrShape } from '../lib/qr';
 import { saveSession } from '../lib/db';
 import type { BitImage } from '../lib/image/types';
 import { pokeIdle } from '../lib/kiosk';
@@ -20,6 +22,8 @@ type Phase = 'preparing' | 'ready' | 'printing' | 'done' | 'no-printer' | 'error
 
 /** Seconds the "take your receipt" message stays up before the booth resets for the next guest. */
 const RETURN_SECONDS = 15;
+/** Longer when there is a download QR code on screen, so the guest has time to scan it. */
+const RETURN_SECONDS_WITH_QR = 30;
 
 /** Step 5: records the session, prints the receipt and sends the guest off. */
 export function Result({ draft, onFinish }: Props) {
@@ -29,8 +33,9 @@ export function Result({ draft, onFinish }: Props) {
   const [message, setMessage] = useState('');
   const [askPin, setAskPin] = useState(false);
   const [staff, setStaff] = useState(false);
-  const [secondsLeft, setSecondsLeft] = useState(RETURN_SECONDS);
+  const [secondsLeft, setSecondsLeft] = useState(RETURN_SECONDS_WITH_QR);
   const started = useRef(false);
+  const returnSeconds = draft.shareCode ? RETURN_SECONDS_WITH_QR : RETURN_SECONDS;
 
   const print = async (image: BitImage) => {
     if (printer.state.get().status === 'disconnected') await printer.reconnect();
@@ -139,7 +144,7 @@ export function Result({ draft, onFinish }: Props) {
 
   useEffect(() => {
     if (phase !== 'done') return;
-    setSecondsLeft(RETURN_SECONDS);
+    setSecondsLeft(returnSeconds);
     const timer = setInterval(() => setSecondsLeft((n) => n - 1), 1000);
     return () => clearInterval(timer);
   }, [phase]);
@@ -195,7 +200,7 @@ export function Result({ draft, onFinish }: Props) {
             <>
               <span class="tag ok">Selesai</span>
               <h1 class="heading">Ambil strukmu di bawah</h1>
-              <p class="lead">Terima kasih sudah berfoto. Sampai jumpa lagi!</p>
+              {draft.shareCode ? <ShareCode code={draft.shareCode} /> : <p class="lead">Terima kasih sudah berfoto. Sampai jumpa lagi!</p>}
               <button class="btn primary huge" onClick={onFinish}>
                 Selesai ({Math.max(0, secondsLeft)})
               </button>
@@ -209,6 +214,7 @@ export function Result({ draft, onFinish }: Props) {
               <p class="lead">
                 {phase === 'error' ? message : 'Printer belum terhubung.'} Fotomu aman tersimpan dan bisa dicetak ulang.
               </p>
+              {draft.shareCode && <ShareCode code={draft.shareCode} />}
               {staff ? (
                 <div class="row">
                   <button class="btn primary" onClick={() => void connectAndPrint()}>
@@ -242,6 +248,24 @@ export function Result({ draft, onFinish }: Props) {
           }}
         />
       )}
+    </div>
+  );
+}
+
+/** The download QR code on screen, for guests who reach for their phone before their receipt. */
+function ShareCode({ code }: { code: string }) {
+  const shape = useMemo(() => qrShape(shareUrl(code)), [code]);
+  if (!shape) return null;
+  return (
+    <div class="result-share">
+      <svg viewBox={`0 0 ${shape.size} ${shape.size}`} role="img" aria-label="Kode QR untuk mengunduh foto" shape-rendering="crispEdges">
+        <rect width={shape.size} height={shape.size} fill="#fff" />
+        <path d={shape.path} fill="#000" />
+      </svg>
+      <div>
+        <b>Scan untuk unduh fotomu</b>
+        <span class="note">Foto berwarna dengan frame, tersedia {SHARE_DAYS} hari. Kode yang sama juga tercetak di struk.</span>
+      </div>
     </div>
   );
 }

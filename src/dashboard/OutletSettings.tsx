@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'preact/hooks';
 import { AreaField, Check, ImageField, NumberField, Segmented, TextField } from '../admin/fields';
-import { completeOutlet, outletFromSettings, type OutletConfig } from '../lib/cloud/shared';
+import { completeOutlet, outletFromSettings, SHARE_DAYS, type OutletConfig } from '../lib/cloud/shared';
 import { DEFAULT_SETTINGS, formatRupiah } from '../lib/settings';
 import { toast } from '../ui/components';
 import type { PageProps } from './Dashboard';
@@ -131,7 +131,7 @@ export function OutletSettings({ api }: PageProps) {
           <h2>Unduh foto lewat QR</h2>
           <Check
             label="Tamu bisa mengunduh hasil fotonya"
-            hint="Struk mencetak kode QR. Tamu membuka halaman berisi foto berwarna dengan frame, bisa diunduh selama 7 hari, lalu dihapus otomatis."
+            hint={`Struk mencetak kode QR. Tamu membuka halaman berisi foto berwarna dengan frame, bisa diunduh selama ${SHARE_DAYS} hari, lalu dihapus otomatis.`}
             checked={draft.share.enabled}
             onChange={(v) => edit((d) => void (d.share.enabled = v))}
           />

@@ -79,8 +79,11 @@ export function applyRemote(settings: Settings, outlet: unknown, frames: unknown
   return next;
 }
 
-/** Days a guest's digital copies stay downloadable; R2 deletes them after this. */
-export const SHARE_DAYS = 7;
+/**
+ * Days a guest's digital copies stay downloadable. Must match the lifecycle rule
+ * on the R2 bucket and the interval in share_claim (supabase/schema.sql).
+ */
+export const SHARE_DAYS = 3;
 
 /** Lower-case letters and digits that cannot be confused with each other (no l/1, o/0). */
 const SHARE_ALPHABET = 'abcdefghijkmnpqrstuvwxyz23456789';

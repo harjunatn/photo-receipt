@@ -63,7 +63,7 @@ function world() {
       calls.push(name);
       if (name === 'share_claim') {
         if (args.p_token !== 'tablet-a' && args.p_token !== 'tablet-b') return json({ error: 'unpaired' });
-        const row = shares.get(args.p_code) ?? { device: args.p_token, files: {}, created_at: NOW.toISOString(), expires_at: new Date(NOW.getTime() + 7 * 86_400_000).toISOString() };
+        const row = shares.get(args.p_code) ?? { device: args.p_token, files: {}, created_at: NOW.toISOString(), expires_at: new Date(NOW.getTime() + 3 * 86_400_000).toISOString() };
         shares.set(args.p_code, row);
         return json(row.device === args.p_token ? { ok: true, expires_at: row.expires_at } : { error: 'taken' });
       }
@@ -195,11 +195,11 @@ describe('share-get', () => {
     expect(share.files.thumb).toBeTruthy();
   });
 
-  it('answers pending before the photo arrives, and expired after seven days', async () => {
+  it('answers pending before the photo arrives, and expired once its days are over', async () => {
     const { fetchFn } = await uploaded(['thumb']);
     expect(((await handleShareGet({ code: 'abc234defg56' }, env(), fetchFn, now)).body.shares as { status: string }[])[0].status).toBe('pending');
     expect(((await handleShareGet({ code: 'zzzzzzzzzzzz' }, env(), fetchFn, now)).body.shares as { status: string }[])[0].status).toBe('pending');
-    const later = () => new Date(NOW.getTime() + 8 * 86_400_000);
+    const later = () => new Date(NOW.getTime() + 4 * 86_400_000);
     const expired = (await handleShareGet({ code: 'abc234defg56' }, env(), fetchFn, later)).body.shares as { status: string; files?: unknown }[];
     expect(expired[0].status).toBe('expired');
     expect(expired[0].files).toBeUndefined();

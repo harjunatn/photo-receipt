@@ -1,7 +1,7 @@
 import '../dashboard/dashboard.css';
 import './share.css';
 import { useEffect, useState } from 'preact/hooks';
-import { cloudConfigured, SUPABASE_KEY, SUPABASE_URL } from '../lib/cloud/shared';
+import { cloudConfigured, SHARE_DAYS, SUPABASE_KEY, SUPABASE_URL } from '../lib/cloud/shared';
 
 type Kind = 'photo' | 'live' | 'slideshow';
 interface ShareFile {
@@ -41,7 +41,7 @@ function longDate(iso: string | undefined): string {
   return new Date(iso).toLocaleDateString('id-ID', { weekday: 'long', day: 'numeric', month: 'long', year: 'numeric' });
 }
 
-/** The page a guest opens from the QR code on their receipt: their photos to view and save, for seven days. */
+/** The page a guest opens from the QR code on their receipt: their photos to view and save, for a few days. */
 export function SharePage() {
   const code = codeFromHash();
   const [answer, setAnswer] = useState<Answer | null>(null);
@@ -103,7 +103,7 @@ export function SharePage() {
       ) : share?.status === 'expired' ? (
         <section class="share-note">
           <p class="lead">Masa simpan fotomu sudah habis.</p>
-          <p class="hint">Hasil foto digital hanya disimpan 7 hari, lalu dihapus otomatis.</p>
+          <p class="hint">Hasil foto digital hanya disimpan {SHARE_DAYS} hari, lalu dihapus otomatis.</p>
         </section>
       ) : waiting ? (
         <section class="share-note">

@@ -170,7 +170,7 @@ libur panjang, bangunkan proyeknya dari dashboard Supabase (transaksi yang menun
 ## Unduh foto lewat QR (Cloudflare R2)
 
 Kalau dinyalakan, struk mencetak kode QR. Tamu men-scan-nya dan membuka halaman berisi **foto berwarna dengan frame**
-(tata letak sama dengan struk, resolusi 1080 piksel), bisa diunduh selama **7 hari**. Setelah itu berkasnya dihapus
+(tata letak sama dengan struk, resolusi 1080 piksel), bisa diunduh selama **3 hari**. Setelah itu berkasnya dihapus
 otomatis. Tahap berikutnya: Live Foto (boomerang) dan video slideshow, keduanya MP4.
 
 Cara kerjanya:
@@ -189,7 +189,7 @@ Letak menu di bawah ini ditulis dari ingatan dan bisa sedikit berbeda di dashboa
 
 1. Cloudflare → **R2** → aktifkan R2 (Cloudflare biasanya meminta kartu atau PayPal walaupun tetap di kuota gratis).
 2. **Create bucket**, misalnya `hello-snaply-hasil`.
-3. Bucket → **Settings → Object lifecycle rules → Add rule**: awalan (prefix) `s/`, hapus objek setelah **7 hari**.
+3. Bucket → **Settings → Object lifecycle rules → Add rule**: awalan (prefix) `s/`, hapus objek setelah **3 hari**.
 4. Bucket → **Settings → CORS policy**, isi (ganti alamatnya dengan alamat Vercel-mu):
 
    ```json
@@ -207,6 +207,10 @@ Letak menu di bawah ini ditulis dari ingatan dan bisa sedikit berbeda di dashboa
    **Access Key ID** dan **Secret Access Key** (hanya ditampilkan sekali). **Account ID** ada di halaman R2.
 6. Supabase → Edge Functions → Secrets: isi `R2_ACCOUNT_ID`, `R2_ACCESS_KEY_ID`, `R2_SECRET_ACCESS_KEY`, `R2_BUCKET`.
 7. Dashboard → **Pengaturan → Unduh foto lewat QR** → nyalakan, lalu Simpan.
+
+Masa simpan 3 hari tertulis di tiga tempat yang harus sama: aturan hapus di bucket R2, `SHARE_DAYS` di
+[`src/lib/cloud/shared.ts`](src/lib/cloud/shared.ts), dan `interval '3 days'` di fungsi `share_claim` pada
+[`supabase/schema.sql`](supabase/schema.sql).
 
 ## Menghubungkan printer
 

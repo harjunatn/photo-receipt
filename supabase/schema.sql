@@ -135,7 +135,7 @@ create index if not exists payments_device on public.payments (device_id, create
 
 alter table public.transactions add column if not exists payment_id uuid references public.payments (id) on delete set null;
 
--- Hasil foto digital yang bisa diunduh tamu lewat QR di struk, selama 7 hari. Berkasnya ada di
+-- Hasil foto digital yang bisa diunduh tamu lewat QR di struk, selama 3 hari (sama dengan aturan hapus di R2). Berkasnya ada di
 -- Cloudflare R2; di sini hanya catatan berkas mana yang sudah terunggah.
 create table if not exists public.shares (
   -- Kode acak yang tercetak di struk (12 huruf/angka kecil). Sulit ditebak, jadi menjadi kuncinya.
@@ -586,7 +586,8 @@ grant execute on function public.payment_settle(uuid, text, jsonb) to service_ro
 -- ---------------------------------------------------------------- hasil foto (hanya untuk Edge Functions)
 
 -- Mendaftarkan kode hasil foto untuk tablet ini sebelum berkasnya diunggah. Kode yang sudah
--- dipakai tablet lain ditolak. Masa simpan 7 hari dihitung sejak pendaftaran pertama.
+-- dipakai tablet lain ditolak. Masa simpan 3 hari dihitung sejak pendaftaran pertama; samakan dengan
+-- aturan hapus otomatis di bucket R2 dan SHARE_DAYS di src/lib/cloud/shared.ts.
 create or replace function public.share_claim(p_token text, p_code text)
 returns jsonb
 language plpgsql security definer set search_path = public
@@ -603,7 +604,7 @@ begin
     return jsonb_build_object('error', 'bad-code');
   end if;
   insert into shares (code, device_id, device_name, expires_at)
-  values (p_code, d.id, d.name, now() + interval '7 days')
+  values (p_code, d.id, d.name, now() + interval '3 days')
   on conflict (code) do nothing;
   select * into s from shares where code = p_code;
   if s.device_id is distinct from d.id then
