@@ -216,17 +216,33 @@ Masa simpan 3 hari tertulis di tiga tempat yang harus sama: aturan hapus di buck
 
 - **USB** — paling stabil dan paling cepat. Sambungkan lewat OTG/hub, tekan **Hubungkan**, pilih printer di jendela
   Chrome, lalu izinkan. Kalau printer tidak muncul di daftar, nyalakan *Tampilkan semua perangkat USB*.
-- **Bluetooth** — untuk printer dengan Bluetooth Low Energy (BLE). Jangan pairing dari pengaturan Android; cukup pilih
-  printernya di jendela Chrome. Kalau printernya tidak muncul di daftar, ia memakai Bluetooth klasik — pakai **Serial**.
-- **Serial** — untuk printer Bluetooth klasik: pairing dulu di pengaturan Bluetooth tablet, lalu tekan **Hubungkan** dan
-  pilih printernya. Juga untuk adaptor serial.
-
-Printer yang punya USB dan Bluetooth: pakai **USB** sebagai sambungan utama (lebih cepat dan stabil), Bluetooth sebagai
-cadangan.
+- **Serial** — **cara yang dianjurkan untuk printer Bluetooth yang punya PIN** (tercantum di halaman tes printer,
+  misalnya P7A dengan PIN 0000). Ini Bluetooth "biasa", jalur yang juga dipakai aplikasi printer Android pada umumnya.
+  Juga untuk printer dengan adaptor serial. Butuh Chrome versi 138 ke atas.
+- **Bluetooth** — Bluetooth Low Energy (BLE), untuk printer yang hanya punya BLE. Tidak perlu pairing di Android;
+  printer dipilih di jendela Chrome. Di beberapa printer dan HP sambungannya kurang stabil, dan setiap kali aplikasi
+  dimuat ulang atau diperbarui, printer BLE harus dihubungkan ulang dengan tangan.
 - **Simulasi** — tidak mencetak; hasil tampil di layar.
 
-**Printer Bluetooth terputus dan tidak mau tersambung lagi** (lampu printer tetap menyala biru, tablet terus
-"menghubungkan"): printer masih menganggap sambungan lama aktif. Aplikasi mencoba tiga kali (membuka sambungan paling
+Printer yang punya USB dan Bluetooth: pakai **USB** sebagai sambungan utama, Bluetooth (Serial) sebagai cadangan.
+
+### Menyambungkan printer Bluetooth lewat Serial (sekali saja per tablet)
+
+1. Nyalakan printer.
+2. Di tablet: **Pengaturan → Koneksi → Bluetooth**, pindai, ketuk nama printernya (misalnya **P7A**), lalu masukkan PIN
+   dari halaman tes printer (biasanya `0000` atau `1234`).
+3. Di aplikasi: ⚙ → PIN petugas → **Printer** → Jenis koneksi **Serial** → **Hubungkan** → pilih printernya.
+4. Tekan **Tes cetak**.
+
+Setelah itu printer tidak perlu dipilih lagi: aplikasi menyambung sendiri saat dibuka, setelah dimuat ulang atau
+diperbarui, dan tepat sebelum mencetak kalau sambungannya sedang lepas. Android tidak mengabarkan kalau printer mati,
+jadi kalau printer sempat dimatikan, cetakan pertama sesudahnya bisa gagal. Aplikasi lalu menyambung lagi sendiri paling
+lama sekitar 30 detik setelah printer menyala, atau langsung saat petugas menekan **Coba cetak lagi**. Jangan
+menyambungkan printer yang sama ke dua tablet sekaligus: printer seperti ini hanya melayani satu perangkat dalam satu
+waktu.
+
+**Printer Bluetooth (BLE) terputus dan tidak mau tersambung lagi** (lampu printer tetap menyala biru, tablet terus
+"menghubungkan"). Kalau printernya punya PIN, cara termudah adalah pindah ke **Serial** seperti di atas. Untuk BLE: printer masih menganggap sambungan lama aktif. Aplikasi mencoba tiga kali (membuka sambungan paling
 lama 12 detik, membaca isi printer paling lama 25 detik), dan menutup sambungan lama di antaranya. Kalau tetap gagal:
 
 1. Matikan printer, tunggu 5 detik, nyalakan lagi sampai lampunya **berkedip** (siap disambungkan).

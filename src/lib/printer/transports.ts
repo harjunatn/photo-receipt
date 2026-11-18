@@ -364,37 +364,71 @@ class UsbTransport implements Transport {
 
 const SERIAL_CHUNK = 512;
 
+/**
+ * The classic Bluetooth Serial Port Profile. Chrome on Android (138 and later)
+ * offers printers paired in Android's Bluetooth settings as serial ports with
+ * this service; dual-mode receipt printers such as the P7A print reliably this way.
+ */
+const BLUETOOTH_SPP = '00001101-0000-1000-8000-00805f9b34fb';
+
+/** Fields of the Web Serial API that the bundled DOM types do not describe yet. */
+type BluetoothSerialRequest = { allowedBluetoothServiceClassIds?: string[] };
+type BluetoothSerialInfo = { bluetoothServiceClassId?: string | number };
+
 class SerialTransport implements Transport {
   readonly kind = 'serial' as const;
   onDisconnect: (() => void) | null = null;
   private port: SerialPort | null = null;
   private writer: WritableStreamDefaultWriter<Uint8Array> | null = null;
 
+  /** The port went away. Android never fires the 'disconnect' event for Bluetooth ports, so a failed write lands here too. */
   private readonly handleDisconnect = () => {
+    const { port, writer } = this;
     this.port = null;
     this.writer = null;
+    port?.removeEventListener('disconnect', this.handleDisconnect);
+    try {
+      writer?.releaseLock();
+    } catch {
+      // The stream is already broken.
+    }
+    // Closed so that the next attempt can open the same port again.
+    void port?.close().catch(() => undefined);
     this.onDisconnect?.();
   };
 
   async connect(options: ConnectOptions): Promise<string> {
-    await this.open(await navigator.serial.requestPort(), options.baudRate);
-    return 'Printer serial';
+    const request: SerialPortRequestOptions & BluetoothSerialRequest = { allowedBluetoothServiceClassIds: [BLUETOOTH_SPP] };
+    const port = await navigator.serial.requestPort(request);
+    // Picking the printer again while it is open: start from a clean port.
+    if (this.port) await this.disconnect();
+    await this.open(port, options.baudRate);
+    return portName(port);
   }
 
   async reconnect(options: ConnectOptions): Promise<string | null> {
+    // Chrome remembers ports the page was given, also after a reload, so a paired
+    // Bluetooth printer comes back without anyone picking it again.
     for (const port of await navigator.serial.getPorts()) {
       try {
         await this.open(port, options.baudRate);
-        return 'Printer serial';
+        return portName(port);
       } catch {
-        // Port busy or gone: try the next one.
+        // Port busy, printer off or out of range: try the next one.
       }
     }
     return null;
   }
 
   private async open(port: SerialPort, baudRate: number): Promise<void> {
-    await port.open({ baudRate });
+    try {
+      await port.open({ baudRate });
+    } catch (error) {
+      // A port left open by an earlier attempt that failed half-way: close it and try once more.
+      if (!(error instanceof DOMException && error.name === 'InvalidStateError')) throw error;
+      await port.close().catch(() => undefined);
+      await port.open({ baudRate });
+    }
     if (!port.writable) {
       await port.close();
       throw new Error('Port serial ini tidak bisa ditulisi.');
@@ -416,10 +450,22 @@ class SerialTransport implements Transport {
   async write(data: Bytes): Promise<void> {
     const writer = this.writer;
     if (!writer) throw new Error('Printer serial belum terhubung.');
-    for (let offset = 0; offset < data.length; offset += SERIAL_CHUNK) {
-      await writer.write(data.subarray(offset, offset + SERIAL_CHUNK));
+    try {
+      for (let offset = 0; offset < data.length; offset += SERIAL_CHUNK) {
+        await writer.write(data.subarray(offset, offset + SERIAL_CHUNK));
+      }
+    } catch (error) {
+      // The printer was switched off or went out of range: report it, so the booth reconnects when it is back.
+      if (this.writer === writer) this.handleDisconnect();
+      throw error;
     }
   }
+}
+
+/** "Printer Bluetooth (P7A…)" is not available from the port, so say which kind of link it is. */
+function portName(port: SerialPort): string {
+  const info = port.getInfo() as SerialPortInfo & BluetoothSerialInfo;
+  return info.bluetoothServiceClassId !== undefined ? 'Printer Bluetooth (serial)' : 'Printer serial';
 }
 
 /** Collects the job instead of printing it, so it can be shown on screen. */

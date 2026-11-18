@@ -12,9 +12,9 @@ import { Check, NumberField, Segmented, Slider } from './fields';
 const KIND_HINTS: Record<TransportKind, string> = {
   usb: 'Sambungkan printer ke tablet dengan kabel (lewat OTG / USB hub). Tekan Hubungkan, pilih printernya di jendela Chrome, lalu izinkan.',
   bluetooth:
-    'Untuk printer dengan Bluetooth Low Energy (BLE). Nyalakan printer, tekan Hubungkan, lalu pilih printernya di jendela Chrome — tidak perlu pairing lewat pengaturan Android. Kalau printernya tidak muncul di daftar, berarti ia memakai Bluetooth klasik: pilih jenis koneksi Serial. Bluetooth lebih lambat daripada USB; untuk booth yang ramai, pakai USB.',
+    'Untuk printer dengan Bluetooth Low Energy (BLE). Nyalakan printer, tekan Hubungkan, lalu pilih printernya di jendela Chrome — tidak perlu pairing lewat pengaturan Android. Printer yang halaman tes-nya mencantumkan PIN (misalnya P7A) lebih stabil lewat jenis koneksi Serial. Setelah aplikasi diperbarui, printer BLE harus dihubungkan ulang.',
   serial:
-    'Untuk printer Bluetooth klasik. Pairing dulu printernya di pengaturan Bluetooth tablet, lalu tekan Hubungkan dan pilih printernya. Juga untuk printer dengan adaptor serial.',
+    'Untuk printer Bluetooth biasa (yang punya PIN, misalnya P7A) dan printer dengan adaptor serial. Sekali saja: pairing printernya di Pengaturan → Bluetooth tablet (PIN biasanya 0000 atau 1234), lalu tekan Hubungkan dan pilih printernya. Setelah itu aplikasi menyambung sendiri, juga setelah dimuat ulang atau diperbarui. Butuh Chrome versi 138 ke atas.',
   preview: 'Tidak mencetak ke kertas. Hasil cetak ditampilkan di layar — cocok untuk mencoba aplikasi tanpa printer.',
 };
 
@@ -283,6 +283,7 @@ export function PrinterTab() {
           />
           <Segmented
             label="Serial: kecepatan (baud)"
+            hint="Hanya untuk printer dengan kabel/adaptor serial; printer Bluetooth tidak terpengaruh."
             value={p.baudRate}
             options={[9600, 19200, 38400, 57600, 115200].map((value) => ({ value, label: String(value) }))}
             onChange={(baud) => edit((s) => void (s.printer.baudRate = baud))}
