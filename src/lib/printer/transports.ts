@@ -65,6 +65,16 @@ const BLE_PRINT_SERVICES = [
 /** Bytes that fit in one Bluetooth LE packet on every link, however little the two sides negotiated. */
 const BLE_SAFE_PACKET = 20;
 
+/** How long one attempt to open the Bluetooth link may take before it is abandoned. */
+export const BLE_ATTEMPT_MS = 8000;
+/** Attempts before giving up; a printer that still thinks it is connected often answers the second or third. */
+const BLE_ATTEMPTS = 3;
+/** Pause after closing a stale link, so the printer notices before the next attempt. */
+const BLE_SETTLE_MS = 600;
+
+const BLE_NOT_ANSWERING =
+  'Printer Bluetooth tidak menjawab. Matikan printer, tunggu 5 detik, nyalakan lagi sampai lampunya berkedip, lalu tekan Hubungkan.';
+
 class BluetoothTransport implements Transport {
   readonly kind = 'bluetooth' as const;
   onDisconnect: (() => void) | null = null;
@@ -78,13 +88,50 @@ class BluetoothTransport implements Transport {
     this.onDisconnect?.();
   };
 
+  /** The attempt in progress, so a manual connect and the automatic retry never open the link at the same time. */
+  private opening: Promise<void> | null = null;
+
   async connect(): Promise<string> {
     const device = await navigator.bluetooth.requestDevice({
       acceptAllDevices: true,
       optionalServices: BLE_PRINT_SERVICES,
     });
-    await this.attach(device);
+    await this.open(device);
     return device.name || 'Printer Bluetooth';
+  }
+
+  /**
+   * Opens the link, a few times if need be. Each attempt first closes whatever
+   * is left of an earlier link: after a dropped connection the printer can
+   * still believe it is connected (its light stays on), and a new attempt then
+   * waits forever unless the old link is closed and the attempt timed out.
+   */
+  private open(device: BluetoothDevice): Promise<void> {
+    const run = async () => {
+      for (let attempt = 0; attempt < BLE_ATTEMPTS; attempt++) {
+        if (device.gatt?.connected || attempt > 0) {
+          device.gatt?.disconnect();
+          await sleep(BLE_SETTLE_MS);
+        }
+        try {
+          await withTimeout(this.attach(device), BLE_ATTEMPT_MS, BLE_NOT_ANSWERING);
+          return;
+        } catch (error) {
+          // An attempt that timed out may still be pending inside the browser; close it before the next one.
+          device.gatt?.disconnect();
+          this.characteristic = null;
+          // Not a printer at all: trying again will not change that.
+          if (error instanceof Error && error.message.startsWith('Perangkat ini')) throw error;
+        }
+      }
+      throw new Error(BLE_NOT_ANSWERING);
+    };
+    // Wait for any attempt already running, then make this one.
+    const next = (this.opening ?? Promise.resolve()).catch(() => undefined).then(run);
+    this.opening = next;
+    return next.finally(() => {
+      if (this.opening === next) this.opening = null;
+    });
   }
 
   async reconnect(): Promise<string | null> {
@@ -96,7 +143,7 @@ class BluetoothTransport implements Transport {
     }
     if (!device) return null;
     try {
-      await withTimeout(this.attach(device), 10_000, 'Printer tidak merespons.');
+      await this.open(device);
       return device.name || 'Printer Bluetooth';
     } catch {
       return null;

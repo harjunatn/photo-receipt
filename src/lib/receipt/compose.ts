@@ -77,7 +77,7 @@ export function composeReceipt(input: ReceiptInput): ComposedReceipt {
     page.gap(14);
     page.text('SCAN UNTUK UNDUH FOTOMU', 24, { bold: true });
     page.gap(8);
-    page.qr(input.share.url, 260);
+    page.qr(input.share.url, 0.72);
     page.gap(6);
     page.text(`Foto digital berwarna, tersedia ${input.share.days} hari.`, 18);
     page.gap(14);
@@ -85,7 +85,7 @@ export function composeReceipt(input: ReceiptInput): ComposedReceipt {
     page.gap(14);
   }
   if (t.qrUrl.trim()) {
-    page.qr(t.qrUrl.trim(), 230);
+    page.qr(t.qrUrl.trim(), 0.5);
     if (t.qrCaption.trim()) {
       page.gap(2);
       page.text(t.qrCaption.trim(), 18);

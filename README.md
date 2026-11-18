@@ -225,6 +225,19 @@ Printer yang punya USB dan Bluetooth: pakai **USB** sebagai sambungan utama (leb
 cadangan.
 - **Simulasi** — tidak mencetak; hasil tampil di layar.
 
+**Printer Bluetooth terputus dan tidak mau tersambung lagi** (lampu printer tetap menyala biru, tablet terus
+"menghubungkan"): printer masih menganggap sambungan lama aktif. Aplikasi mencoba tiga kali, masing-masing paling lama
+8 detik, dan menutup sambungan lama di antaranya. Kalau tetap gagal:
+
+1. Matikan printer, tunggu 5 detik, nyalakan lagi sampai lampunya **berkedip** (siap disambungkan).
+2. Tekan **Hubungkan** di tab Printer.
+3. Kalau masih gagal: matikan lalu nyalakan Bluetooth tablet, atau muat ulang aplikasinya.
+4. Pastikan tidak ada aplikasi lain (aplikasi bawaan printer, aplikasi kasir) yang sedang tersambung ke printer itu,
+   dan printer tidak di-*pair* lewat pengaturan Bluetooth Android. Printer BLE hanya menerima satu sambungan.
+
+Sambungan yang sering putus biasanya karena jarak atau halangan, baterai printer lemah, atau printer masuk mode hemat
+daya. Kalau printernya punya USB, USB tetap paling stabil untuk booth.
+
 Setelah halaman dimuat ulang, aplikasi mencoba menyambung kembali sendiri. Jika printer baru saja dicabut atau
 dimatikan, Chrome kadang meminta printer dipilih ulang lewat tombol **Hubungkan**.
 

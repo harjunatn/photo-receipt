@@ -6,6 +6,8 @@ const BASE_WIDTH = 576;
 const FONT = '"Space Mono", ui-monospace, Menlo, Consolas, monospace';
 export const INK = '#000';
 const PAPER = '#fff';
+/** Smallest QR square: 6 dots is 0.75 mm on a 203 dpi head, big enough for a phone camera after the ink spreads. */
+const MIN_QR_CELL = 6;
 
 export interface ComposedReceipt {
   canvas: HTMLCanvasElement;
@@ -30,6 +32,19 @@ export function formatDateTime(when: Date): string {
 
 export function sessionCode(when: Date, sessionNo: number): string {
   return `${when.getFullYear()}${pad(when.getMonth() + 1)}${pad(when.getDate())}-${pad(sessionNo, 3)}`;
+}
+
+/** White squares scanners expect around a QR code. */
+export const QR_QUIET = 4;
+
+/**
+ * Dots per QR square for a code of `modules` squares: about `share` of the
+ * printable width, never below MIN_QR_CELL, never wider than the paper.
+ */
+export function qrCellSize(modules: number, inner: number, width: number, share: number): number {
+  const span = modules + QR_QUIET * 2;
+  const wanted = Math.max(MIN_QR_CELL, Math.floor((inner * share) / span));
+  return Math.max(2, Math.min(wanted, Math.floor(width / span)));
 }
 
 /** A tall white sheet that is drawn top to bottom and cropped to its content at the end. */
@@ -235,7 +250,13 @@ export class Page {
     this.ctx.fill();
   }
 
-  qr(text: string, size: number): void {
+  /**
+   * A QR code centred on the paper, taking up about `share` of the printable
+   * width. Thermal dots spread a little, so each square is kept at least
+   * MIN_QR_CELL dots wide, and the white border around it is the full four
+   * squares scanners expect.
+   */
+  qr(text: string, share: number): void {
     let code;
     try {
       code = qrcode(0, 'M');
@@ -244,9 +265,9 @@ export class Page {
     } catch {
       return; // Text too long for a QR code: leave it out rather than fail the print.
     }
-    const quiet = 2;
+    const quiet = QR_QUIET;
     const modules = code.getModuleCount();
-    const cell = Math.max(2, Math.floor(this.px(size) / (modules + quiet * 2)));
+    const cell = qrCellSize(modules, this.inner, this.width, share);
     const total = cell * (modules + quiet * 2);
     const left = Math.round((this.width - total) / 2) + quiet * cell;
     this.ctx.fillStyle = INK;
