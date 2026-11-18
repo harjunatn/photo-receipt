@@ -1,4 +1,5 @@
 import type { PayMethod } from '../log';
+import type { StatRow } from '../../dashboard/stats';
 import { printer } from '../printer/manager';
 import { settingsStore } from '../settings';
 import { createPersistedStore, createStore } from '../store';
@@ -328,4 +329,57 @@ export async function cancelQris(id: string): Promise<QrisStatus> {
     // Left on the open list; the background sync settles it later.
     return 'offline';
   }
+}
+
+/** One finished session as the server has it. */
+export interface BoothTx {
+  id: string;
+  at: string;
+  session_no: number | null;
+  frame: string | null;
+  package: string | null;
+  price: number;
+  method: PayMethod;
+  voucher_code: string | null;
+  prints: number;
+}
+
+const zone = () => Intl.DateTimeFormat().resolvedOptions().timeZone || 'Asia/Jakarta';
+
+/** This tablet's sales per day and way of paying, from the server. Throws when it cannot be reached. */
+export async function fetchBoothStats(from: Date, to: Date): Promise<StatRow[]> {
+  const pairing = pairingStore.get();
+  if (!pairing) throw new Error('Tablet ini belum tersambung ke dashboard.');
+  const result = await rpc<{ rows?: StatRow[]; error?: string }>('device_stats', {
+    p_token: pairing.token,
+    p_from: from.toISOString(),
+    p_to: to.toISOString(),
+    p_tz: zone(),
+  });
+  if (result.error === 'unpaired') revoked();
+  if (result.error || !result.rows) throw new Error('Tablet ini tidak lagi tersambung ke dashboard.');
+  return result.rows;
+}
+
+/** One page of this tablet's sessions, newest first, from the server. */
+export async function fetchBoothTransactions(
+  from: Date,
+  to: Date,
+  method: PayMethod | '',
+  offset: number,
+  limit: number,
+): Promise<{ rows: BoothTx[]; total: number }> {
+  const pairing = pairingStore.get();
+  if (!pairing) throw new Error('Tablet ini belum tersambung ke dashboard.');
+  const result = await rpc<{ rows?: BoothTx[]; total?: number; error?: string }>('device_transactions', {
+    p_token: pairing.token,
+    p_from: from.toISOString(),
+    p_to: to.toISOString(),
+    p_method: method || null,
+    p_offset: offset,
+    p_limit: limit,
+  });
+  if (result.error === 'unpaired') revoked();
+  if (result.error || !result.rows) throw new Error('Tablet ini tidak lagi tersambung ke dashboard.');
+  return { rows: result.rows, total: result.total ?? 0 };
 }

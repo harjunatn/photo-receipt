@@ -118,7 +118,7 @@ export function Overview({ api, go }: PageProps) {
   );
 }
 
-function Tile({ label, value, note }: { label: string; value: string; note: string }) {
+export function Tile({ label, value, note }: { label: string; value: string; note: string }) {
   return (
     <div class="tile">
       <span>{label}</span>
@@ -134,7 +134,7 @@ function dayLabel(day: string, long: boolean): string {
 }
 
 /** Revenue per day as bars. Pointing at (or tapping) a bar reads out its day above the chart. */
-function DayChart({ points }: { points: (Totals & { day: string })[] }) {
+export function DayChart({ points }: { points: (Totals & { day: string })[] }) {
   const [active, setActive] = useState<number | null>(null);
   const top = niceCeiling(Math.max(...points.map((point) => point.revenue)));
   const sum = points.reduce((acc, point) => acc + point.revenue, 0);
@@ -189,7 +189,7 @@ function DayChart({ points }: { points: (Totals & { day: string })[] }) {
 }
 
 /** A ranked list where each row's bar shows its share of the largest row. */
-function Shares({ rows, measure }: { rows: (Totals & { key: string; label: string })[]; measure: 'sessions' | 'revenue' }) {
+export function Shares({ rows, measure }: { rows: (Totals & { key: string; label: string })[]; measure: 'sessions' | 'revenue' }) {
   const largest = Math.max(1, ...rows.map((row) => row[measure]));
   if (rows.length === 0) return <p class="hint">Belum ada data pada rentang ini.</p>;
   return (

@@ -2,6 +2,8 @@ import { useEffect, useState } from 'preact/hooks';
 import { pairingStore } from '../lib/cloud/device';
 import { printer, usePrinter } from '../lib/printer/manager';
 import { Overlay, ReceiptPaper } from '../ui/components';
+import { BoothSalesTab } from './BoothSalesTab';
+import { BoothTxTab } from './BoothTxTab';
 import { CloudTab } from './CloudTab';
 import { HistoryTab } from './HistoryTab';
 import { PrinterTab } from './PrinterTab';
@@ -11,6 +13,8 @@ import { SystemTab } from './SystemTab';
 
 const TABS = [
   { id: 'summary', label: 'Ringkasan', view: SummaryTab },
+  { id: 'sales', label: 'Dashboard', view: BoothSalesTab },
+  { id: 'transactions', label: 'Transaksi', view: BoothTxTab },
   { id: 'printer', label: 'Printer', view: PrinterTab },
   { id: 'session', label: 'Sesi & Kamera', view: SessionTab },
   { id: 'history', label: 'Riwayat', view: HistoryTab },

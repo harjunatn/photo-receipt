@@ -297,6 +297,66 @@ begin
 end;
 $$;
 
+-- Laporan untuk layar petugas di tablet: hanya transaksi tablet itu sendiri.
+create or replace function public.device_stats(p_token text, p_from timestamptz, p_to timestamptz, p_tz text default 'Asia/Jakarta')
+returns jsonb
+language plpgsql security definer set search_path = public
+as $$
+declare
+  d devices;
+  zone text := coalesce((select name from pg_timezone_names where name = p_tz), 'Asia/Jakarta');
+begin
+  select * into d from devices where token_hash = token_hash(p_token) and active;
+  if not found then
+    return jsonb_build_object('error', 'unpaired');
+  end if;
+  return jsonb_build_object('rows', coalesce((
+    select jsonb_agg(jsonb_build_object('day', s.day, 'device_id', d.id, 'device_name', d.name, 'method', s.method,
+                                        'sessions', s.sessions, 'prints', s.prints, 'revenue', s.revenue))
+    from (
+      select (t.at at time zone zone)::date as day, t.method, count(*) as sessions, coalesce(sum(t.prints), 0) as prints,
+             coalesce(sum(case when t.method in ('qris', 'cash') then t.price else 0 end), 0) as revenue
+      from transactions t
+      where t.device_id = d.id and t.at >= p_from and t.at < p_to
+      group by 1, 2
+    ) s
+  ), '[]'::jsonb));
+end;
+$$;
+
+create or replace function public.device_transactions(p_token text, p_from timestamptz, p_to timestamptz,
+                                                      p_method text default null, p_offset int default 0, p_limit int default 50)
+returns jsonb
+language plpgsql security definer set search_path = public
+as $$
+declare
+  d devices;
+begin
+  select * into d from devices where token_hash = token_hash(p_token) and active;
+  if not found then
+    return jsonb_build_object('error', 'unpaired');
+  end if;
+  return jsonb_build_object(
+    'total', (select count(*) from transactions t
+              where t.device_id = d.id and t.at >= p_from and t.at < p_to and (p_method is null or t.method = p_method)),
+    'rows', coalesce((
+      select jsonb_agg(to_jsonb(x) order by x.at desc)
+      from (
+        select t.id, t.device_id, t.device_name, t.at, t.session_no, t.frame, t.package, t.price, t.method, t.voucher_code, t.prints
+        from transactions t
+        where t.device_id = d.id and t.at >= p_from and t.at < p_to and (p_method is null or t.method = p_method)
+        order by t.at desc
+        offset greatest(coalesce(p_offset, 0), 0)
+        limit least(greatest(coalesce(p_limit, 50), 1), 1000)
+      ) x
+    ), '[]'::jsonb)
+  );
+end;
+$$;
+
+grant execute on function public.device_stats(text, timestamptz, timestamptz, text) to anon, authenticated;
+grant execute on function public.device_transactions(text, timestamptz, timestamptz, text, int, int) to anon, authenticated;
+
 -- ---------------------------------------------------------------- fungsi untuk dashboard
 
 -- Ringkasan per hari, per perangkat, per cara bayar. Omzet hanya menghitung uang yang

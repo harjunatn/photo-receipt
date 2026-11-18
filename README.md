@@ -120,6 +120,11 @@ tablet mengirim transaksinya ke satu tempat dan kamu melihat serta mengaturnya d
 | Koleksi Frame | Frame yang ditawarkan, per perangkat |
 | Pengaturan | Nama outlet, warna, logo, teks struk, harga, cara bayar + gambar QRIS, password |
 
+Petugas di tiap booth juga bisa melihat penjualan **tablet itu sendiri** dari ⚙ → PIN → tab **Dashboard** (omzet hari
+ini, 7 hari, bulan ini, grafik per hari) dan tab **Transaksi** (daftar sesi, saring cara bayar, unduh CSV), misalnya
+untuk mencocokkan uang tunai di laci. Datanya diambil dari server, jadi butuh internet; tablet hanya bisa melihat
+transaksinya sendiri.
+
 | Diatur di dashboard (sama untuk semua booth) | Diatur di tiap tablet (tergantung alatnya) |
 | --- | --- |
 | Harga, cara bayar, gambar QRIS, voucher | Printer dan kualitas cetak |

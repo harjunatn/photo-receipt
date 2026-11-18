@@ -1,44 +1,16 @@
 import { useEffect, useState } from 'preact/hooks';
 import { pairingStore } from '../lib/cloud/device';
-import { download, isInstalled } from '../lib/kiosk';
-import { logStore, paidAmount, PAY_METHOD_LABEL, startOfToday, toCsv, totalsSince, type Totals } from '../lib/log';
+import { isInstalled } from '../lib/kiosk';
 import { usePrinter } from '../lib/printer/manager';
 import { transportSupported } from '../lib/printer/transports';
-import { formatDateTime } from '../lib/receipt/compose';
-import { DEFAULT_PIN, formatRupiah, useSettings } from '../lib/settings';
+import { DEFAULT_PIN, useSettings } from '../lib/settings';
 import { useStore } from '../lib/store';
 
-function TotalsRow({ title, totals }: { title: string; totals: Totals }) {
-  return (
-    <>
-      <h3 class="hint" style={{ fontWeight: 700 }}>
-        {title}
-      </h3>
-      <div class="stats">
-        <div class="stat">
-          <b>{totals.sessions}</b>
-          <span>sesi foto</span>
-        </div>
-        <div class="stat">
-          <b>{totals.prints}</b>
-          <span>lembar tercetak</span>
-        </div>
-        <div class="stat">
-          <b>{formatRupiah(totals.revenue)}</b>
-          <span>pemasukan</span>
-        </div>
-      </div>
-    </>
-  );
-}
-
-/** At-a-glance health of the booth plus sales totals. */
+/** At-a-glance health of the booth: printer, camera, connection and the things to fix before guests arrive. */
 export function SummaryTab() {
   const settings = useSettings();
   const printer = usePrinter();
-  const log = useStore(logStore);
   const paired = useStore(pairingStore) !== null;
-  const now = Date.now();
   const [camera, setCamera] = useState<PermissionState | null>(null);
 
   useEffect(() => {
@@ -64,17 +36,9 @@ export function SummaryTab() {
   }
   if (settings.packages.every((p) => !p.active)) problems.push('Belum ada harga yang aktif. Atur di dashboard pemilik (menu Pengaturan).');
 
-  const exportCsv = () => {
-    const rows = [
-      ['waktu', 'no', 'paket', 'harga', 'metode', 'voucher', 'cetak', 'pemasukan'],
-      ...log.map((e) => [formatDateTime(new Date(e.at)), e.no, e.packageName, e.price, PAY_METHOD_LABEL[e.method] ?? e.method, e.voucher ?? '', e.prints, paidAmount(e)]),
-    ];
-    download('transaksi-booth.csv', new Blob([toCsv(rows)], { type: 'text/csv' }));
-  };
-
   return (
     <div class="admin-grid">
-      <section class="panel">
+      <section class="panel span">
         <h2>Kesiapan booth</h2>
         {problems.map((problem) => (
           <p class="banner err" key={problem}>
@@ -103,39 +67,9 @@ export function SummaryTab() {
           </p>
         )}
         {problems.length === 0 && printer.status !== 'disconnected' && <p class="banner ok">Semua siap. Tekan “Keluar” untuk membuka booth.</p>}
+        <p class="hint">Penjualan dan daftar transaksi tablet ini ada di tab Dashboard dan Transaksi.</p>
       </section>
 
-      <section class="panel">
-        <h2>Penjualan di tablet ini</h2>
-        <TotalsRow title="Hari ini" totals={totalsSince(log, startOfToday())} />
-        <TotalsRow title="7 hari terakhir" totals={totalsSince(log, now - 7 * 86_400_000)} />
-        <TotalsRow title="Sejak awal" totals={totalsSince(log, 0)} />
-        <p class="hint">Pemasukan hanya menghitung sesi yang dibayar (QRIS / ke petugas). Voucher dan sesi gratis dihitung Rp0. Gabungan semua booth ada di dashboard pemilik.</p>
-        <button class="btn small" disabled={log.length === 0} onClick={exportCsv}>
-          Ekspor transaksi (CSV)
-        </button>
-      </section>
-
-      <section class="panel span">
-        <h2>Sesi terakhir</h2>
-        <div class="list">
-          {log.length === 0 && <p class="hint">Belum ada sesi.</p>}
-          {log.slice(0, 12).map((entry) => (
-            <div class="list-item" key={`${entry.at}-${entry.no}`}>
-              <div class="grow">
-                <b>
-                  No. {String(entry.no).padStart(3, '0')} · {entry.packageName}
-                </b>
-                <div class="hint">
-                  {formatDateTime(new Date(entry.at))} · {entry.prints}x cetak{entry.voucher ? ` · ${entry.voucher}` : ''}
-                </div>
-              </div>
-              <span class="tag">{PAY_METHOD_LABEL[entry.method] ?? entry.method}</span>
-              <b class="mono">{formatRupiah(paidAmount(entry))}</b>
-            </div>
-          ))}
-        </div>
-      </section>
     </div>
   );
 }
