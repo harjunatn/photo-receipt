@@ -1,8 +1,11 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { BLE_LINK_MS, BLE_SERVICES_MS, createTransport } from '../src/lib/printer/transports';
 
-/** hang: the link never opens · slow: it opens but the print service never answers · patient: the service answers after 12 s · ok · not-a-printer */
-type Step = 'hang' | 'slow' | 'patient' | 'ok' | 'not-a-printer';
+/**
+ * hang: the link never opens · slow: it opens but the services never answer · patient: they answer after 12 s ·
+ * empty: they read as none (a stale Android cache) · broken: reading them fails · not-a-printer: services but none can be written · ok
+ */
+type Step = 'hang' | 'slow' | 'patient' | 'empty' | 'broken' | 'ok' | 'not-a-printer';
 const OPTIONS = { baudRate: 9600, usbShowAll: false };
 
 /** A Bluetooth printer whose link attempts behave as scripted: hang forever, succeed, or offer no print service. */
@@ -15,6 +18,12 @@ function fakePrinter(steps: Step[], startConnected = false) {
     writeValueWithResponse: vi.fn(async () => undefined),
     writeValueWithoutResponse: vi.fn(async () => undefined),
   };
+  // A heart-rate-like service: readable, but nothing a printer could be sent through.
+  const otherService = {
+    uuid: '0000180d-0000-1000-8000-00805f9b34fb',
+    getCharacteristics: async () => [{ properties: { write: false, writeWithoutResponse: false } }],
+  };
+  const printService = { uuid: '0000ff00-0000-1000-8000-00805f9b34fb', getCharacteristics: async () => [characteristic] };
   const listeners = new Set<() => void>();
   // Like a real printer: whenever an open link closes, the page hears about it.
   const dropped = () => listeners.forEach((listener) => listener());
@@ -28,12 +37,14 @@ function fakePrinter(steps: Step[], startConnected = false) {
       open -= 1;
       gatt.connected = true;
       return Promise.resolve({
-        getPrimaryServices: () =>
-          step === 'slow'
-            ? new Promise(() => undefined)
-            : step === 'patient'
-              ? new Promise((resolve) => setTimeout(() => resolve([{ getCharacteristics: async () => [characteristic] }]), 12_000))
-              : Promise.resolve(step === 'not-a-printer' ? [] : [{ getCharacteristics: async () => [characteristic] }]),
+        getPrimaryServices: () => {
+          if (step === 'slow') return new Promise(() => undefined);
+          if (step === 'patient') return new Promise((resolve) => setTimeout(() => resolve([printService]), 12_000));
+          if (step === 'broken') return Promise.reject(new DOMException('GATT Server is disconnected.', 'NetworkError'));
+          if (step === 'empty') return Promise.resolve([]);
+          if (step === 'not-a-printer') return Promise.resolve([otherService]);
+          return Promise.resolve([printService]);
+        },
       });
     }),
     disconnect: vi.fn(() => {
@@ -102,14 +113,35 @@ describe('Bluetooth printer link', () => {
     expect(printer.gatt.disconnect.mock.invocationCallOrder[0]).toBeLessThan(printer.gatt.connect.mock.invocationCallOrder[0]);
   });
 
-  it('does not retry a device that is no printer at all', async () => {
+  it('does not retry a device that is no printer at all, and names the services it found', async () => {
     const printer = fakePrinter(['not-a-printer', 'ok']);
     useBluetooth(printer.device);
     const result = createTransport('bluetooth').connect(OPTIONS);
-    const settled = expect(result).rejects.toThrow(/tidak dikenali sebagai printer/);
+    const settled = expect(result).rejects.toThrow(/tidak dikenali sebagai printer.*Layanan yang terbaca: 180d/);
     await vi.advanceTimersByTimeAsync(2000);
     await settled;
     expect(printer.gatt.connect).toHaveBeenCalledTimes(1);
+  });
+
+  it('tries again when the services read as empty or fail to read, as after a stale Android cache', async () => {
+    for (const first of ['empty', 'broken'] as const) {
+      const printer = fakePrinter([first, 'ok']);
+      useBluetooth(printer.device);
+      const result = createTransport('bluetooth').connect(OPTIONS);
+      await vi.advanceTimersByTimeAsync(5000);
+      await expect(result).resolves.toBe('MPT-II');
+      expect(printer.gatt.connect).toHaveBeenCalledTimes(2);
+    }
+  });
+
+  it('points to clearing the Bluetooth cache when the services never read', async () => {
+    const printer = fakePrinter(['empty', 'empty', 'empty']);
+    useBluetooth(printer.device);
+    const result = createTransport('bluetooth').connect(OPTIONS);
+    const settled = expect(result).rejects.toThrow(/Hapus cache/);
+    await vi.advanceTimersByTimeAsync(10_000);
+    await settled;
+    expect(printer.gatt.connect).toHaveBeenCalledTimes(3);
   });
 
   it('never opens the link twice at once when the automatic retry and the Connect button overlap', async () => {

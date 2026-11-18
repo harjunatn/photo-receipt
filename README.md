@@ -235,6 +235,13 @@ lama 12 detik, membaca isi printer paling lama 25 detik), dan menutup sambungan 
 4. Pastikan tidak ada aplikasi lain (aplikasi bawaan printer, aplikasi kasir) yang sedang tersambung ke printer itu,
    dan printer tidak di-*pair* lewat pengaturan Bluetooth Android. Printer BLE hanya menerima satu sambungan.
 
+**"Printer tersambung, tetapi jalur cetaknya tidak terbaca"** atau **"tidak dikenali sebagai printer struk"** padahal
+printer yang sama sebelumnya bisa: Android menyimpan daftar isi printer di cache, dan cache itu bisa rusak setelah
+sambungan putus di tengah jalan. Hapus cache Bluetooth Android: **Pengaturan → Aplikasi → tampilkan aplikasi sistem →
+Bluetooth → Penyimpanan → Hapus cache** (jangan *Hapus data*, itu menghapus semua perangkat yang tersimpan), matikan
+lalu nyalakan Bluetooth, lalu **Hubungkan** lagi. Kalau pesannya menyebut "Layanan yang terbaca: …", kirim daftar itu
+ke pengembang: printernya memakai jalur cetak yang belum dikenal aplikasi.
+
 Sambungan yang sering putus biasanya karena jarak atau halangan, baterai printer lemah, atau printer masuk mode hemat
 daya. Kalau printernya punya USB, USB tetap paling stabil untuk booth.
 

@@ -60,7 +60,18 @@ const BLE_PRINT_SERVICES = [
   '0000ff00-0000-1000-8000-00805f9b34fb',
   '0000ffe0-0000-1000-8000-00805f9b34fb',
   '0000fff0-0000-1000-8000-00805f9b34fb',
+  // Mini portable printers and generic serial-over-BLE modules.
+  '0000ae30-0000-1000-8000-00805f9b34fb',
+  '0000ae3a-0000-1000-8000-00805f9b34fb',
+  '0000ff12-0000-1000-8000-00805f9b34fb',
+  '6e400001-b5a3-f393-e0a9-e50e24dcca9e',
 ];
+
+/** A service id as people read it: ff00 for the standard short ids, otherwise its first part. */
+function shortUuid(uuid: string): string {
+  const standard = /^0000([0-9a-f]{4})-0000-1000-8000-00805f9b34fb$/i.exec(uuid);
+  return standard ? standard[1] : uuid.slice(0, 8);
+}
 
 /** Bytes that fit in one Bluetooth LE packet on every link, however little the two sides negotiated. */
 const BLE_SAFE_PACKET = 20;
@@ -82,6 +93,17 @@ const BLE_SETTLE_MS = 1000;
 
 const BLE_NOT_ANSWERING =
   'Printer Bluetooth tidak menjawab. Matikan printer, tunggu 5 detik, nyalakan lagi sampai lampunya berkedip, lalu tekan Hubungkan.';
+
+/**
+ * The link opened but no service could be read. Android keeps a cache of each
+ * device's services; a broken cache reads as empty until it is cleared.
+ */
+const BLE_NOTHING_READ =
+  'Printer tersambung, tetapi jalur cetaknya tidak terbaca. Matikan lalu nyalakan Bluetooth tablet dan printer, lalu Hubungkan lagi. ' +
+  'Kalau tetap sama, hapus cache Bluetooth Android: Pengaturan → Aplikasi → tampilkan aplikasi sistem → Bluetooth → Penyimpanan → Hapus cache.';
+
+/** Thrown for a failure that may well pass on the next try. */
+class TransientBleError extends Error {}
 
 class BluetoothTransport implements Transport {
   readonly kind = 'bluetooth' as const;
@@ -119,6 +141,7 @@ class BluetoothTransport implements Transport {
    */
   private open(device: BluetoothDevice): Promise<void> {
     const run = async () => {
+      let lastError: unknown = null;
       // Already connected and working (e.g. an automatic retry queued behind a successful connect): leave it be.
       if (device === this.device && device.gatt?.connected && this.characteristic) return;
       for (let attempt = 0; attempt < BLE_ATTEMPTS; attempt++) {
@@ -131,14 +154,15 @@ class BluetoothTransport implements Transport {
           await this.attach(device);
           return;
         } catch (error) {
+          lastError = error;
           // An attempt that timed out may still be pending inside the browser; close it before the next one.
           device.gatt?.disconnect();
           this.characteristic = null;
-          // Not a printer at all: trying again will not change that.
-          if (error instanceof Error && error.message.startsWith('Perangkat ini')) throw error;
+          // Services were read and none can print: trying again will not change that.
+          if (!(error instanceof TransientBleError)) throw error;
         }
       }
-      throw new Error(BLE_NOT_ANSWERING);
+      throw new Error(lastError instanceof Error ? lastError.message : BLE_NOT_ANSWERING);
     };
     // Wait for any attempt already running, then make this one.
     const next = (this.opening ?? Promise.resolve()).catch(() => undefined).then(run);
@@ -170,13 +194,16 @@ class BluetoothTransport implements Transport {
     device.addEventListener('gattserverdisconnected', this.handleDisconnect);
     this.device = device;
 
-    const server = await withTimeout(device.gatt.connect(), BLE_LINK_MS, BLE_NOT_ANSWERING);
-    // Rejects when the device offers none of the print services, which lands in the same error below;
-    // only taking too long counts as not answering.
-    const services = await withTimeout(server.getPrimaryServices(), BLE_SERVICES_MS, BLE_NOT_ANSWERING).catch((error: unknown) => {
-      if (error instanceof Error && error.message === BLE_NOT_ANSWERING) throw error;
-      return [];
+    // Whatever stops the link from opening (a stale link, a busy radio) may pass on the next try.
+    const server = await withTimeout(device.gatt.connect(), BLE_LINK_MS, BLE_NOT_ANSWERING).catch(() => {
+      throw new TransientBleError(BLE_NOT_ANSWERING);
     });
+    // Reading the services fails or comes back empty now and then (a link that drops half-way, a stale
+    // Android cache); both are worth another try. Only taking too long counts as not answering.
+    const services = await withTimeout(server.getPrimaryServices(), BLE_SERVICES_MS, BLE_NOT_ANSWERING).catch((error: unknown) => {
+      throw new TransientBleError(error instanceof Error && error.message === BLE_NOT_ANSWERING ? BLE_NOT_ANSWERING : BLE_NOTHING_READ);
+    });
+    if (services.length === 0) throw new TransientBleError(BLE_NOTHING_READ);
     for (const service of services) {
       const characteristics = await service.getCharacteristics().catch(() => []);
       const writable =
@@ -187,7 +214,10 @@ class BluetoothTransport implements Transport {
       }
     }
     device.gatt.disconnect();
-    throw new Error('Perangkat ini tidak dikenali sebagai printer struk Bluetooth (BLE).');
+    // Name what was found, so the printer can be added to the list above if it prints in its own way.
+    throw new Error(
+      `Perangkat ini tidak dikenali sebagai printer struk Bluetooth (BLE). Layanan yang terbaca: ${services.map((s) => shortUuid(s.uuid)).join(', ')}.`,
+    );
   }
 
   async disconnect(): Promise<void> {
