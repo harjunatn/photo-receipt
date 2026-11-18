@@ -124,7 +124,24 @@ export async function handleShareUpload(input: Record<string, unknown>, env: Sha
       return { status: 200, body: { error: 'missing' } };
     }
     if (head.status === 401 || head.status === 403) {
-      return { status: 200, body: { error: 'storage', message: 'R2 menolak kunci akses. Periksa R2_ACCESS_KEY_ID, R2_SECRET_ACCESS_KEY, dan izin token ke bucket ini.' } };
+      // HEAD answers without a body; a GET tells which part of the access R2 refused.
+      const probe = await fetchFn(await sign(env, 'GET', key, 60, now()), { method: 'GET' }).catch(() => null);
+      const reason = (probe ? await probe.text().catch(() => '') : '').match(/<Code>([^<]+)<\/Code>/)?.[1] ?? '';
+      // For the owner reading the function logs: which bucket and account were tried (neither is secret).
+      console.error(`R2 menolak akses (${reason || head.status}) ke bucket "${env.r2!.bucket}" di ${new URL(env.r2!.origin).host}`);
+      const messages: Record<string, string> = {
+        InvalidAccessKeyId: 'R2 tidak mengenal R2_ACCESS_KEY_ID. Salin ulang Access Key ID dari token R2.',
+        SignatureDoesNotMatch: 'R2_SECRET_ACCESS_KEY tidak cocok dengan R2_ACCESS_KEY_ID. Salin ulang Secret Access Key (bukan Token value).',
+        AccessDenied: 'Token R2 tidak punya izin ke bucket ini. Pastikan izinnya Object Read & Write dan bucket-nya termasuk.',
+      };
+      return {
+        status: 200,
+        body: {
+          error: 'storage',
+          code: reason || String(head.status),
+          message: messages[reason] ?? 'R2 menolak kunci akses. Periksa R2_ACCESS_KEY_ID, R2_SECRET_ACCESS_KEY, dan izin token ke bucket ini.',
+        },
+      };
     }
     if (!head.ok) return { status: 200, body: { error: 'storage', message: `R2 menjawab ${head.status}` } };
     const size = Number(head.headers.get('content-length') ?? 0);

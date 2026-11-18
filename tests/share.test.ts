@@ -163,6 +163,11 @@ describe('R2 settings', () => {
     expect(noBucket.body.message).toContain('R2_BUCKET');
     const refused = await ask(async () => new Response(null, { status: 403 }));
     expect(refused.body.message).toContain('R2_SECRET_ACCESS_KEY');
+    const wrongSecret = await ask(async (_url, init) =>
+      init.method === 'HEAD' ? new Response(null, { status: 403 }) : new Response('<Error><Code>SignatureDoesNotMatch</Code></Error>', { status: 403 }),
+    );
+    expect(wrongSecret.body).toMatchObject({ code: 'SignatureDoesNotMatch' });
+    expect(wrongSecret.body.message).toContain('Secret Access Key');
   });
 });
 
