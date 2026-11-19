@@ -7,6 +7,7 @@ import { BoothTxTab } from './BoothTxTab';
 import { CloudTab } from './CloudTab';
 import { HistoryTab } from './HistoryTab';
 import { PrinterTab } from './PrinterTab';
+import { ReceiptTab } from './ReceiptTab';
 import { SessionTab } from './SessionTab';
 import { SummaryTab } from './SummaryTab';
 import { SystemTab } from './SystemTab';
@@ -17,6 +18,7 @@ const TABS = [
   { id: 'transactions', label: 'Transaksi', view: BoothTxTab },
   { id: 'printer', label: 'Printer', view: PrinterTab },
   { id: 'session', label: 'Sesi & Kamera', view: SessionTab },
+  { id: 'receipt', label: 'Struk', view: ReceiptTab },
   { id: 'history', label: 'Riwayat', view: HistoryTab },
   { id: 'cloud', label: 'Sambungan', view: CloudTab },
   { id: 'system', label: 'Sistem', view: SystemTab },

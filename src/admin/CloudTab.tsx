@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'preact/hooks';
-import { outboxStore, pairDevice, pairingStore, syncNow, syncState, unpairDevice } from '../lib/cloud/device';
+import { outboxStore, pairDevice, pairingStore, settingsBackupStore, syncNow, syncState, unpairDevice } from '../lib/cloud/device';
 import { cloudConfigured } from '../lib/cloud/shared';
 import { pumpUploads, uploadsWaiting } from '../lib/cloud/upload';
 import { formatDateTime } from '../lib/receipt/compose';
@@ -12,6 +12,7 @@ export function CloudTab() {
   const queued = useStore(outboxStore).length;
   const sync = useStore(syncState);
   const uploads = useStore(uploadsWaiting);
+  const backup = useStore(settingsBackupStore);
 
   // Also refreshes the count of files waiting to be uploaded.
   useEffect(() => void pumpUploads(), []);
@@ -23,13 +24,17 @@ export function CloudTab() {
 
   const pair = async () => {
     setBusy(true);
-    const problem = await pairDevice(code, pin);
+    const result = await pairDevice(code, pin);
     setBusy(false);
-    setError(problem);
-    if (!problem) {
+    setError(result.error);
+    if (!result.error) {
       setCode('');
       setPin('');
-      toast('Tablet terpasang ke dashboard.');
+      toast(
+        result.restored
+          ? 'Tablet terpasang. Pengaturan printer, sesi & kamera, teks struk, riwayat dan PIN petugas dari tablet sebelumnya dipakai di sini.'
+          : 'Tablet terpasang ke dashboard.',
+      );
     }
   };
 
@@ -65,7 +70,12 @@ export function CloudTab() {
           </div>
           <p class="hint">
             Kode perangkat <b class="mono">{pairing.code}</b>. Setiap sesi yang selesai dikirim ke dashboard; harga, cara
-            bayar, voucher, frame, teks struk dan logo diambil dari sana.
+            bayar, voucher, frame dan logo diambil dari sana.
+          </p>
+          <p class="hint">
+            Pengaturan printer, sesi & kamera, teks struk, riwayat dan PIN petugas tablet ini juga disimpan di dashboard
+            {backup ? <> (terakhir {formatDateTime(new Date(backup.at))})</> : ' begitu tersambung'}. Tablet pengganti yang
+            dipasangkan dengan kode yang sama langsung memakai pengaturan ini; printernya cukup dihubungkan sekali lagi.
           </p>
           <div class="stats">
             <div class="stat">
@@ -119,7 +129,8 @@ export function CloudTab() {
           <p class="hint">
             Tablet harus tersambung ke dashboard sebelum bisa dipakai tamu, supaya setiap sesi tercatat. Buat perangkat
             baru di dashboard pemilik (menu Perangkat), lalu ketik kode perangkat dan PIN-nya di sini. Satu kode untuk
-            satu tablet: memasangkan tablet lain dengan kode yang sama melepas tablet sebelumnya.
+            satu tablet: memasangkan tablet lain dengan kode yang sama melepas tablet sebelumnya, dan tablet ini memakai
+            pengaturan printer, sesi & kamera, teks struk, riwayat dan PIN petugas dari tablet itu.
           </p>
           {sync.revoked && <p class="banner err">Tablet ini dilepas atau dinonaktifkan dari dashboard. Pasangkan lagi untuk melanjutkan.</p>}
           <label class="field">

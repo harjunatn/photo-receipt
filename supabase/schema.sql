@@ -77,6 +77,10 @@ create table if not exists public.devices (
   last_seen_at timestamptz,
   created_at timestamptz not null default now()
 );
+-- Cadangan pengaturan yang diatur di tablet itu sendiri (printer, sesi & kamera, riwayat, PIN petugas). Tablet
+-- yang dipasangkan dengan kode yang sama, misalnya tablet pengganti, langsung memakai pengaturan ini.
+alter table public.devices add column if not exists settings jsonb;
+alter table public.devices add column if not exists settings_at timestamptz;
 
 create table if not exists public.transactions (
   -- Dibuat di tablet, sehingga kiriman ulang saat internet putus-nyambung tidak menggandakan baris.
@@ -224,7 +228,7 @@ begin
   update devices
     set token_hash = token_hash(t), pin_fails = 0, paired_at = now(), last_seen_at = now()
     where id = d.id;
-  return jsonb_build_object('token', t, 'id', d.id, 'name', d.name, 'code', d.code);
+  return jsonb_build_object('token', t, 'id', d.id, 'name', d.name, 'code', d.code, 'settings', d.settings);
 end;
 $$;
 
@@ -410,11 +414,31 @@ as $$
   from vouchers;
 $$;
 
+-- Tablet mencadangkan pengaturannya sendiri. Hanya objek JSON yang kecil yang diterima.
+create or replace function public.device_save_settings(p_token text, p_settings jsonb)
+returns jsonb
+language plpgsql security definer set search_path = public
+as $$
+begin
+  if jsonb_typeof(p_settings) is distinct from 'object' or octet_length(p_settings::text) > 65536 then
+    return jsonb_build_object('error', 'invalid');
+  end if;
+  update devices
+    set settings = p_settings, settings_at = now(), last_seen_at = now()
+    where token_hash = token_hash(p_token) and active;
+  if not found then
+    return jsonb_build_object('error', 'unpaired');
+  end if;
+  return jsonb_build_object('ok', true);
+end;
+$$;
+
 revoke execute on function public.token_hash(text) from public, anon, authenticated;
 grant execute on function public.device_pair(text, text) to anon, authenticated;
 grant execute on function public.device_sync(text, jsonb, text) to anon, authenticated;
 grant execute on function public.device_push(text, jsonb) to anon, authenticated;
 grant execute on function public.device_redeem_voucher(text, text) to anon, authenticated;
+grant execute on function public.device_save_settings(text, jsonb) to anon, authenticated;
 grant execute on function public.claim_owner() to authenticated;
 grant execute on function public.is_owner() to authenticated;
 grant execute on function public.stats_daily(timestamptz, timestamptz, text) to authenticated;

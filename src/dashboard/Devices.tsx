@@ -122,6 +122,12 @@ function DeviceCard({ device, now, busy, onPatch, onDelete }: CardProps) {
           <dt>Printer</dt>
           <dd>{device.paired ? (PRINTER_LABEL[device.status.printer ?? ''] ?? '—') : '—'}</dd>
         </div>
+        <div>
+          <dt>Pengaturan tablet</dt>
+          <dd title="Printer, sesi & kamera, riwayat dan PIN petugas. Tablet pengganti dengan kode ini memakainya.">
+            {device.settings_at ? `tersimpan ${ago(device.settings_at, now)}` : 'belum tersimpan'}
+          </dd>
+        </div>
       </dl>
       {queued > 0 && <p class="hint">{queued} transaksi masih menunggu dikirim dari tablet ini.</p>}
       {device.pin_fails >= 10 && <p class="banner err">Sepuluh kali PIN salah. Buat PIN baru untuk membuka kembali kode ini.</p>}

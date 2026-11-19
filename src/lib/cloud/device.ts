@@ -3,7 +3,7 @@ import type { StatRow } from '../../dashboard/stats';
 import { printer } from '../printer/manager';
 import { settingsStore } from '../settings';
 import { createPersistedStore, createStore } from '../store';
-import { applyRemote, cloudConfigured, SUPABASE_KEY, SUPABASE_URL } from './shared';
+import { applyDeviceSettings, applyRemote, cloudConfigured, deviceSettingsOf, SUPABASE_KEY, SUPABASE_URL } from './shared';
 
 /** What this tablet keeps after being paired with a device from the dashboard. */
 export interface Pairing {
@@ -43,6 +43,8 @@ export const outboxStore = createPersistedStore<CloudTx[]>('booth.outbox.v1', []
 export const syncState = createStore<SyncState>({ lastOk: null, error: '', revoked: false });
 /** QRs this tablet made that have no final status yet, with when they were made. */
 const openQrStore = createPersistedStore<Record<string, number>>('booth.qris-open.v1', {});
+/** The tablet settings the server is known to hold for this device, and when they got there. */
+export const settingsBackupStore = createPersistedStore<{ json: string; at: number } | null>('booth.device-settings.v1', null);
 
 const MAX_QUEUED = 5000;
 const BATCH = 100;
@@ -66,26 +68,57 @@ const PAIR_ERRORS: Record<string, string> = {
   locked: 'Terlalu banyak PIN salah. Buat PIN baru untuk perangkat ini di dashboard.',
 };
 
-/** Pairs this tablet with a device created in the dashboard. Returns an error message, or '' on success. */
-export async function pairDevice(code: string, pin: string): Promise<string> {
-  if (!cloudConfigured) return 'Aplikasi ini belum disambungkan ke Supabase.';
+function deviceSettingsJson(): string {
+  return JSON.stringify(deviceSettingsOf(settingsStore.get()));
+}
+
+export interface PairResult {
+  /** Why pairing failed, in words for staff; '' on success. */
+  error: string;
+  /** The device already had settings from an earlier tablet, and this tablet now uses them. */
+  restored: boolean;
+}
+
+/** Pairs this tablet with a device created in the dashboard. */
+export async function pairDevice(code: string, pin: string): Promise<PairResult> {
+  if (!cloudConfigured) return { error: 'Aplikasi ini belum disambungkan ke Supabase.', restored: false };
   try {
-    const result = await rpc<Partial<Pairing> & { error?: string }>('device_pair', { p_code: code, p_pin: pin });
-    if (result.error || !result.token || !result.id) return PAIR_ERRORS[result.error ?? ''] ?? 'Gagal memasangkan perangkat.';
+    const result = await rpc<Partial<Pairing> & { error?: string; settings?: unknown }>('device_pair', { p_code: code, p_pin: pin });
+    if (result.error || !result.token || !result.id) {
+      return { error: PAIR_ERRORS[result.error ?? ''] ?? 'Gagal memasangkan perangkat.', restored: false };
+    }
     pairingStore.set({ token: result.token, id: result.id, name: result.name ?? '', code: result.code ?? code });
     localStorage.removeItem(VERSION_KEY);
+    // A replacement tablet takes over the printer, session and PIN settings of the one before it.
+    const restored = typeof result.settings === 'object' && result.settings !== null && !Array.isArray(result.settings);
+    if (restored) settingsStore.replace(applyDeviceSettings(settingsStore.get(), result.settings));
+    // A device without saved settings gets this tablet's on the next sync.
+    settingsBackupStore.set(restored ? { json: deviceSettingsJson(), at: Date.now() } : null);
     syncState.set({ lastOk: Date.now(), error: '', revoked: false });
     void syncNow();
-    return '';
+    return { error: '', restored };
   } catch {
-    return 'Tidak bisa menghubungi server. Periksa internet tablet ini.';
+    return { error: 'Tidak bisa menghubungi server. Periksa internet tablet ini.', restored: false };
   }
 }
 
 /** Forgets the pairing on this tablet. Transactions still queued stay queued for the next pairing. */
 export function unpairDevice(): void {
   pairingStore.set(null);
+  settingsBackupStore.set(null);
   localStorage.removeItem(VERSION_KEY);
+}
+
+/** Sends this tablet's own settings to its device in the dashboard, when they changed since the last time. */
+async function backUpSettings(token: string): Promise<void> {
+  const json = deviceSettingsJson();
+  if (settingsBackupStore.get()?.json === json) return;
+  try {
+    const result = await rpc<{ ok?: boolean; error?: string }>('device_save_settings', { p_token: token, p_settings: JSON.parse(json) });
+    if (result.ok) settingsBackupStore.set({ json, at: Date.now() });
+  } catch {
+    // Tried again on the next sync; the booth works the same without the copy.
+  }
 }
 
 function revoked(): void {
@@ -207,6 +240,7 @@ export async function syncNow(): Promise<boolean> {
     };
     applyPending();
     syncState.set({ lastOk: Date.now(), error: '', revoked: false });
+    await backUpSettings(pairing.token);
     await sweepQris(pairing.token);
     // Loaded on demand: the upload queue is only needed once a session has files to send.
     void import('./upload').then(({ pumpUploads }) => pumpUploads());
@@ -231,6 +265,13 @@ export function startCloudSync(): void {
   void syncNow();
   setInterval(() => void syncNow(), SYNC_EVERY_MS);
   window.addEventListener('online', () => void syncNow());
+  // Staff changing the printer, camera or PIN reaches the dashboard within seconds, not at the next minute.
+  let soon: ReturnType<typeof setTimeout> | undefined;
+  settingsStore.subscribe(() => {
+    if (!pairingStore.get() || settingsBackupStore.get()?.json === deviceSettingsJson()) return;
+    clearTimeout(soon);
+    soon = setTimeout(() => void syncNow(), 3000);
+  });
 }
 
 export type CloudVoucherResult = { status: 'ok'; code: string } | { status: 'not-found' | 'used' | 'expired' | 'offline' };

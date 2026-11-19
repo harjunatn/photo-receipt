@@ -41,6 +41,7 @@ export function createDemoApi(): OwnerApi {
     paired: true,
     paired_at: iso(now - 40 * DAY),
     last_seen_at: iso(now - d.seen),
+    settings_at: iso(now - 2 * DAY),
     created_at: iso(now - 41 * DAY),
   }));
 
@@ -123,6 +124,7 @@ export function createDemoApi(): OwnerApi {
         paired: false,
         paired_at: null,
         last_seen_at: null,
+        settings_at: null,
         created_at: iso(Date.now()),
       });
     },

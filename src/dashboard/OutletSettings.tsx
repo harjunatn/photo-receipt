@@ -1,12 +1,12 @@
 import { useEffect, useState } from 'preact/hooks';
-import { AreaField, Check, ImageField, NumberField, Segmented, TextField } from '../admin/fields';
+import { Check, ImageField, NumberField, Segmented, TextField } from '../admin/fields';
 import { completeOutlet, outletFromSettings, SHARE_DAYS, type OutletConfig } from '../lib/cloud/shared';
 import { DEFAULT_SETTINGS, formatRupiah } from '../lib/settings';
 import { toast } from '../ui/components';
 import type { PageProps } from './Dashboard';
 import { LoadState, PageHead, describe, useLoad } from './ui';
 
-/** What every tablet shares: the outlet's name, the words on the receipt, prices and ways of paying. */
+/** What every tablet shares: the outlet's name, logo, prices and ways of paying. Receipt texts are set on each tablet. */
 export function OutletSettings({ api }: PageProps) {
   const load = useLoad(async () => completeOutlet(await api.getOutlet(), outletFromSettings(DEFAULT_SETTINGS)), [api]);
   const [draft, setDraft] = useState<OutletConfig | null>(null);
@@ -60,7 +60,7 @@ export function OutletSettings({ api }: PageProps) {
 
   return (
     <>
-      <PageHead title="Pengaturan" lead="Berlaku untuk semua tablet yang terpasang. Printer, kamera, waktu sesi dan PIN petugas tetap diatur di tiap tablet.">
+      <PageHead title="Pengaturan" lead="Berlaku untuk semua tablet yang terpasang. Teks struk, printer, kamera, waktu sesi dan PIN petugas diatur di tiap tablet.">
         {dirty && (
           <button class="btn small" disabled={busy} onClick={() => setDraft(structuredClone(load.data))}>
             Batalkan perubahan
@@ -82,7 +82,7 @@ export function OutletSettings({ api }: PageProps) {
           </label>
           <ImageField
             label="Logo di struk (opsional)"
-            hint="Paling bagus logo hitam-putih tanpa gradasi."
+            hint="Paling bagus logo hitam-putih tanpa gradasi. Teks struk (judul, kutipan, kode QR) diatur di tiap tablet: ⚙ → Struk."
             value={draft.receipt.logo}
             maxSide={480}
             onChange={(v) => edit((d) => void (d.receipt.logo = v))}
@@ -187,28 +187,6 @@ export function OutletSettings({ api }: PageProps) {
               </div>
             ))}
           </div>
-        </section>
-
-        <section class="panel">
-          <h2>Teks struk</h2>
-          <TextField label="Judul" value={draft.receipt.title} onChange={(v) => edit((d) => void (d.receipt.title = v))} />
-          <TextField label="Sub-judul" value={draft.receipt.subtitle} onChange={(v) => edit((d) => void (d.receipt.subtitle = v))} />
-          <TextField label="Kalimat penutup" value={draft.receipt.closing} onChange={(v) => edit((d) => void (d.receipt.closing = v))} />
-          <TextField label="Media sosial" value={draft.receipt.social} placeholder="@hellosnaply" onChange={(v) => edit((d) => void (d.receipt.social = v))} />
-          <Check label="Tampilkan tanggal dan nomor sesi" checked={draft.receipt.showMeta} onChange={(v) => edit((d) => void (d.receipt.showMeta = v))} />
-          <Check label="Tampilkan barcode hiasan" checked={draft.receipt.barcode} onChange={(v) => edit((d) => void (d.receipt.barcode = v))} />
-        </section>
-
-        <section class="panel">
-          <h2>Kutipan dan kode QR</h2>
-          <TextField label="Judul kutipan" value={draft.receipt.quoteTitle} onChange={(v) => edit((d) => void (d.receipt.quoteTitle = v))} />
-          <AreaField
-            label="Kutipan (satu per baris, dipilih acak)"
-            value={draft.receipt.quotes.join('\n')}
-            onChange={(v) => edit((d) => void (d.receipt.quotes = v.split('\n')))}
-          />
-          <TextField label="Tautan kode QR" value={draft.receipt.qrUrl} placeholder="https://instagram.com/…" hint="Kosongkan kalau tidak ingin kode QR." onChange={(v) => edit((d) => void (d.receipt.qrUrl = v))} />
-          <TextField label="Tulisan di bawah kode QR" value={draft.receipt.qrCaption} onChange={(v) => edit((d) => void (d.receipt.qrCaption = v))} />
         </section>
 
         <section class="panel">

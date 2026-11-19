@@ -1,53 +1,17 @@
 import { useEffect, useState } from 'preact/hooks';
 import { DEMO_CAMERA_ID, listCameras } from '../lib/camera';
-import { samplePhoto } from '../lib/demoScene';
-import type { BitImage } from '../lib/image/types';
-import { composeReceipt, loadImage, loadReceiptFonts, receiptToBits } from '../lib/receipt/compose';
-import { activeFrames } from '../lib/receipt/frames';
 import { useSettings } from '../lib/settings';
-import { ReceiptPaper } from '../ui/components';
 import { edit } from './actions';
 import { Check, NumberField, Segmented } from './fields';
 
-/**
- * How a session runs on this tablet: camera, countdown, sound. What the receipt
- * says is decided in the owner's dashboard; it is only previewed here.
- */
+/** How a session runs on this tablet: camera, countdown, sound. The receipt has its own tab. */
 export function SessionTab() {
-  const settings = useSettings();
-  const { receipt, session, printer } = settings;
-  // The sample receipt uses whichever frame guests are offered first.
-  const frame = activeFrames(settings.frames.active)[0];
+  const { session } = useSettings();
   const [cameras, setCameras] = useState<{ id: string; label: string }[]>([]);
-  const [preview, setPreview] = useState<BitImage | null>(null);
 
   useEffect(() => {
     listCameras().then(setCameras).catch(() => undefined);
   }, []);
-
-  // Rebuild the sample receipt shortly after the last change, so typing stays smooth.
-  useEffect(() => {
-    let cancelled = false;
-    const timer = setTimeout(async () => {
-      await loadReceiptFonts();
-      const logo = receipt.logo ? await loadImage(receipt.logo).catch(() => null) : null;
-      const composed = composeReceipt({
-        width: printer.dots,
-        frame,
-        photos: frame.slots.map((aspect, i) => samplePhoto(aspect, i * 2.1)),
-        texts: receipt,
-        quote: receipt.quotes.find((q) => q.trim()) ?? '',
-        when: new Date(),
-        sessionNo: 12,
-        logo,
-      });
-      if (!cancelled) setPreview(receiptToBits(composed, printer.raster));
-    }, 200);
-    return () => {
-      cancelled = true;
-      clearTimeout(timer);
-    };
-  }, [receipt, frame, printer.dots, printer.raster]);
 
   return (
     <div class="admin-grid">
@@ -89,17 +53,6 @@ export function SessionTab() {
           max={900}
           onChange={(v) => edit((s) => void (s.session.idleSec = v))}
         />
-      </section>
-
-      <section class="panel">
-        <h2>Pratinjau struk</h2>
-        <p class="hint">
-          Contoh frame {frame.name} dengan foto uji, persis titik-titik yang dikirim ke printer. Teks, logo dan frame
-          diatur di dashboard pemilik.
-        </p>
-        <div class="preview-box">
-          <ReceiptPaper bits={preview} />
-        </div>
       </section>
     </div>
   );

@@ -5,10 +5,13 @@ export const SUPABASE_URL: string = (import.meta.env?.VITE_SUPABASE_URL ?? '').r
 export const SUPABASE_KEY: string = import.meta.env?.VITE_SUPABASE_ANON_KEY ?? '';
 export const cloudConfigured = SUPABASE_URL !== '' && SUPABASE_KEY !== '';
 
-/** The settings the owner manages once, in the dashboard, for every tablet. */
+/**
+ * The settings the owner manages once, in the dashboard, for every tablet. Of
+ * the receipt only the logo is shared: each booth writes its own texts.
+ */
 export interface OutletConfig {
   brand: Settings['brand'];
-  receipt: Settings['receipt'];
+  receipt: Pick<Settings['receipt'], 'logo'>;
   packages: PackageDef[];
   payment: Settings['payment'];
   share: Settings['share'];
@@ -17,7 +20,7 @@ export interface OutletConfig {
 export function outletFromSettings(settings: Settings): OutletConfig {
   return structuredClone({
     brand: settings.brand,
-    receipt: settings.receipt,
+    receipt: { logo: settings.receipt.logo },
     packages: settings.packages,
     payment: settings.payment,
     share: settings.share,
@@ -64,7 +67,8 @@ export function applyRemote(settings: Settings, outlet: unknown, frames: unknown
   const next = structuredClone(settings);
   if (isObject(outlet)) {
     if (isObject(outlet.brand)) next.brand = mergeSettings(next.brand, outlet.brand);
-    if (isObject(outlet.receipt)) next.receipt = mergeSettings(next.receipt, outlet.receipt);
+    // The receipt texts are the tablet's own; outlets saved before that still carry them and are ignored.
+    if (isObject(outlet.receipt) && typeof outlet.receipt.logo === 'string') next.receipt.logo = outlet.receipt.logo;
     if (isObject(outlet.payment)) next.payment = mergeSettings(next.payment, outlet.payment);
     if (isObject(outlet.share)) next.share = mergeSettings(next.share, outlet.share);
     if (Array.isArray(outlet.packages)) {
@@ -76,6 +80,45 @@ export function applyRemote(settings: Settings, outlet: unknown, frames: unknown
   next.frames.active = Array.isArray(frames)
     ? frames.filter((id): id is string => typeof id === 'string')
     : DEFAULT_SETTINGS.frames.active.slice();
+  return next;
+}
+
+/**
+ * The settings made on the tablet itself: printer, session and camera, receipt
+ * texts, photo history and the staff PIN. A copy is kept with the device in the
+ * dashboard, so that a replacement tablet paired with the same code works the same way.
+ */
+export type DeviceSettings = Pick<Settings, 'session' | 'printer' | 'storage' | 'admin'> & {
+  /** Without the logo, which comes from the dashboard. */
+  receipt: Omit<Settings['receipt'], 'logo'>;
+};
+
+export function deviceSettingsOf(settings: Settings): DeviceSettings {
+  const { logo: _logo, ...texts } = settings.receipt;
+  return structuredClone({
+    session: settings.session,
+    printer: settings.printer,
+    receipt: texts,
+    storage: settings.storage,
+    admin: settings.admin,
+  });
+}
+
+/** Lays a device's saved settings over this tablet's, leaving what the dashboard decides alone. */
+export function applyDeviceSettings(settings: Settings, saved: unknown): Settings {
+  const next = structuredClone(settings);
+  if (!isObject(saved)) return next;
+  if (isObject(saved.session)) next.session = mergeSettings(next.session, saved.session);
+  if (isObject(saved.printer)) next.printer = mergeSettings(next.printer, saved.printer);
+  if (isObject(saved.storage)) next.storage = mergeSettings(next.storage, saved.storage);
+  if (isObject(saved.receipt)) {
+    const { logo, ...texts } = next.receipt;
+    next.receipt = { ...mergeSettings(texts, saved.receipt), logo };
+  }
+  // A damaged PIN would lock staff out of the tablet, so only a valid one is taken.
+  if (isObject(saved.admin) && typeof saved.admin.pin === 'string' && /^\d{4,8}$/.test(saved.admin.pin)) {
+    next.admin = { ...next.admin, pin: saved.admin.pin };
+  }
   return next;
 }
 

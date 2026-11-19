@@ -29,7 +29,7 @@ describe('applyRemote', () => {
     expect(applyRemote(local, {}, null).frames.active).toEqual(DEFAULT_SETTINGS.frames.active);
   });
 
-  it('takes prices, payment, texts and logo from the dashboard but leaves the tablet its own printer, camera and PIN', () => {
+  it('takes prices, payment and logo from the dashboard but leaves the tablet its own printer, camera and PIN', () => {
     const local = structuredClone(DEFAULT_SETTINGS);
     local.printer.transport = 'bluetooth';
     local.admin.pin = '9999';
@@ -40,19 +40,31 @@ describe('applyRemote', () => {
     outlet.receipt.logo = 'data:image/png;base64,AAAA';
     outlet.packages = [{ id: 'a', name: 'Satu', description: '', price: 20000, prints: 1, active: true }];
     outlet.payment.cash = false;
-    outlet.receipt.closing = 'Sampai jumpa';
 
     const next = applyRemote(local, outlet, ['film', 'klasik']);
     expect(next.brand.title).toBe('SENJA BOOTH');
     expect(next.brand.accent).toBe('#225588');
     expect(next.packages).toEqual(outlet.packages);
     expect(next.payment.cash).toBe(false);
-    expect(next.receipt.closing).toBe('Sampai jumpa');
     expect(next.receipt.logo).toBe('data:image/png;base64,AAAA');
     expect(next.session.countdownSec).toBe(8);
     expect(next.frames.active).toEqual(['film', 'klasik']);
     expect(next.printer.transport).toBe('bluetooth');
     expect(next.admin.pin).toBe('9999');
+  });
+
+  it('leaves the receipt texts to each tablet, also when an outlet saved earlier still carries them', () => {
+    const local = structuredClone(DEFAULT_SETTINGS);
+    local.receipt.title = 'HELLO VIOREN';
+    local.receipt.quotes = ['Kutipan booth ini'];
+    const older = { receipt: { ...DEFAULT_SETTINGS.receipt, title: 'PUSAT', quotes: ['Kutipan pusat'], logo: 'data:image/png;base64,BBBB' } };
+    const next = applyRemote(local, older, null);
+    expect(next.receipt.title).toBe('HELLO VIOREN');
+    expect(next.receipt.quotes).toEqual(['Kutipan booth ini']);
+    expect(next.receipt.logo).toBe('data:image/png;base64,BBBB');
+    // What the dashboard saves holds only the logo of the receipt.
+    expect(Object.keys(outletFromSettings(local).receipt)).toEqual(['logo']);
+    expect(Object.keys(completeOutlet(older, outletFromSettings(DEFAULT_SETTINGS)).receipt)).toEqual(['logo']);
   });
 
   it('keeps the tablet working when the dashboard sends damaged data', () => {

@@ -113,24 +113,31 @@ tablet mengirim transaksinya ke satu tempat dan kamu melihat serta mengaturnya d
 | Menu dashboard | Isi |
 | --- | --- |
 | Dashboard | Omzet hari ini, 7 hari, bulan ini; grafik per hari; cara bayar; per perangkat; transaksi terbaru |
-| Perangkat | Daftar tablet, kode perangkat + PIN, online/offline, status printer |
+| Perangkat | Daftar tablet, kode perangkat + PIN, online/offline, status printer, kapan pengaturan tablet terakhir tersimpan |
 | Transaksi | Semua sesi dari semua tablet, saring tanggal / cara bayar / perangkat, unduh CSV |
 | Pembayaran QRIS | Setiap kode QR otomatis: lunas, tidak dibayar, dan "lunas tanpa sesi" yang perlu diperiksa |
 | Voucher | Buat massal, status aktif / terpakai / kedaluwarsa; berlaku di semua tablet, sekali pakai |
 | Koleksi Frame | Frame yang ditawarkan, per perangkat |
-| Pengaturan | Nama outlet, warna, logo, teks struk, harga, cara bayar + gambar QRIS, password |
+| Pengaturan | Nama outlet, warna, logo, harga, cara bayar + gambar QRIS, password |
 
 Petugas di tiap booth juga bisa melihat penjualan **tablet itu sendiri** dari ⚙ → PIN → tab **Dashboard** (omzet hari
 ini, 7 hari, bulan ini, grafik per hari) dan tab **Transaksi** (daftar sesi, saring cara bayar, unduh CSV), misalnya
 untuk mencocokkan uang tunai di laci. Datanya diambil dari server, jadi butuh internet; tablet hanya bisa melihat
 transaksinya sendiri.
 
-| Diatur di dashboard (sama untuk semua booth) | Diatur di tiap tablet (tergantung alatnya) |
+| Diatur di dashboard (sama untuk semua booth) | Diatur di tiap tablet |
 | --- | --- |
 | Harga, cara bayar, gambar QRIS, voucher | Printer dan kualitas cetak |
-| Nama outlet, warna, logo, teks struk | Kamera, cermin, hitung mundur, suara, batas menganggur |
+| Nama outlet, warna, logo | Teks struk: judul, sub-judul, penutup, media sosial, kutipan, kode QR |
+| | Kamera, cermin, hitung mundur, suara, batas menganggur |
 | Frame per perangkat | PIN petugas, layar penuh |
 | Laporan semua booth | Ringkasan penjualan tablet itu, foto untuk cetak ulang |
+
+Teks struk diatur per tablet (⚙ → **Struk**) supaya tiap booth bisa punya nama dan kutipannya sendiri; logonya tetap
+dari dashboard. Pengaturan di kolom kanan (kecuali layar penuh) diubah di tablet, tetapi salinannya ikut disimpan bersama
+perangkatnya di dashboard. Jadi kalau tabletnya diganti, tablet baru yang dipasangkan dengan kode dan PIN yang sama
+langsung memakai pengaturan printer, kualitas cetak, sesi & kamera, teks struk, riwayat dan PIN petugas yang sama. Printernya saja
+yang perlu dihubungkan sekali lagi (pilih printer lewat tombol **Hubungkan**), karena izin printer melekat pada tablet.
 
 ### Menyiapkan (sekali saja)
 
@@ -161,7 +168,8 @@ Sesudah terpasang:
   tengah sesi tetap bisa menyelesaikannya, dan transaksinya terkirim setelah tablet dipasangkan lagi.
 - **Voucher** diperiksa ke server supaya satu kode tidak bisa dipakai di dua tablet. Karena itu voucher **butuh
   internet**; QRIS dan tunai tidak.
-- Satu kode perangkat untuk satu tablet. Memasangkan tablet lain dengan kode yang sama melepas tablet sebelumnya.
+- Satu kode perangkat untuk satu tablet. Memasangkan tablet lain dengan kode yang sama melepas tablet sebelumnya, dan
+  tablet baru itu memakai pengaturan tablet sebelumnya (lihat di atas).
 - Foto tamu **tidak** dikirim ke server; hanya catatan transaksinya.
 
 Paket gratis Supabase menjeda proyek yang tidak dipakai sekitar seminggu. Booth yang dipakai rutin tidak kena; setelah

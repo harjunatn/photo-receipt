@@ -17,6 +17,8 @@ export interface Device {
   paired: boolean;
   paired_at: string | null;
   last_seen_at: string | null;
+  /** When the tablet last saved its own settings (printer, session, PIN) here; null if it never has. */
+  settings_at: string | null;
   created_at: string;
 }
 
@@ -142,7 +144,7 @@ function unwrap<T>(result: { data: T | null; error: { message: string } | null }
   return result.data as T;
 }
 
-const DEVICE_COLUMNS = 'id,name,code,pin,pin_fails,frames,active,status,token_hash,paired_at,last_seen_at,created_at';
+const DEVICE_COLUMNS = 'id,name,code,pin,pin_fails,frames,active,status,token_hash,paired_at,last_seen_at,settings_at,created_at';
 
 export function createSupabaseApi(db: SupabaseClient, email: string): OwnerApi {
   return {
