@@ -1,5 +1,6 @@
 import qrcode from 'qrcode-generator';
 import type { Rect } from '../image/types';
+import { cropWindow, type Crop } from './crop';
 
 /** All sizes are written for an 80 mm printer (576 dots) and scaled for narrower paper. */
 const BASE_WIDTH = 576;
@@ -13,6 +14,8 @@ export interface ComposedReceipt {
   canvas: HTMLCanvasElement;
   /** Areas holding photos; these are dithered, everything else prints as solid ink. */
   photoRects: Rect[];
+  /** Where each of the guest's photos landed, by photo number, so a preview can make them tappable. */
+  slotRects: (Rect | undefined)[];
 }
 
 function sourceSize(src: CanvasImageSource): { w: number; h: number } {
@@ -52,6 +55,10 @@ export class Page {
   readonly canvas = document.createElement('canvas');
   readonly ctx: CanvasRenderingContext2D;
   readonly photoRects: Rect[] = [];
+  readonly slotRects: (Rect | undefined)[] = [];
+  /** The guest's photos and how each was zoomed, to recognise them when a frame draws them. */
+  private slotPhotos: (CanvasImageSource | undefined)[] = [];
+  private slotCrops: (Crop | undefined)[] = [];
   y = 0;
 
   constructor(readonly width: number, maxHeight: number) {
@@ -186,6 +193,12 @@ export class Page {
     this.y += dh;
   }
 
+  /** Tells the page which photos are the guest's, and how each is zoomed and moved in its slot. */
+  usePhotos(photos: (CanvasImageSource | undefined)[], crops: (Crop | undefined)[] = []): void {
+    this.slotPhotos = photos;
+    this.slotCrops = crops;
+  }
+
   /**
    * Draws a photo with a black border at an exact position, without moving
    * the cursor, and returns the height it takes up. A missing photo leaves an
@@ -198,12 +211,12 @@ export class Page {
 
     const rect: Rect = { x: Math.round(x) + edge, y: Math.round(y) + edge, w: Math.round(width) - edge * 2, h: height - edge * 2 };
     const { w: sw, h: sh } = src ? sourceSize(src) : { w: 0, h: 0 };
+    const index = src ? this.slotPhotos.indexOf(src) : -1;
+    if (index >= 0) this.slotRects[index] = rect;
     if (src && sw && sh) {
-      // Cover the slot: crop whichever dimension of the source overflows.
-      const slotAspect = rect.w / rect.h;
-      const cropW = Math.min(sw, sh * slotAspect);
-      const cropH = Math.min(sh, sw / slotAspect);
-      this.ctx.drawImage(src, (sw - cropW) / 2, (sh - cropH) / 2, cropW, cropH, rect.x, rect.y, rect.w, rect.h);
+      // Cover the slot, cropping whatever overflows; the guest may have zoomed in and moved the photo.
+      const win = cropWindow(sw, sh, rect.w / rect.h, index >= 0 ? this.slotCrops[index] : undefined);
+      this.ctx.drawImage(src, win.sx, win.sy, win.sw, win.sh, rect.x, rect.y, rect.w, rect.h);
     } else {
       this.rect(rect.x, rect.y, rect.w, rect.h, '#d2d2d2');
     }
@@ -332,6 +345,6 @@ export class Page {
     out.width = this.width;
     out.height = Math.min(this.canvas.height, Math.ceil(this.y));
     out.getContext('2d', { willReadFrequently: true })!.drawImage(this.canvas, 0, 0);
-    return { canvas: out, photoRects: this.photoRects };
+    return { canvas: out, photoRects: this.photoRects, slotRects: this.slotRects };
   }
 }

@@ -2,6 +2,7 @@ import { rasterizeReceipt, type RasterSettings } from '../image/dither';
 import type { PhotoStyle } from '../image/style';
 import { bitImageToRgba, rgbaToGray, type BitImage } from '../image/types';
 import type { Settings } from '../settings';
+import type { Crop } from './crop';
 import type { FrameDef } from './frames';
 import { formatDateTime, INK, pad, Page, sessionCode, type ComposedReceipt } from './page';
 
@@ -13,6 +14,8 @@ export interface ReceiptInput {
   frame: FrameDef;
   /** One per slot of the frame; a missing photo prints as an empty slot. */
   photos: (CanvasImageSource | undefined)[];
+  /** How the guest zoomed and moved each photo, by photo number. */
+  crops?: (Crop | undefined)[];
   texts: Settings['receipt'];
   quote: string;
   when: Date;
@@ -50,6 +53,7 @@ export function composeReceipt(input: ReceiptInput): ComposedReceipt {
   }
   page.gap(14);
 
+  page.usePhotos(input.photos, input.crops);
   input.frame.draw(page, input.photos, input.when);
 
   if (input.compact) {

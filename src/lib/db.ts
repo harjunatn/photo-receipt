@@ -1,5 +1,6 @@
 import type { PhotoStyle } from './image/style';
 import type { PayMethod } from './log';
+import type { Crop } from './receipt/crop';
 
 /** A finished session with its photos, kept on this device so it can be reprinted. */
 export interface SessionRecord {
@@ -13,6 +14,8 @@ export interface SessionRecord {
   style: PhotoStyle;
   quote: string;
   photos: Blob[];
+  /** How the guest zoomed each photo, in the same order; missing in sessions saved before zooming existed. */
+  crops?: (Crop | null)[];
 }
 
 const DB_NAME = 'booth';

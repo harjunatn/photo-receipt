@@ -125,6 +125,7 @@ export function App() {
           draft={draft}
           onStyle={(style) => setDraft({ ...draft, style })}
           onFrame={(chosen) => setDraft({ ...draft, frame: chosen })}
+          onCrop={(index, crop) => setDraft({ ...draft, shots: draft.shots.map((shot, i) => (i === index && shot ? { ...shot, crop } : shot)) })}
           onRetake={(index) => {
             setTargets(index === undefined ? draft.shots.map((_, i) => i) : [index]);
             setScreen('capture');

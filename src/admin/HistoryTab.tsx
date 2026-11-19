@@ -19,6 +19,7 @@ async function recompose(record: SessionRecord): Promise<ComposedReceipt> {
     width: settings.printer.dots,
     frame: frameById(record.frameId),
     photos,
+    crops: record.crops?.map((crop) => crop ?? undefined),
     texts: settings.receipt,
     quote: record.quote,
     when: new Date(record.createdAt),

@@ -1,7 +1,8 @@
 import type { PhotoStyle } from './image/style';
-import type { BitImage } from './image/types';
+import type { BitImage, Rect } from './image/types';
 import type { PayMethod } from './log';
 import { composeReceipt, loadImage, loadReceiptFonts, receiptToBits } from './receipt/compose';
+import type { Crop } from './receipt/crop';
 import type { FrameDef } from './receipt/frames';
 import { SHARE_DAYS, shareUrl } from './cloud/shared';
 import type { PackageDef, Settings } from './settings';
@@ -10,6 +11,8 @@ import type { PackageDef, Settings } from './settings';
 export interface Shot {
   canvas: HTMLCanvasElement;
   url: string;
+  /** How the guest zoomed and moved it in its slot; taking the photo again starts without. */
+  crop?: Crop;
 }
 
 /** A guest's session while it is in progress. */
@@ -39,13 +42,16 @@ async function loadLogo(url: string): Promise<HTMLImageElement | null> {
   return cachedLogo.image;
 }
 
-/** Builds the receipt for a session as printer dots — the same picture for the on-screen preview and the print. */
-export async function renderDraft(draft: Draft, sessionNo: number, settings: Settings): Promise<BitImage> {
+function photosOf(draft: Draft) {
+  return { photos: draft.shots.map((shot) => shot?.canvas), crops: draft.shots.map((shot) => shot?.crop) };
+}
+
+async function composePrint(draft: Draft, sessionNo: number, settings: Settings) {
   await loadReceiptFonts();
-  const composed = composeReceipt({
+  return composeReceipt({
     width: settings.printer.dots,
     frame: draft.frame,
-    photos: draft.shots.map((shot) => shot?.canvas),
+    ...photosOf(draft),
     texts: settings.receipt,
     quote: draft.quote,
     when: draft.when,
@@ -53,7 +59,52 @@ export async function renderDraft(draft: Draft, sessionNo: number, settings: Set
     logo: await loadLogo(settings.receipt.logo),
     share: draft.shareCode ? { url: shareUrl(draft.shareCode), days: SHARE_DAYS } : undefined,
   });
+}
+
+/** Builds the receipt for a session as printer dots — the same picture for the on-screen preview and the print. */
+export async function renderDraft(draft: Draft, sessionNo: number, settings: Settings): Promise<BitImage> {
+  const composed = await composePrint(draft, sessionNo, settings);
   return receiptToBits(composed, settings.printer.raster, draft.style);
+}
+
+/** The colour copy, as it can be downloaded: same frame and texts, without the download QR code. */
+async function composeColour(draft: Draft, sessionNo: number, settings: Settings, width: number) {
+  await loadReceiptFonts();
+  return composeReceipt({
+    width,
+    frame: draft.frame,
+    ...photosOf(draft),
+    texts: settings.receipt,
+    quote: draft.quote,
+    when: draft.when,
+    sessionNo,
+    logo: await loadLogo(settings.receipt.logo),
+  });
+}
+
+/** A picture on the edit screen, with where each photo sits in it so the guest can tap one. */
+export interface EditPreview {
+  width: number;
+  height: number;
+  slots: (Rect | undefined)[];
+}
+
+/** Width of the colour picture on the edit screen: sharp enough on a tablet, quick to redraw. */
+const COLOUR_PREVIEW_WIDTH = 720;
+
+/** Both pictures the guest sees while editing: the receipt as it prints, and the colour copy. */
+export async function renderPreviews(
+  draft: Draft,
+  sessionNo: number,
+  settings: Settings,
+): Promise<{ print: EditPreview & { bits: BitImage }; colour: EditPreview & { canvas: HTMLCanvasElement } }> {
+  const printed = await composePrint(draft, sessionNo, settings);
+  const bits = receiptToBits(printed, settings.printer.raster, draft.style);
+  const colour = await composeColour(draft, sessionNo, settings, COLOUR_PREVIEW_WIDTH);
+  return {
+    print: { bits, width: bits.width, height: bits.height, slots: printed.slotRects },
+    colour: { canvas: colour.canvas, width: colour.canvas.width, height: colour.canvas.height, slots: colour.slotRects },
+  };
 }
 
 /** Width of the digital copy: sharp on a phone, still a reasonable download. */
@@ -72,17 +123,7 @@ function toJpeg(canvas: HTMLCanvasElement, quality: number): Promise<Blob> {
  * lists. The download QR code itself is left off.
  */
 export async function renderDigital(draft: Draft, sessionNo: number, settings: Settings): Promise<{ photo: Blob; thumb: Blob }> {
-  await loadReceiptFonts();
-  const composed = composeReceipt({
-    width: DIGITAL_WIDTH,
-    frame: draft.frame,
-    photos: draft.shots.map((shot) => shot?.canvas),
-    texts: settings.receipt,
-    quote: draft.quote,
-    when: draft.when,
-    sessionNo,
-    logo: await loadLogo(settings.receipt.logo),
-  });
+  const composed = await composeColour(draft, sessionNo, settings, DIGITAL_WIDTH);
   const full = composed.canvas;
   const small = document.createElement('canvas');
   small.width = THUMB_WIDTH;

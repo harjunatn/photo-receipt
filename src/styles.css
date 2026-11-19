@@ -1009,7 +1009,7 @@ textarea {
   max-width: 1240px;
   margin: 0 auto;
   display: grid;
-  grid-template-columns: minmax(0, 0.8fr) minmax(0, 1.2fr);
+  grid-template-columns: minmax(0, 1.1fr) minmax(0, 0.9fr);
   gap: clamp(18px, 4vw, 52px);
 }
 
@@ -1022,6 +1022,121 @@ textarea {
 
 .edit-preview .paper {
   width: min(100%, 330px);
+}
+
+/* The colour copy and the print side by side; tapping a photo in either opens it for adjusting. */
+.edit-pair {
+  width: 100%;
+  max-width: 640px;
+  margin-inline: auto;
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  align-items: start;
+  gap: clamp(10px, 2vw, 22px);
+}
+
+.edit-pair figure {
+  margin: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.edit-pair figcaption {
+  text-align: center;
+  color: var(--ink-2);
+  font-size: 12px;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+}
+
+.edit-pair .paper {
+  width: 100%;
+}
+
+.slot-host {
+  position: relative;
+}
+
+.slot-hit {
+  position: absolute;
+  padding: 0;
+  border: 0;
+  background: transparent;
+  cursor: pointer;
+  outline: 2px solid transparent;
+  outline-offset: -2px;
+  transition: outline-color 0.15s, background-color 0.15s;
+}
+
+.slot-hit:hover,
+.slot-hit:focus-visible {
+  outline-color: var(--accent);
+}
+
+.slot-hit:active {
+  background: rgb(255 255 255 / 0.25);
+}
+
+/* Shows that a photo can be tapped; never printed, only drawn over the preview. */
+.slot-hit span {
+  position: absolute;
+  right: 5px;
+  bottom: 5px;
+  padding: 2px 7px;
+  border-radius: 999px;
+  background: rgb(10 10 10 / 0.72);
+  color: #fff;
+  font-family: var(--ui);
+  font-size: 11px;
+  line-height: 1.5;
+  pointer-events: none;
+}
+
+/* ---------- Adjusting one photo ---------- */
+
+.adjust {
+  width: min(94vw, 560px);
+  max-height: 94vh;
+  overflow-y: auto;
+}
+
+.adjust-view {
+  width: min(100%, calc(56vh * var(--ratio, 1.3333)));
+  aspect-ratio: var(--ratio, 1.3333);
+  margin-inline: auto;
+  overflow: hidden;
+  border-radius: 4px;
+  background: #111;
+  touch-action: none;
+  cursor: grab;
+}
+
+.adjust-view:active {
+  cursor: grabbing;
+}
+
+.adjust-view canvas {
+  display: block;
+  width: 100%;
+  height: 100%;
+}
+
+.adjust-zoom {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  width: 100%;
+}
+
+.adjust-zoom span {
+  font-size: 14px;
+  color: var(--ink-2);
+}
+
+.adjust-zoom input {
+  flex: 1;
+  accent-color: var(--ink);
 }
 
 .edit-tools {
@@ -1048,46 +1163,6 @@ textarea {
   text-transform: uppercase;
 }
 
-.retakes {
-  display: flex;
-  flex-wrap: wrap;
-  align-items: center;
-  gap: 10px;
-}
-
-/* A photo that can be tapped to take it again. Its shape is set inline. */
-.retake {
-  position: relative;
-  height: clamp(66px, 11vmin, 98px);
-  padding: 0;
-  overflow: hidden;
-  border: 0;
-  border-radius: 2px;
-  background: var(--ink);
-  transition: transform 0.12s;
-}
-
-.retake:active {
-  transform: scale(0.95);
-}
-
-.retake img {
-  display: block;
-  width: 100%;
-  height: 100%;
-  object-fit: cover;
-  opacity: 0.85;
-}
-
-.retake span {
-  position: absolute;
-  inset: auto 0 0;
-  padding: 16px 4px 5px;
-  background: linear-gradient(transparent, rgb(0 0 0 / 0.72));
-  color: #fff;
-  font-size: 13px;
-  font-weight: 600;
-}
 
 .edit-actions {
   display: flex;
@@ -1704,8 +1779,7 @@ textarea {
     align-items: center;
   }
 
-  .chips,
-  .retakes {
+  .chips {
     justify-content: center;
   }
 

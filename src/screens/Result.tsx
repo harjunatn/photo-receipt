@@ -107,6 +107,7 @@ export function Result({ draft, onFinish }: Props) {
         if (settings.storage.keepPhotos) {
           // Saved in the background: a full disk must not stop the guest's print.
           const taken = draft.shots.flatMap((shot) => (shot ? [shot.canvas] : []));
+          const crops = draft.shots.flatMap((shot) => (shot ? [shot.crop ?? null] : []));
           void Promise.all(taken.map((canvas) => canvasToBlob(canvas)))
             .then((photos) =>
               saveSession(
@@ -121,6 +122,7 @@ export function Result({ draft, onFinish }: Props) {
                   style: draft.style,
                   quote: draft.quote,
                   photos,
+                  crops,
                 },
                 settings.storage.maxSessions,
               ),
