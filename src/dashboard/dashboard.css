@@ -84,6 +84,84 @@ html.dash-page body {
   color: var(--ink);
 }
 
+/* Headings inside the menu: "Platform", and the name of the franchise whose pages follow. */
+.dash-group {
+  margin: 14px 12px 4px;
+  overflow: hidden;
+  color: var(--ink-2);
+  font-size: 11px;
+  font-weight: 600;
+  letter-spacing: 0.14em;
+  text-overflow: ellipsis;
+  text-transform: uppercase;
+  white-space: nowrap;
+}
+
+.dash-group:first-child {
+  margin-top: 0;
+}
+
+/* A second heading on a page, between groups of panels. */
+.dash-sub {
+  margin: 10px 0 -8px;
+  font-size: 18px;
+  font-weight: 600;
+}
+
+/* The franchise's own frames, side by side. */
+.own-frames {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(230px, 1fr));
+  gap: 14px;
+}
+
+.own-frame {
+  display: flex;
+  gap: 12px;
+  align-items: flex-start;
+}
+
+.own-frame .frame-thumb {
+  flex: none;
+  width: 84px;
+}
+
+.own-frame small {
+  display: block;
+}
+
+/* The number of each photo hole, drawn over the frame preview. */
+.slot-number {
+  position: absolute;
+  display: grid;
+  place-items: center;
+  width: 30px;
+  height: 30px;
+  border-radius: 999px;
+  background: rgb(10 10 10 / 0.78);
+  color: #fff;
+  font-size: 15px;
+  font-weight: 600;
+  transform: translate(-50%, -50%);
+  pointer-events: none;
+}
+
+/* One admin account in a franchise's list. */
+.member {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px 14px;
+  padding: 10px 0;
+  border-bottom: 1px solid var(--line);
+  overflow-wrap: anywhere;
+}
+
+.member small {
+  display: block;
+}
+
 .dash-user {
   display: flex;
   flex-direction: column;
@@ -453,6 +531,13 @@ html.dash-page body {
   .dash-brand .pill,
   .dash-user .hint {
     display: none;
+  }
+
+  .dash-group {
+    align-self: center;
+    margin: 0 4px 0 12px;
+    flex: none;
+    max-width: 40vw;
   }
 
   .dash-brand b {

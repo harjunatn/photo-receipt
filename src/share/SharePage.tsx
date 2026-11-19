@@ -18,6 +18,8 @@ interface Share {
 }
 interface Answer {
   brand?: { title: string; accent: string };
+  /** The platform behind the booth; its mark closes the page. */
+  platform?: { name: string; watermark: string };
   shares?: Share[];
   error?: string;
 }
@@ -92,7 +94,7 @@ export function SharePage() {
   return (
     <main class="share">
       <header class="share-head">
-        <span class="pill">{answer?.brand?.title ?? 'Hello Snaply'}</span>
+        <span class="pill">{answer?.brand?.title ?? 'Photobooth'}</span>
         <h1 class="heading">Hasil foto kamu</h1>
       </header>
 
@@ -153,7 +155,10 @@ export function SharePage() {
         </>
       )}
 
-      <footer class="share-foot hint">Dibuat di photobooth {answer?.brand?.title ?? 'Hello Snaply'}</footer>
+      <footer class="share-foot hint">
+        {answer?.brand?.title ? `Dibuat di photobooth ${answer.brand.title}` : 'Dibuat di photobooth'}
+        {answer?.platform?.watermark ? ` · ${answer.platform.watermark}` : ''}
+      </footer>
     </main>
   );
 }

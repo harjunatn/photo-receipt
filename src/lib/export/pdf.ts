@@ -164,7 +164,7 @@ export function buildPdf(report: PdfReport): Uint8Array<ArrayBuffer> {
   objects[2] = `<< /Type /Pages /Kids [${pageIds.map((id) => `${id} 0 R`).join(' ')}] /Count ${pages.length} >>`;
   objects[3] = '<< /Type /Font /Subtype /Type1 /BaseFont /Helvetica /Encoding /WinAnsiEncoding >>';
   objects[4] = '<< /Type /Font /Subtype /Type1 /BaseFont /Helvetica-Bold /Encoding /WinAnsiEncoding >>';
-  objects[5] = `<< /Title ${pdfString(report.title)} /Producer (Hello Snaply) >>`;
+  objects[5] = `<< /Title ${pdfString(report.title)} /Producer (Photobooth) >>`;
   contents.forEach((content, p) => {
     const pageId = pageIds[p];
     objects[pageId] =

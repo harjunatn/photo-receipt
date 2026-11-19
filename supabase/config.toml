@@ -1,6 +1,6 @@
-# Ketiga fungsi ini memeriksa pemanggilnya sendiri: tablet dengan token perangkat, DOKU dengan
-# tanda tangan. Pemeriksaan JWT bawaan Supabase dimatikan karena tablet tidak punya akun dan
-# DOKU tidak mengirim JWT.
+# Semua fungsi ini memeriksa pemanggilnya sendiri: tablet dengan token perangkat, DOKU dengan
+# tanda tangan, dan akun dashboard (admin, doku-setup) dengan token masuknya. Pemeriksaan JWT
+# bawaan Supabase dimatikan karena tablet tidak punya akun dan DOKU tidak mengirim JWT.
 [functions.qris-create]
 verify_jwt = false
 
@@ -20,4 +20,10 @@ verify_jwt = false
 verify_jwt = false
 
 [functions.share-get]
+verify_jwt = false
+
+[functions.admin]
+verify_jwt = false
+
+[functions.doku-setup]
 verify_jwt = false

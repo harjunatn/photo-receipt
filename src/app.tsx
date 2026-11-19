@@ -1,10 +1,10 @@
 import { useEffect, useRef, useState } from 'preact/hooks';
 import { Admin } from './admin/Admin';
-import { pairingStore, refetchSettings, setBoothIdle } from './lib/cloud/device';
-import { cloudConfigured, newShareCode } from './lib/cloud/shared';
+import { pairingStore, refetchSettings, setBoothIdle, subscriptionStore } from './lib/cloud/device';
+import { cloudConfigured, newShareCode, subscriptionState } from './lib/cloud/shared';
 import { useIdle } from './lib/kiosk';
 import type { PayMethod } from './lib/log';
-import { activeFrames, type FrameDef } from './lib/receipt/frames';
+import { activeFrames, customFramesStore, type FrameDef } from './lib/receipt/frames';
 import type { Draft, Shot } from './lib/session';
 import { useSettings, type PackageDef } from './lib/settings';
 import { sound } from './lib/sound';
@@ -31,6 +31,8 @@ export function App() {
   /** The photo slots the camera step should fill next. */
   const [targets, setTargets] = useState<number[]>([]);
   const [askPin, setAskPin] = useState(location.hash === '#admin');
+  // Redraws the screens when the franchise's own frames arrive or change.
+  useStore(customFramesStore);
   const frames = activeFrames(settings.frames.active);
   const packages = settings.packages.filter((p) => p.active);
   const allTaken = draft !== null && draft.shots.every((shot) => shot !== null);
@@ -91,6 +93,9 @@ export function App() {
   const start = () => {
     // Every session must be recorded in the dashboard, so an unpaired tablet takes no guests.
     if (!pairingStore.get()) return;
+    // Nor does a booth whose franchise's subscription has run out or was stopped.
+    const subscription = subscriptionState(subscriptionStore.get());
+    if (subscription === 'expired' || subscription === 'suspended') return;
     sound.unlock();
     if (frames.length === 1) pickFrame(frames[0]);
     else setScreen('frames');
@@ -154,6 +159,8 @@ export function App() {
           }}
         />
       )}
+      {/* The platform's mark on every guest screen; staff settings are left clean. */}
+      {screen !== 'admin' && settings.platform.watermark.trim() && <div class="platform-mark">{settings.platform.watermark.trim()}</div>}
       <ToastHost />
     </>
   );

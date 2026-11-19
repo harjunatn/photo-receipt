@@ -75,8 +75,10 @@ function world() {
       }
       if (name === 'share_lookup') {
         return json({
-          brand: { title: 'Hello Snaply', accent: '#ff00aa' },
-          shares: args.p_codes.filter((c: string) => shares.has(c)).map((c: string) => ({ code: c, device_name: 'Booth', ...shares.get(c) })),
+          platform: { name: 'jepretin', watermark: 'didukung oleh jepretin' },
+          shares: args.p_codes
+            .filter((c: string) => shares.has(c))
+            .map((c: string) => ({ code: c, device_name: 'Booth', brand: { title: 'Hello Snaply', accent: '#ff00aa' }, ...shares.get(c) })),
         });
       }
       throw new Error(`rpc tak dikenal: ${name}`);
@@ -150,8 +152,14 @@ describe('R2 settings', () => {
   });
 
   it('explains an unreachable R2, a missing bucket and refused keys without exposing the key id', async () => {
-    const ask = (fetchFn: (url: string, init: RequestInit) => Promise<Response>) =>
-      handleShareUpload({ action: 'done', token: 'tablet-a', code: 'abc234defg56', kind: 'photo' }, env(), fetchFn, now);
+    // The tablet owns the code; only what R2 answers differs from case to case.
+    const ask = (r2: (url: string, init: RequestInit) => Promise<Response>) =>
+      handleShareUpload(
+        { action: 'done', token: 'tablet-a', code: 'abc234defg56', kind: 'photo' },
+        env(),
+        (url, init) => (url.includes('/rest/v1/rpc/share_claim') ? Promise.resolve(new Response(JSON.stringify({ ok: true }), { status: 200 })) : r2(url, init)),
+        now,
+      );
     const unreachable = await ask(async () => {
       throw new TypeError('error sending request for url (https://acc123.r2.cloudflarestorage.com/...r2-key...)');
     });
@@ -171,6 +179,21 @@ describe('R2 settings', () => {
   });
 });
 
+describe('share-upload, finishing', () => {
+  it('asks nothing of R2 for a tablet that does not own the code, and never offers a file larger than allowed', async () => {
+    const w = world();
+    await handleShareUpload({ action: 'sign', token: 'tablet-a', code: 'abc234defg56', kind: 'thumb', size: 10 }, env(), w.fetchFn, now);
+    const before = w.calls.filter((call) => call.startsWith('r2')).length;
+    expect((await handleShareUpload({ action: 'done', token: 'tablet-b', code: 'abc234defg56', kind: 'thumb' }, env(), w.fetchFn, now)).body.error).toBe('taken');
+    expect((await handleShareUpload({ action: 'done', token: 'bukan-tablet', code: 'abc234defg56', kind: 'thumb' }, env(), w.fetchFn, now)).body.error).toBe('unpaired');
+    expect(w.calls.filter((call) => call.startsWith('r2'))).toHaveLength(before);
+    // The upload address cannot limit the size, so the size is checked when the upload is reported.
+    w.stored.set('s/abc234defg56/thumb.jpg', 5_000_000);
+    expect((await handleShareUpload({ action: 'done', token: 'tablet-a', code: 'abc234defg56', kind: 'thumb' }, env(), w.fetchFn, now)).body.error).toBe('too-large');
+    expect(w.shares.get('abc234defg56')?.files).toEqual({});
+  });
+});
+
 describe('share-get', () => {
   async function uploaded(kinds: string[]) {
     const w = world();
@@ -186,6 +209,7 @@ describe('share-get', () => {
     const { fetchFn } = await uploaded(['photo', 'thumb']);
     const reply = await handleShareGet({ code: 'abc234defg56' }, env(), fetchFn, now);
     expect(reply.body.brand).toEqual({ title: 'Hello Snaply', accent: '#ff00aa' });
+    expect(reply.body.platform).toEqual({ name: 'jepretin', watermark: 'didukung oleh jepretin' });
     const [share] = reply.body.shares as { status: string; files: Record<string, { view: string; download: string }> }[];
     expect(share.status).toBe('ready');
     const view = new URL(share.files.photo.view);

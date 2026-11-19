@@ -3,7 +3,7 @@ import type { StatRow } from '../../dashboard/stats';
 import { printer } from '../printer/manager';
 import { settingsStore } from '../settings';
 import { createPersistedStore, createStore } from '../store';
-import { applyDeviceSettings, applyRemote, cloudConfigured, deviceSettingsOf, SUPABASE_KEY, SUPABASE_URL } from './shared';
+import { applyDeviceSettings, applyRemote, cloudConfigured, deviceSettingsOf, SUPABASE_KEY, SUPABASE_URL, type Subscription } from './shared';
 
 /** What this tablet keeps after being paired with a device from the dashboard. */
 export interface Pairing {
@@ -11,6 +11,8 @@ export interface Pairing {
   id: string;
   name: string;
   code: string;
+  /** Name of the franchise the device belongs to, once the server has told it. */
+  franchise?: string;
 }
 
 /** One finished session on its way to the server. */
@@ -43,6 +45,10 @@ export const outboxStore = createPersistedStore<CloudTx[]>('booth.outbox.v1', []
 export const syncState = createStore<SyncState>({ lastOk: null, error: '', revoked: false });
 /** QRs this tablet made that have no final status yet, with when they were made. */
 const openQrStore = createPersistedStore<Record<string, number>>('booth.qris-open.v1', {});
+/** The franchise's subscription as last heard from the server; the booth stops taking guests once it has run out. */
+export const subscriptionStore = createPersistedStore<Subscription | null>('booth.subscription.v1', null);
+/** Tells the frame store which version of the franchise's own frames the server has; it fetches them when this changes. */
+export const framesVersionStore = createStore<string>('');
 /** The tablet settings the server is known to hold for this device, and when they got there. */
 export const settingsBackupStore = createPersistedStore<{ json: string; at: number } | null>('booth.device-settings.v1', null);
 
@@ -106,6 +112,7 @@ export async function pairDevice(code: string, pin: string): Promise<PairResult>
 export function unpairDevice(): void {
   pairingStore.set(null);
   settingsBackupStore.set(null);
+  subscriptionStore.set(null);
   localStorage.removeItem(VERSION_KEY);
 }
 
@@ -168,14 +175,14 @@ async function sweepQris(token: string): Promise<void> {
 }
 
 // Settings from the dashboard wait here while a guest is using the booth.
-let pending: { outlet?: unknown; frames: unknown; version: string } | null = null;
+let pending: { outlet?: unknown; platform?: unknown; frames: unknown; version: string } | null = null;
 let idle = true;
 let running = false;
 
 function applyPending(): void {
   if (!pending || !idle) return;
   const before = settingsStore.get();
-  const after = applyRemote(before, pending.outlet, pending.frames);
+  const after = applyRemote(before, pending.outlet, pending.frames, pending.platform);
   if (JSON.stringify(after) !== JSON.stringify(before)) settingsStore.replace(after);
   localStorage.setItem(VERSION_KEY, pending.version);
   pending = null;
@@ -198,7 +205,12 @@ interface SyncResult {
   name?: string;
   frames?: unknown;
   outlet?: unknown;
+  /** Sent together with the outlet, when either changed. */
+  platform?: unknown;
   outlet_version?: string;
+  franchise?: { id?: string; name?: string };
+  subscription?: { active?: unknown; paid_until?: unknown; grace_days?: unknown };
+  frames_version?: string;
 }
 
 /** Sends queued transactions, reports this tablet's state and picks up settings. */
@@ -231,10 +243,23 @@ export async function syncNow(): Promise<boolean> {
       revoked();
       return false;
     }
-    if (result.name && result.name !== pairing.name) pairingStore.set({ ...pairing, name: result.name });
+    const franchise = result.franchise?.name ?? pairing.franchise;
+    if ((result.name && result.name !== pairing.name) || franchise !== pairing.franchise) {
+      pairingStore.set({ ...pairing, name: result.name || pairing.name, franchise });
+    }
+    if (result.subscription) {
+      const next: Subscription = {
+        active: result.subscription.active !== false,
+        paidUntil: typeof result.subscription.paid_until === 'string' ? result.subscription.paid_until : null,
+        graceDays: typeof result.subscription.grace_days === 'number' ? result.subscription.grace_days : 7,
+      };
+      if (JSON.stringify(next) !== JSON.stringify(subscriptionStore.get())) subscriptionStore.set(next);
+    }
+    if (typeof result.frames_version === 'string' && result.frames_version !== framesVersionStore.get()) framesVersionStore.set(result.frames_version);
     pending = {
       // An unchanged outlet is not sent again; keep one that is still waiting to be applied.
       outlet: 'outlet' in result ? result.outlet : pending?.outlet,
+      platform: 'platform' in result ? result.platform : pending?.platform,
       frames: result.frames,
       version: result.outlet_version ?? '',
     };
@@ -274,7 +299,7 @@ export function startCloudSync(): void {
   });
 }
 
-export type CloudVoucherResult = { status: 'ok'; code: string } | { status: 'not-found' | 'used' | 'expired' | 'offline' };
+export type CloudVoucherResult = { status: 'ok'; code: string } | { status: 'not-found' | 'used' | 'expired' | 'offline' | 'subscription' };
 
 /** Uses up a voucher on the server, so that no other tablet can accept the same code. */
 export async function redeemCloudVoucher(input: string): Promise<CloudVoucherResult> {
@@ -287,10 +312,36 @@ export async function redeemCloudVoucher(input: string): Promise<CloudVoucherRes
       revoked();
       return { status: 'offline' };
     }
-    if (result.status === 'used' || result.status === 'expired') return { status: result.status };
+    if (result.status === 'used' || result.status === 'expired' || result.status === 'subscription') return { status: result.status };
     return { status: 'not-found' };
   } catch {
     return { status: 'offline' };
+  }
+}
+
+/** One of the franchise's own frames as the server sends it. */
+export interface RemoteFrame {
+  id: string;
+  name: string;
+  blurb: string;
+  layout: unknown;
+  image: string;
+  updated_at: string;
+}
+
+/**
+ * The franchise's own frames: the ids that exist now, and in full those that are new or changed
+ * compared with `known` (id → updated_at). null when the tablet is not paired or the server cannot be reached.
+ */
+export async function fetchCustomFrames(known: Record<string, string>): Promise<{ ids: string[]; frames: RemoteFrame[] } | null> {
+  const pairing = pairingStore.get();
+  if (!cloudConfigured || !pairing) return null;
+  try {
+    const result = await rpc<{ error?: string; ids?: string[]; frames?: RemoteFrame[] }>('device_frames', { p_token: pairing.token, p_known: known });
+    if (result.error || !Array.isArray(result.ids)) return null;
+    return { ids: result.ids, frames: result.frames ?? [] };
+  } catch {
+    return null;
   }
 }
 

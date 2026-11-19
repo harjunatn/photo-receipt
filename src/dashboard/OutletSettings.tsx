@@ -4,6 +4,7 @@ import { completeOutlet, outletFromSettings, SHARE_DAYS, type OutletConfig } fro
 import { DEFAULT_SETTINGS, formatRupiah } from '../lib/settings';
 import { toast } from '../ui/components';
 import type { PageProps } from './Dashboard';
+import { DokuSetup } from './DokuSetup';
 import { LoadState, PageHead, describe, useLoad } from './ui';
 
 /** What every tablet shares: the outlet's name, logo, prices and ways of paying. Receipt texts are set on each tablet. */
@@ -20,7 +21,7 @@ export function OutletSettings({ api }: PageProps) {
   if (!draft) {
     return (
       <>
-        <PageHead title="Pengaturan" lead="Berlaku untuk semua tablet yang terpasang." />
+        <PageHead title="Pengaturan" lead={`Berlaku untuk semua tablet ${api.franchise.name}.`} />
         <LoadState load={load} />
       </>
     );
@@ -60,7 +61,7 @@ export function OutletSettings({ api }: PageProps) {
 
   return (
     <>
-      <PageHead title="Pengaturan" lead="Berlaku untuk semua tablet yang terpasang. Teks struk, printer, kamera, waktu sesi dan PIN petugas diatur di tiap tablet.">
+      <PageHead title="Pengaturan" lead={`Berlaku untuk semua tablet ${api.franchise.name}. Teks struk, printer, kamera, waktu sesi dan PIN petugas diatur di tiap tablet.`}>
         {dirty && (
           <button class="btn small" disabled={busy} onClick={() => setDraft(structuredClone(load.data))}>
             Batalkan perubahan
@@ -111,8 +112,8 @@ export function OutletSettings({ api }: PageProps) {
               {draft.payment.qrisAuto ? (
                 <p class="hint">
                   Tablet membuat kode QR khusus untuk tiap sesi dengan nominal yang sudah terisi, dan sesi foto mulai sendiri
-                  begitu pembayaran masuk — tanpa petugas. Membutuhkan internet di tablet dan kunci DOKU yang sudah diisi di
-                  Supabase (lihat README).
+                  begitu pembayaran masuk — tanpa petugas. Membutuhkan internet di tablet dan kunci akun DOKU franchise ini,
+                  yang diisi di bagian <b>Akun DOKU</b> di bawah.
                 </p>
               ) : (
                 <>
@@ -142,6 +143,8 @@ export function OutletSettings({ api }: PageProps) {
             </p>
           )}
         </section>
+
+        {draft.payment.qris && draft.payment.qrisAuto && <DokuSetup api={api} />}
 
         <section class="panel span">
           <div class="row">

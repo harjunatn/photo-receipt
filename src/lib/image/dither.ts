@@ -90,31 +90,36 @@ const INK_THRESHOLD = 160;
  * Turns a composed receipt into printable dots. Text and line art are
  * thresholded so they stay solid; only the photo rectangles are tone-mapped
  * and dithered, each on its own so dither noise never bleeds into the text.
- * `style` is the look the guest picked for the photos.
+ * `style` is the look the guest picked for the photos. `artRects` hold artwork
+ * with colours or gradients: shaded as it is, without the photos' tone and style,
+ * and under the photos where the two overlap.
  */
 export function rasterizeReceipt(
   gray: GrayImage,
   photoRects: Rect[],
   settings: RasterSettings,
   style: PhotoStyle = 'normal',
+  artRects: Rect[] = [],
 ): BitImage {
   const { width, height } = gray;
   const dots = new Uint8Array(width * height);
   for (let i = 0; i < dots.length; i++) dots[i] = gray.data[i] < INK_THRESHOLD ? 1 : 0;
 
   const styled = styleRaster(settings, style);
-  for (const rect of photoRects) {
+  const shade = (rect: Rect, photo: boolean) => {
     const x = Math.max(0, Math.round(rect.x));
     const y = Math.max(0, Math.round(rect.y));
-    const w = Math.min(width - x, Math.round(rect.w));
-    const h = Math.min(height - y, Math.round(rect.h));
-    if (w <= 0 || h <= 0) continue;
-    const photo = applyTone(stylizePhoto(cropGray(gray, { x, y, w, h }), style), styled);
-    const photoDots = ditherToDots(photo, styled.dither);
+    const w = Math.min(width - x, Math.round(rect.w) + Math.min(0, Math.round(rect.x)));
+    const h = Math.min(height - y, Math.round(rect.h) + Math.min(0, Math.round(rect.y)));
+    if (w <= 0 || h <= 0) return;
+    const part = cropGray(gray, { x, y, w, h });
+    const shaded = ditherToDots(photo ? applyTone(stylizePhoto(part, style), styled) : part, styled.dither);
     for (let row = 0; row < h; row++) {
-      dots.set(photoDots.subarray(row * w, (row + 1) * w), (y + row) * width + x);
+      dots.set(shaded.subarray(row * w, (row + 1) * w), (y + row) * width + x);
     }
-  }
+  };
+  for (const rect of artRects) shade(rect, false);
+  for (const rect of photoRects) shade(rect, true);
   return packDots(dots, width, height);
 }
 

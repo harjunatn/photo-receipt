@@ -109,6 +109,9 @@ export async function handleShareUpload(input: Record<string, unknown>, env: Sha
   }
 
   if (input.action === 'done') {
+    // Only the tablet that owns the code gets to make this function talk to R2.
+    const owner = await rpc<{ ok?: boolean; error?: string }>(env, fetchFn, 'share_claim', { p_token: token, p_code: code });
+    if (!owner.ok) return { status: 200, body: { error: owner.error ?? 'refused' } };
     let head: Response;
     try {
       head = await fetchFn(await sign(env, 'HEAD', key, 60, now()), { method: 'HEAD' });
@@ -145,6 +148,8 @@ export async function handleShareUpload(input: Record<string, unknown>, env: Sha
     }
     if (!head.ok) return { status: 200, body: { error: 'storage', message: `R2 menjawab ${head.status}` } };
     const size = Number(head.headers.get('content-length') ?? 0);
+    // The upload address does not limit the size, so a file larger than allowed is simply never offered to anyone.
+    if (size > KINDS[kind].max) return { status: 200, body: { error: 'too-large' } };
     const recorded = await rpc<{ ok?: boolean; error?: string }>(env, fetchFn, 'share_add_file', {
       p_token: token,
       p_code: code,
@@ -158,6 +163,8 @@ export async function handleShareUpload(input: Record<string, unknown>, env: Sha
 }
 
 interface ShareRow {
+  /** Name and colour of the franchise whose booth took the photo. */
+  brand?: { title?: unknown; accent?: unknown } | null;
   code: string;
   files: Partial<Record<ShareKind, { key: string; size: number; type: string }>>;
   created_at: string;
@@ -173,8 +180,9 @@ function fileName(brand: string, code: string, kind: ShareKind): string {
 
 /**
  * share-get, public: the files behind one or more codes, as links that last an
- * hour. A code nobody has uploaded to yet answers "pending"; one past its seven
- * days answers "expired".
+ * hour. A code nobody has uploaded to yet answers "pending"; one past its days
+ * answers "expired". Every share carries the brand of its own franchise; the
+ * top-level brand is that of the first code found, for the guest page that asks for one.
  */
 export async function handleShareGet(input: Record<string, unknown>, env: ShareEnv, fetchFn: Fetch = fetch, now: () => Date = () => new Date()): Promise<Reply> {
   if (!env.r2 || !BUCKET_NAME.test(env.r2.bucket)) return { status: 200, body: { error: 'not-configured' } };
@@ -182,16 +190,19 @@ export async function handleShareGet(input: Record<string, unknown>, env: ShareE
   const codes = [...new Set(asked.map(text).filter((code) => CODE.test(code)))].slice(0, 60);
   if (codes.length === 0) return { status: 200, body: { error: 'bad-request' } };
 
-  const found = await rpc<{ brand?: { title?: string; accent?: string } | null; shares?: ShareRow[] }>(env, fetchFn, 'share_lookup', { p_codes: codes });
-  const brand = { title: text(found.brand?.title) || 'Hello Snaply', accent: text(found.brand?.accent) || '' };
+  const found = await rpc<{ platform?: { name?: unknown; watermark?: unknown } | null; shares?: ShareRow[] }>(env, fetchFn, 'share_lookup', { p_codes: codes });
+  const platform = { name: text(found.platform?.name), watermark: text(found.platform?.watermark) };
+  const brandOf = (row: ShareRow | undefined) => ({ title: text(row?.brand?.title) || platform.name || 'Foto', accent: text(row?.brand?.accent) || '' });
   const rows = new Map((found.shares ?? []).map((row) => [row.code, row]));
+  const brand = brandOf(codes.map((code) => rows.get(code)).find((row) => row !== undefined));
   const at = now();
 
   const shares = await Promise.all(
     codes.map(async (code) => {
       const row = rows.get(code);
       if (!row) return { code, status: 'pending' };
-      if (Date.parse(row.expires_at) < at.getTime()) return { code, status: 'expired', expires_at: row.expires_at };
+      const own = brandOf(row);
+      if (Date.parse(row.expires_at) < at.getTime()) return { code, status: 'expired', expires_at: row.expires_at, brand: own };
       const files: Record<string, { view: string; download: string; size: number; type: string }> = {};
       for (const kind of Object.keys(KINDS) as ShareKind[]) {
         const file = row.files[kind];
@@ -199,14 +210,14 @@ export async function handleShareGet(input: Record<string, unknown>, env: ShareE
         files[kind] = {
           view: await sign(env, 'GET', file.key, VIEW_SECONDS, at),
           download: await sign(env, 'GET', file.key, VIEW_SECONDS, at, {
-            'response-content-disposition': `attachment; filename="${fileName(brand.title, code, kind)}"`,
+            'response-content-disposition': `attachment; filename="${fileName(own.title, code, kind)}"`,
           }),
           size: file.size,
           type: file.type,
         };
       }
-      return { code, status: files.photo ? 'ready' : 'pending', created_at: row.created_at, expires_at: row.expires_at, files };
+      return { code, status: files.photo ? 'ready' : 'pending', created_at: row.created_at, expires_at: row.expires_at, brand: own, files };
     }),
   );
-  return { status: 200, body: { brand, shares } };
+  return { status: 200, body: { brand, platform, shares } };
 }

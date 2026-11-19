@@ -27,6 +27,64 @@ export function outletFromSettings(settings: Settings): OutletConfig {
   });
 }
 
+/** What the platform owner sets for every franchise: the name behind the booths and where it shows. */
+export interface PlatformConfig {
+  /** The platform's name, e.g. on the dashboard. */
+  name: string;
+  /** Small text on the guest screens of every tablet. Empty shows none. */
+  watermark: string;
+  /** Last line of every receipt and of the downloadable copy, e.g. the platform's social media account. Empty prints none. */
+  receiptLine: string;
+  /** Days a booth keeps running after its franchise's subscription ran out. */
+  graceDays: number;
+}
+
+export const DEFAULT_PLATFORM: PlatformConfig = { ...DEFAULT_SETTINGS.platform, graceDays: 7 };
+
+/** Fills the gaps of saved platform settings, e.g. before the owner has saved any. */
+export function completePlatform(saved: unknown): PlatformConfig {
+  const source = isObject(saved) ? saved : {};
+  const line = (value: unknown, fallback: string, max: number) => (typeof value === 'string' ? value.trim().slice(0, max) : fallback);
+  const days = Number(source.graceDays);
+  return {
+    name: line(source.name, DEFAULT_PLATFORM.name, 40) || DEFAULT_PLATFORM.name,
+    watermark: line(source.watermark, DEFAULT_PLATFORM.watermark, 60),
+    receiptLine: line(source.receiptLine, DEFAULT_PLATFORM.receiptLine, 40),
+    graceDays: Number.isInteger(days) && days >= 0 && days <= 60 ? days : DEFAULT_PLATFORM.graceDays,
+  };
+}
+
+/** What a tablet remembers of its franchise's subscription, so it still knows where it stands while offline. */
+export interface Subscription {
+  /** false: stopped by the platform owner, whatever the date. */
+  active: boolean;
+  /** Last day covered (YYYY-MM-DD), or null for no end. */
+  paidUntil: string | null;
+  graceDays: number;
+}
+
+/** active: running · grace: ran out, booths still run for a few days · expired: booths stopped · suspended: stopped by the platform owner. */
+export type SubscriptionState = 'active' | 'grace' | 'expired' | 'suspended';
+
+/** Today's date in Jakarta, which is how the server counts subscription days. */
+export function jakartaDay(now: Date = new Date()): string {
+  return new Date(now.getTime() + 7 * 3_600_000).toISOString().slice(0, 10);
+}
+
+export function addDays(day: string, days: number): string {
+  return new Date(Date.parse(`${day}T00:00:00Z`) + days * 86_400_000).toISOString().slice(0, 10);
+}
+
+/** Where a subscription stands on a given day. Nothing known yet (a tablet before its first sync) counts as running. */
+export function subscriptionState(subscription: Subscription | null, now: Date = new Date()): SubscriptionState {
+  if (!subscription) return 'active';
+  if (!subscription.active) return 'suspended';
+  if (!subscription.paidUntil) return 'active';
+  const today = jakartaDay(now);
+  if (today <= subscription.paidUntil) return 'active';
+  return today <= addDays(subscription.paidUntil, Math.max(0, subscription.graceDays)) ? 'grace' : 'expired';
+}
+
 function isObject(value: unknown): value is Record<string, unknown> {
   return typeof value === 'object' && value !== null && !Array.isArray(value);
 }
@@ -63,8 +121,13 @@ export function completeOutlet(saved: unknown, fallback: OutletConfig): OutletCo
  * the owner has actually saved are taken; everything about this particular
  * tablet (printer, camera, session timing, PIN) is left alone.
  */
-export function applyRemote(settings: Settings, outlet: unknown, frames: unknown): Settings {
+export function applyRemote(settings: Settings, outlet: unknown, frames: unknown, platform?: unknown): Settings {
   const next = structuredClone(settings);
+  // Sent together with the outlet; absent while only the frames changed.
+  if (isObject(platform)) {
+    const complete = completePlatform(platform);
+    next.platform = { name: complete.name, watermark: complete.watermark, receiptLine: complete.receiptLine };
+  }
   if (isObject(outlet)) {
     if (isObject(outlet.brand)) next.brand = mergeSettings(next.brand, outlet.brand);
     // The receipt texts are the tablet's own; outlets saved before that still carry them and are ignored.
@@ -75,6 +138,10 @@ export function applyRemote(settings: Settings, outlet: unknown, frames: unknown
       const packages = outlet.packages.filter(isPackage);
       if (packages.length > 0) next.packages = packages;
     }
+  }
+  // A tablet that never chose a receipt title prints its outlet's name rather than the app's sample one.
+  if (next.receipt.title === DEFAULT_SETTINGS.receipt.title && next.brand.title.trim() && next.brand.title !== DEFAULT_SETTINGS.brand.title) {
+    next.receipt.title = next.brand.title.trim().toUpperCase();
   }
   // A device whose frames were never chosen in the dashboard offers the standard set.
   next.frames.active = Array.isArray(frames)

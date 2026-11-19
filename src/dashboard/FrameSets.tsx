@@ -1,15 +1,31 @@
 import { useEffect, useState } from 'preact/hooks';
 import { Check } from '../admin/fields';
+import { customFrameId } from '../lib/receipt/custom';
 import { FRAMES } from '../lib/receipt/frames';
 import { useFramePreviews } from '../lib/receipt/previews';
 import { DEFAULT_SETTINGS } from '../lib/settings';
 import { toast } from '../ui/components';
+import type { CustomFrameRow } from './api';
 import type { PageProps } from './Dashboard';
+import { FrameEditor } from './FrameEditor';
 import { LoadState, PageHead, describe, useLoad } from './ui';
 
-/** Which frame designs each tablet offers its guests, and in what order. */
+/** A frame as the list shows it, whether built in or the franchise's own. */
+interface Choice {
+  id: string;
+  name: string;
+  blurb: string;
+  picture: string | undefined;
+  own: boolean;
+}
+
+/** The franchise's own frames, and which frame designs each tablet offers its guests, in what order. */
 export function FrameSets({ api }: PageProps) {
   const load = useLoad(() => api.listDevices(), [api]);
+  const own = useLoad(() => api.listFrames(), [api]);
+  // undefined: editor closed · null: adding a frame · a row: changing that frame.
+  const [editing, setEditing] = useState<CustomFrameRow | null | undefined>(undefined);
+  const [confirmDelete, setConfirmDelete] = useState('');
   const previews = useFramePreviews(FRAMES, DEFAULT_SETTINGS);
   const [deviceId, setDeviceId] = useState('');
   const [draft, setDraft] = useState<string[]>([]);
@@ -25,7 +41,7 @@ export function FrameSets({ api }: PageProps) {
   const save = async (ids: string[]) => {
     setBusy(true);
     try {
-      await Promise.all(ids.map((id) => api.updateDevice(id, { frames: draft })));
+      await Promise.all(ids.map((id) => api.updateDevice(id, { frames: offered })));
       toast(ids.length > 1 ? 'Disimpan untuk semua perangkat.' : 'Disimpan. Tablet mengikutinya dalam satu-dua menit.');
       load.reload();
     } catch (cause) {
@@ -34,8 +50,29 @@ export function FrameSets({ api }: PageProps) {
     setBusy(false);
   };
 
+  const removeFrame = async (frame: CustomFrameRow) => {
+    setBusy(true);
+    try {
+      await api.deleteFrame(frame.id);
+      toast(`Frame ${frame.name} dihapus.`);
+      setConfirmDelete('');
+      own.reload();
+    } catch (cause) {
+      toast(describe(cause));
+    }
+    setBusy(false);
+  };
+
   const list = draft;
-  const ordered = [...list.flatMap((id) => FRAMES.filter((f) => f.id === id)), ...FRAMES.filter((f) => !list.includes(f.id))];
+  const choices: Choice[] = [
+    ...FRAMES.map((frame) => ({ id: frame.id, name: frame.name, blurb: frame.blurb, picture: previews[frame.id], own: false })),
+    ...(own.data ?? [])
+      .filter((frame) => frame.active)
+      .map((frame) => ({ id: customFrameId(frame.id), name: frame.name, blurb: frame.blurb || `${frame.layout.slots.length} foto`, picture: frame.thumb || undefined, own: true })),
+  ];
+  const ordered = [...list.flatMap((id) => choices.filter((f) => f.id === id)), ...choices.filter((f) => !list.includes(f.id))];
+  // Ids of frames that no longer exist are dropped when the list is saved.
+  const offered = draft.filter((id) => choices.some((choice) => choice.id === id));
   const move = (id: string, step: -1 | 1) => {
     const next = list.slice();
     const from = next.indexOf(id);
@@ -47,7 +84,64 @@ export function FrameSets({ api }: PageProps) {
 
   return (
     <>
-      <PageHead title="Koleksi Frame" lead="Frame yang ditawarkan ke tamu, diatur per perangkat. Urutan di sini sama dengan urutan di layar tamu." />
+      <PageHead title="Koleksi Frame" lead="Frame buatan sendiri, dan frame mana yang ditawarkan ke tamu di tiap perangkat." />
+
+      {editing !== undefined ? (
+        <FrameEditor
+          key={editing?.id ?? 'baru'}
+          api={api}
+          frame={editing}
+          onClose={() => setEditing(undefined)}
+          onSaved={() => {
+            setEditing(undefined);
+            own.reload();
+          }}
+        />
+      ) : (
+        <section class="panel">
+          <div class="row">
+            <h2 class="grow">Frame buatan sendiri</h2>
+            <button class="btn small primary" onClick={() => setEditing(null)}>
+              + Tambah frame
+            </button>
+          </div>
+          <LoadState load={own} />
+          {own.data?.length === 0 && (
+            <p class="hint">
+              Belum ada. Selain tujuh frame bawaan, kamu bisa mengunggah desain sendiri: gambar PNG dengan lubang transparan tempat foto. Frame
+              buatanmu hanya terlihat oleh franchise ini.
+            </p>
+          )}
+          <div class="own-frames">
+            {own.data?.map((frame) => (
+              <div class="own-frame" key={frame.id}>
+                <div class="frame-thumb">{frame.thumb ? <img src={frame.thumb} alt="" /> : <div class="strip-loading" />}</div>
+                <div class="frame-panel-info">
+                  <b>{frame.name}</b>
+                  <small class="hint">
+                    {frame.layout.slots.length} foto{frame.active ? '' : ' · tidak aktif'}
+                  </small>
+                  <div class="row">
+                    <button class="btn small" disabled={busy} onClick={() => setEditing(frame)}>
+                      Edit
+                    </button>
+                    <button
+                      class="btn small danger"
+                      disabled={busy}
+                      onClick={() => (confirmDelete === frame.id ? void removeFrame(frame) : setConfirmDelete(frame.id))}
+                    >
+                      {confirmDelete === frame.id ? 'Yakin hapus?' : 'Hapus'}
+                    </button>
+                  </div>
+                </div>
+              </div>
+            ))}
+          </div>
+        </section>
+      )}
+
+      <h2 class="dash-sub">Frame di tiap perangkat</h2>
+      <p class="hint">Urutan di sini sama dengan urutan di layar tamu.</p>
       <LoadState load={load} />
       {load.data && devices.length === 0 && <p class="hint">Belum ada perangkat. Tambahkan dulu di menu Perangkat.</p>}
 
@@ -79,10 +173,13 @@ export function FrameSets({ api }: PageProps) {
               const position = draft.indexOf(frame.id);
               return (
                 <section class="panel frame-panel" key={frame.id}>
-                  <div class="frame-thumb">{previews[frame.id] ? <img src={previews[frame.id]} alt="" /> : <div class="strip-loading" />}</div>
+                  <div class="frame-thumb">{frame.picture ? <img src={frame.picture} alt="" /> : <div class="strip-loading" />}</div>
                   <div class="frame-panel-info">
                     <h2>{frame.name}</h2>
-                    <p class="hint">{frame.blurb}</p>
+                    <p class="hint">
+                      {frame.blurb}
+                      {frame.own ? ' · buatan sendiri' : ''}
+                    </p>
                     <Check
                       label="Ditawarkan ke tamu"
                       checked={position >= 0}

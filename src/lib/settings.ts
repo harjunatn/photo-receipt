@@ -103,6 +103,14 @@ export interface Settings {
   admin: {
     pin: string;
   };
+  /** Set by the platform owner for every franchise; tablets only show it. */
+  platform: {
+    name: string;
+    /** Small text on the guest screens. */
+    watermark: string;
+    /** Last line of every receipt. */
+    receiptLine: string;
+  };
 }
 
 export const DEFAULT_PIN = '1234';
@@ -198,6 +206,11 @@ export const DEFAULT_SETTINGS: Settings = {
   },
   admin: {
     pin: DEFAULT_PIN,
+  },
+  platform: {
+    name: 'jepretin',
+    watermark: 'didukung oleh jepretin',
+    receiptLine: '@jepretin',
   },
 };
 

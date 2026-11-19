@@ -21,6 +21,19 @@ export interface SessionRecord {
 const DB_NAME = 'booth';
 const STORE = 'sessions';
 const UPLOADS = 'uploads';
+const FRAMES = 'frames';
+
+/** One of the franchise's own frames, kept on the tablet so the booth works offline. */
+export interface StoredFrame {
+  id: string;
+  name: string;
+  blurb: string;
+  layout: unknown;
+  /** The frame picture as a data URL. */
+  image: string;
+  /** As the server reported it; tells whether the server has a newer one. */
+  updatedAt: string;
+}
 
 /** A guest's digital copy waiting to go up to the cloud. */
 export interface UploadRecord {
@@ -37,12 +50,13 @@ let dbPromise: Promise<IDBDatabase> | null = null;
 
 function openDb(): Promise<IDBDatabase> {
   dbPromise ??= new Promise((resolve, reject) => {
-    // Version 2 added the upload queue; existing photos are kept.
-    const request = indexedDB.open(DB_NAME, 2);
+    // Version 2 added the upload queue, version 3 the franchise's own frames; existing photos are kept.
+    const request = indexedDB.open(DB_NAME, 3);
     request.onupgradeneeded = () => {
       const db = request.result;
       if (!db.objectStoreNames.contains(STORE)) db.createObjectStore(STORE, { keyPath: 'id' }).createIndex('createdAt', 'createdAt');
       if (!db.objectStoreNames.contains(UPLOADS)) db.createObjectStore(UPLOADS, { keyPath: 'id' });
+      if (!db.objectStoreNames.contains(FRAMES)) db.createObjectStore(FRAMES, { keyPath: 'id' });
     };
     request.onsuccess = () => resolve(request.result);
     request.onerror = () => reject(request.error);
@@ -95,4 +109,16 @@ export async function listUploads(): Promise<UploadRecord[]> {
 
 export function deleteUpload(id: string): Promise<undefined> {
   return run('readwrite', (store) => store.delete(id), UPLOADS);
+}
+
+export function listStoredFrames(): Promise<StoredFrame[]> {
+  return run<StoredFrame[]>('readonly', (store) => store.getAll(), FRAMES);
+}
+
+export function putStoredFrame(frame: StoredFrame): Promise<IDBValidKey> {
+  return run('readwrite', (store) => store.put(frame), FRAMES);
+}
+
+export function deleteStoredFrame(id: string): Promise<undefined> {
+  return run('readwrite', (store) => store.delete(id), FRAMES);
 }

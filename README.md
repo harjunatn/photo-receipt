@@ -6,14 +6,29 @@ tambahan dan tanpa server.
 
 ## Alur tamu
 
-1. **Pilih frame** — desain cetakan: Klasik, Kolase, Rol Film, Polaroid, Nota Belanja, Pesta, atau Potret.
+1. **Pilih frame** — desain cetakan: Klasik, Kolase, Rol Film, Polaroid, Nota Belanja, Pesta, Potret, atau frame
+   buatan franchise sendiri.
 2. **Pilih pembayaran** — QRIS, tunai, atau voucher.
 3. **Sesi foto** — hitung mundur sebelum tiap jepretan.
 4. **Edit & foto ulang** — tamu melihat struk persis seperti yang akan tercetak, lalu bisa mengganti gaya foto (Normal,
    Cerah, Kontras, Komik, Sketsa, Garis), mengganti frame, atau mengulang foto satu per satu.
 5. **Cetak**.
 
-Frame mana yang ditawarkan, harga, dan cara bayar diatur petugas di menu pengaturan (ikon ⚙ di layar awal).
+Frame mana yang ditawarkan, harga, dan cara bayar diatur di dashboard franchise; printer, kamera dan teks struk diatur
+petugas di tablet (ikon ⚙ di layar awal).
+
+### Frame buatan sendiri
+
+Di dashboard → **Koleksi Frame** → **+ Tambah frame**, franchise bisa mengunggah desainnya sendiri:
+
+- Frame adalah **gambar PNG dengan lubang transparan** tempat foto tamu (buat di Canva, Figma atau Photoshop, unduh
+  dengan latar transparan). Lebar yang pas 1080 px; tingginya bebas sampai 6 kali lebarnya.
+- Lubang foto dikenali sendiri (1 sampai 6 foto), urut dari atas ke bawah lalu kiri ke kanan; urutannya bisa diubah
+  dan area transparan yang bukan untuk foto bisa dibuang. Lubang boleh berbentuk bulat atau bersudut tumpul.
+- Struk dicetak hitam-putih. Pilih **Tegas** untuk desain garis dan tulisan, **Halus** untuk desain berwarna atau
+  bergradasi; pratinjau menunjukkan versi berwarna (untuk diunduh tamu) dan hasil cetaknya.
+- Setelah disimpan, centang **Ditawarkan ke tamu** untuk tiap perangkat yang memakainya. Frame buatan sendiri hanya
+  terlihat oleh franchise itu, dan tersimpan di tablet sehingga tetap bisa dipakai saat internet putus.
 
 ## Yang dibutuhkan
 
@@ -104,28 +119,65 @@ hanya untuk percobaan: komputer harus tetap menyala.
    Hello Snaply. Tamu tidak bisa keluar ke aplikasi lain.
 7. Atur layar agar **tidak mati otomatis** dan kecerahan cukup; aplikasi juga menahan layar tetap menyala.
 
-## Dashboard pemilik dan beberapa tablet (Supabase)
+## Dashboard, franchise, dan beberapa tablet (Supabase)
 
 **Wajib.** Setiap tablet harus tersambung ke dashboard sebelum bisa dipakai tamu, supaya semua sesi tercatat. Semua
-tablet mengirim transaksinya ke satu tempat dan kamu melihat serta mengaturnya dari **dashboard**: alamat aplikasi dengan akhiran
+tablet mengirim transaksinya ke satu tempat dan dilihat serta diatur dari **dashboard**: alamat aplikasi dengan akhiran
 `#dashboard` (misalnya `https://<nama-proyek>.vercel.app/#dashboard`), dibuka dari HP atau laptop.
 
-| Menu dashboard | Isi |
+Satu pemasangan aplikasi melayani banyak **franchise** (pemilik booth). Ada dua macam akun:
+
+| Akun | Yang bisa dilakukan |
+| --- | --- |
+| **Superadmin** (pemilik platform) | Melihat dan mengubah semua franchise; membuat franchise dan akun adminnya; mengatur langganan; pengaturan platform |
+| **Admin franchise** | Hanya franchise-nya sendiri: tablet, transaksi, voucher, frame, harga, cara bayar, akun DOKU-nya |
+
+Data tiap franchise dipisahkan di database itu sendiri (*row level security*), bukan hanya di tampilan: akun sebuah
+franchise tidak bisa membaca atau mengubah data franchise lain. Uang tamu masuk ke masing-masing franchise: tunai, QRIS
+statis miliknya, atau akun DOKU-nya sendiri.
+
+| Menu superadmin | Isi |
+| --- | --- |
+| Franchise | Daftar franchise: langganan, tablet online, sesi dan omzet 30 hari; tambah franchise; akun admin; **Buka dashboard-nya** |
+| Pengaturan platform | Nama platform, tulisan kecil di layar tamu semua tablet, baris paling bawah semua struk, masa tenggang langganan |
+
+| Menu tiap franchise | Isi |
 | --- | --- |
 | Dashboard | Omzet hari ini, 7 hari, bulan ini; grafik per hari; cara bayar; per perangkat; transaksi terbaru |
 | Perangkat | Daftar tablet, kode perangkat + PIN, online/offline, status printer, kapan pengaturan tablet terakhir tersimpan |
 | Transaksi | Semua sesi dari semua tablet, saring tanggal / cara bayar / perangkat, lihat hasil foto, unduh Excel / PDF / CSV |
 | Pembayaran QRIS | Setiap kode QR otomatis: lunas, tidak dibayar, dan "lunas tanpa sesi" yang perlu diperiksa |
 | Voucher | Buat massal, status aktif / terpakai / kedaluwarsa; berlaku di semua tablet, sekali pakai |
-| Koleksi Frame | Frame yang ditawarkan, per perangkat |
-| Pengaturan | Nama outlet, warna, logo, harga, cara bayar + gambar QRIS, password |
+| Koleksi Frame | Frame buatan sendiri (tambah, edit, hapus) dan frame yang ditawarkan per perangkat |
+| Pengaturan | Nama outlet, warna, logo, harga, cara bayar + gambar QRIS, akun DOKU, password |
+
+### Franchise dan langganan
+
+- **Menambah franchise:** menu **Franchise** → isi nama dan email adminnya → **Tambah franchise**. Password sementara
+  untuk admin itu ditampilkan sekali; berikan kepadanya. Saat pertama masuk ia diminta membuat password sendiri. Satu
+  franchise boleh punya beberapa akun admin (tombol **Atur**). Lupa password: buat **Password baru** dari sana.
+- **Menghapus franchise** (Atur → Hapus franchise) menghapus semua datanya beserta login admin-adminnya.
+- **Batas per franchise:** 200 perangkat, 20 frame buatan sendiri, 20.000 voucher, supaya satu franchise tidak bisa
+  memenuhi database yang dipakai bersama.
+- **Langganan:** tiap franchise punya tanggal *berlaku sampai*. Perpanjang dengan tombol **+ 1 bulan / + 3 bulan /
+  + 1 tahun** setelah pembayarannya kamu terima (pencatatannya manual). Kosong berarti tanpa batas, misalnya untuk booth
+  milikmu sendiri.
+- **Kalau langganan lewat:** selama masa tenggang (bawaan 7 hari, diatur di Pengaturan platform) booth tetap berjalan
+  dan dashboard franchise menampilkan peringatan. Sesudahnya booth berhenti menerima tamu sampai diperpanjang; datanya
+  tetap aman. Tablet yang sedang tanpa internet menghitung sendiri dari tanggal terakhir yang diketahuinya.
+- **Menghentikan franchise:** matikan *Franchise aktif*. Semua booth-nya berhenti menerima tamu, apa pun tanggalnya.
+- **Melihat sebagai franchise:** **Buka dashboard-nya** membuka semua menu franchise itu. Superadmin bisa mengubah apa
+  pun di dalamnya, termasuk melihat hasil foto tamunya; sebaiknya ini disebut di perjanjian franchise.
+- **Merek platform:** tulisan kecil di layar tamu (misalnya "didukung oleh jepretin") dan baris paling bawah struk
+  (misalnya `@jepretin`) tampil di semua booth dan tidak bisa diubah franchise. Judul, kutipan dan teks struk lainnya
+  tetap milik tiap tablet franchise.
 
 Petugas di tiap booth juga bisa melihat penjualan **tablet itu sendiri** dari ⚙ → PIN → tab **Dashboard** (omzet hari
 ini, 7 hari, bulan ini, grafik per hari) dan tab **Transaksi** (daftar sesi, saring cara bayar, unduh CSV), misalnya
 untuk mencocokkan uang tunai di laci. Datanya diambil dari server, jadi butuh internet; tablet hanya bisa melihat
 transaksinya sendiri.
 
-| Diatur di dashboard (sama untuk semua booth) | Diatur di tiap tablet |
+| Diatur di dashboard franchise (sama untuk semua booth-nya) | Diatur di tiap tablet |
 | --- | --- |
 | Harga, cara bayar, gambar QRIS, voucher | Printer dan kualitas cetak |
 | Nama outlet, warna, logo | Teks struk: judul, sub-judul, penutup, media sosial, kutipan, kode QR |
@@ -143,19 +195,38 @@ yang perlu dihubungkan sekali lagi (pilih printer lewat tombol **Hubungkan**), k
 
 1. Buat proyek di [supabase.com](https://supabase.com) (paket gratis cukup untuk mulai).
 2. **SQL Editor → New query**: tempel seluruh isi [`supabase/schema.sql`](supabase/schema.sql), tekan **Run**.
-3. **Authentication → Users → Add user**: buat akun pemilik (email + password, centang *Auto Confirm User*).
-4. **Authentication → Sign In / Providers**: matikan *Allow new users to sign up*. Dashboard hanya menerima akun pertama
-   yang masuk sebagai pemilik, tetapi tidak ada alasan membiarkan orang lain mendaftar.
+3. **Authentication → Users → Add user**: buat akun superadmin (email + password, centang *Auto Confirm User*).
+4. **Authentication → Sign In / Providers**: matikan *Allow new users to sign up*. Akun yang tidak terdaftar di
+   franchise mana pun memang tidak bisa melihat apa-apa, tetapi tidak ada alasan membiarkan orang lain mendaftar.
 5. **Project Settings → API**: salin *Project URL* dan *anon / publishable key*. Jangan pernah memakai `service_role`
    key di aplikasi ini.
 6. Di Vercel: **Settings → Environment Variables**, tambahkan `VITE_SUPABASE_URL` dan `VITE_SUPABASE_ANON_KEY`, lalu
    **Redeploy**. (Untuk mencoba di komputer: salin `.env.example` menjadi `.env.local` dan isi di sana.)
 7. Buka `…/#dashboard`, masuk dengan akun tadi. **Masuklah segera setelah deploy**: akun pertama yang masuk menjadi
-   pemilik.
+   superadmin. Ini hanya terjadi **sekali**, di pemasangan yang masih kosong. Sesudahnya superadmin hanya bisa
+   ditambah lewat SQL Editor, misalnya kalau akun itu terhapus:
+   `insert into public.superadmins (user_id) select id from auth.users where email = 'email@kamu';`
+8. Pasang fungsi server dan setel kunci induk untuk kunci pembayaran franchise (sekali; lihat juga bagian DOKU):
+
+   ```bash
+   supabase functions deploy
+   ```
+
+   ```bash
+   supabase secrets set SECRETS_KEY="$(openssl rand -base64 32)"
+   ```
+
+9. Di menu **Franchise**, buat franchise pertama (misalnya untuk booth milikmu sendiri), lalu **Buka dashboard-nya**
+   untuk menambah perangkat dan mengatur harganya.
+
+**Pindah dari versi lama (satu pemilik).** Skema lama tidak bisa dinaikkan dengan menjalankan `schema.sql` saja.
+Jalankan [`supabase/reset.sql`](supabase/reset.sql) dulu, lalu `schema.sql`. `reset.sql` **menghapus semua data
+aplikasi** (akun login tidak), jadi tablet perlu dipasangkan ulang; salin dulu datanya kalau masih diperlukan.
 
 ### Memasangkan tablet
 
-1. Dashboard → **Perangkat** → tambah perangkat. Muncul **kode perangkat** dan **PIN**.
+1. Dashboard franchise → **Perangkat** → tambah perangkat. Muncul **kode perangkat** dan **PIN**. Perangkat itu milik
+   franchise tersebut; tablet yang dipasangkan dengannya otomatis masuk ke franchise itu.
 2. Di tablet: ⚙ → PIN petugas → tab **Sambungan** → ketik kode dan PIN itu → **Pasangkan**. Tablet yang belum
    tersambung langsung membuka tab ini.
 
@@ -167,7 +238,7 @@ Sesudah terpasang:
 - Kalau perangkatnya dilepas atau dinonaktifkan di dashboard, booth berhenti menerima tamu baru. Tamu yang sedang di
   tengah sesi tetap bisa menyelesaikannya, dan transaksinya terkirim setelah tablet dipasangkan lagi.
 - **Voucher** diperiksa ke server supaya satu kode tidak bisa dipakai di dua tablet. Karena itu voucher **butuh
-  internet**; QRIS dan tunai tidak.
+  internet**; QRIS dan tunai tidak. Voucher hanya berlaku di tablet franchise yang membuatnya.
 - Satu kode perangkat untuk satu tablet. Memasangkan tablet lain dengan kode yang sama melepas tablet sebelumnya, dan
   tablet baru itu memakai pengaturan tablet sebelumnya (lihat di atas).
 - Foto tamu **tidak** dikirim ke server; hanya catatan transaksinya.
@@ -305,56 +376,54 @@ gratis: sesi langsung mulai.
 
 ### QRIS otomatis lewat DOKU
 
-Kunci rahasia DOKU tidak pernah ada di tablet, di Vercel, atau di GitHub. Kunci itu hanya disimpan sebagai *secret* di
-Supabase dan dipakai oleh tiga Edge Function di [`supabase/functions`](supabase/functions):
+Tiap franchise dibayar ke **akun DOKU-nya sendiri**. Kuncinya diisi oleh admin franchise (atau superadmin) di
+dashboard → **Pengaturan → Cara bayar → QRIS → Otomatis (DOKU)** → bagian **Akun DOKU franchise ini**:
+
+| Isian | Dari mana |
+| --- | --- |
+| Client ID | DOKU Back Office → Integration → API Keys (`BRN-…`) |
+| Secret Key | Halaman yang sama |
+| Merchant ID (QRIS) | Settings → Checkout Appearance → Pengaturan Kredensial QRIS (angka pendek, bukan NMID/MPAN) |
+| Terminal ID | Misalnya `A01` |
+| Kode pos | Kode pos lokasi usaha, 5 angka |
+| Pasangan kunci | **Buat pasangan kunci baru** di halaman itu, lalu tempel *public key*-nya di DOKU sebagai Merchant Public Key. Atau tempel private key yang sudah ada |
+| Notification URL | Disalin dari halaman itu ke DOKU Back Office |
+
+Lalu **Simpan kunci** dan **Tes koneksi**: aplikasi mencoba kuncinya ke DOKU tanpa membuat tagihan, dan menyebutkan
+bagian mana yang ditolak kalau ada.
+
+Kunci rahasia (Secret Key dan private key) tidak pernah ada di tablet, di Vercel, atau di GitHub. Keduanya disimpan
+**terenkripsi** di database dengan kunci induk `SECRETS_KEY`, yang hanya ada sebagai *secret* di Supabase, dan tidak
+pernah dikirim kembali ke dashboard: kunci hanya bisa diganti atau dihapus. Jangan mengganti `SECRETS_KEY` setelah ada
+franchise yang menyimpan kunci; kunci tersimpan jadi tidak bisa dibuka dan harus diisi ulang.
+
+Fungsi server di [`supabase/functions`](supabase/functions):
 
 | Fungsi | Tugas |
 | --- | --- |
-| `qris-create` | Membuat kode QR untuk satu sesi. Nominal diambil dari harga di dashboard, bukan dari tablet. |
-| `qris-status` | Menanyakan ke DOKU apakah QR itu sudah dibayar. Tablet memanggilnya tiap beberapa detik. |
-| `doku-notify` | Menerima pemberitahuan pembayaran dari DOKU, sebagai pengaman kalau tablet sudah tidak menunggu. |
+| `qris-create` | Membuat kode QR untuk satu sesi dengan kunci franchise tablet itu. Nominal diambil dari harga di dashboard, bukan dari tablet. |
+| `qris-status`, `qris-cancel`, `qris-sweep` | Menanyakan ke DOKU apakah QR sudah dibayar, menutup QR yang ditinggalkan. |
+| `doku-notify` | Menerima pemberitahuan pembayaran dari DOKU; tanda tangannya diperiksa dengan kunci franchise pemilik tagihan itu. |
+| `doku-setup` | Menyimpan, mencoba dan menghapus kunci DOKU sebuah franchise. Hanya untuk akun franchise itu dan superadmin. |
+| `admin` | Membuat, memberi password baru dan menghapus akun admin franchise. Hanya untuk superadmin. |
 
-**1. Jalankan ulang [`supabase/schema.sql`](supabase/schema.sql)** di SQL Editor (aman diulang). Ini menambah tabel
-`payments`.
+**1. Jalankan [`supabase/schema.sql`](supabase/schema.sql)** di SQL Editor (aman diulang).
 
-**2. Isi secret** di Supabase → **Edge Functions → Secrets**. Daftar dan penjelasannya ada di
-[`supabase/functions/.env.example`](supabase/functions/.env.example):
-
-| Secret | Dari mana |
-| --- | --- |
-| `DOKU_CLIENT_ID` | DOKU Back Office → Integration → API Keys → Client ID (`BRN-…`) |
-| `DOKU_SECRET_KEY` | Halaman yang sama → Secret Key |
-| `DOKU_PRIVATE_KEY` | Private key RSA milikmu, pasangan *Merchant Public Key* yang diunggah ke DOKU. Tempel utuh dengan baris BEGIN/END |
-| `DOKU_MERCHANT_ID` | Settings → Checkout Appearance → Pengaturan Kredensial QRIS (angka pendek, bukan NMID/MPAN) |
-| `DOKU_TERMINAL_ID` | Terminal ID, misalnya `A01` |
-| `DOKU_POSTAL_CODE` | Kode pos lokasi usaha, 5 angka |
-
-**Kunci privat RSA.** `DOKU_PRIVATE_KEY` harus kunci **privat** (`-----BEGIN PRIVATE KEY-----` atau
-`-----BEGIN RSA PRIVATE KEY-----`), pasangan dari *Merchant Public Key* yang diunggah ke DOKU, bukan kunci publiknya.
-Kalau berkas kunci privatnya tidak ada lagi, buat pasangan baru di Mac (simpan di luar folder proyek):
+**2. Setel kunci induk** (sekali; nilainya tidak perlu kamu lihat atau simpan di tempat lain):
 
 ```bash
-openssl genrsa -out ~/doku_private.pem 2048
+supabase secrets set SECRETS_KEY="$(openssl rand -base64 32)"
 ```
 
-```bash
-openssl rsa -in ~/doku_private.pem -pubout -out ~/doku_public.pem
-```
+Kunci DOKU yang dulu diisi langsung sebagai secret (`DOKU_CLIENT_ID`, `DOKU_SECRET_KEY`, `DOKU_PRIVATE_KEY`,
+`DOKU_MERCHANT_ID`, `DOKU_TERMINAL_ID`, `DOKU_POSTAL_CODE`) masih dipakai untuk **satu** franchise, yaitu yang id-nya
+diisi di secret `DOKU_ENV_FRANCHISE`, selama franchise itu belum menyimpan kuncinya sendiri di dashboard. Franchise
+lain selalu memakai kunci yang mereka simpan. Opsional: `DOKU_QR_MINUTES` (masa berlaku QR, bawaan 5 menit).
 
-Unggah isi `doku_public.pem` ke DOKU sebagai *Merchant Public Key*, lalu simpan isi `doku_private.pem` sebagai secret:
-
-```bash
-supabase secrets set DOKU_PRIVATE_KEY="$(cat ~/doku_private.pem)"
-```
-
-Mengganti Merchant Public Key di DOKU membuat kunci lama tidak berlaku, termasuk yang tersimpan di aplikasi lain yang
-memakai akun DOKU yang sama. Kunci yang dikunci password (`ENCRYPTED PRIVATE KEY`) dibuka dulu dengan
-`openssl pkey -in kunci.pem -out kunci-terbuka.pem`; kunci format OpenSSH diubah dengan
-`ssh-keygen -p -m PEM -f kunci`.
-
-Opsional: `DOKU_QR_MINUTES` (masa berlaku QR, bawaan 5 menit), `DOKU_BASE_URL` (isi
-`https://api-sandbox.doku.com` untuk sandbox; bawaannya produksi), `DOKU_SEND_VALIDITY=off` (kalau DOKU menolak
-pembuatan QR karena kolom `validityPeriod`).
+Private key yang ditempel harus kunci **privat** RSA (`-----BEGIN PRIVATE KEY-----` atau
+`-----BEGIN RSA PRIVATE KEY-----`), pasangan dari Merchant Public Key yang terdaftar di DOKU. Mengganti Merchant Public
+Key di DOKU membuat kunci lama tidak berlaku, termasuk di aplikasi lain yang memakai akun DOKU yang sama. Kunci yang
+dikunci password (`ENCRYPTED PRIVATE KEY`) dibuka dulu dengan `openssl pkey -in kunci.pem -out kunci-terbuka.pem`.
 
 **3. Deploy fungsinya** dari folder proyek (sekali, dan lagi setiap kode fungsinya berubah):
 
@@ -374,11 +443,12 @@ supabase link --project-ref <kode-proyek>
 supabase functions deploy
 ```
 
-**4. (Dianjurkan) Notification URL** di DOKU Back Office:
-`https://<kode-proyek>.supabase.co/functions/v1/doku-notify`. Tanpa ini pembayaran tetap terdeteksi selama tablet masih
-menampilkan QR-nya; dengan ini, pembayaran yang masuk setelah tamu meninggalkan layar pun tetap tercatat.
+**4. (Dianjurkan) Notification URL** di DOKU Back Office tiap franchise:
+`https://<kode-proyek>.supabase.co/functions/v1/doku-notify` (alamatnya sama untuk semua franchise dan ditampilkan di
+halaman setup). Tanpa ini pembayaran tetap terdeteksi selama tablet masih menampilkan QR-nya; dengan ini, pembayaran
+yang masuk setelah tamu meninggalkan layar pun tetap tercatat.
 
-**5. Nyalakan** di dashboard → **Pengaturan → Cara bayar → QRIS → Otomatis (DOKU)**, lalu Simpan.
+**5. Nyalakan** di dashboard franchise → **Pengaturan → Cara bayar → QRIS → Otomatis (DOKU)**, isi kuncinya, lalu Simpan.
 
 Yang perlu diketahui:
 
@@ -392,14 +462,15 @@ Yang perlu diketahui:
 
 - Pengembalian uang QRIS dari dashboard — saat ini dilakukan di DOKU Back Office.
 - Live Foto (boomerang) dan video slideshow untuk diunduh tamu — tahap berikutnya dari *Unduh foto lewat QR*.
-- Frame buatan sendiri (mengunggah desain bingkai) — saat ini tersedia tujuh frame bawaan; logo, judul, kutipan, kode
-  QR, dan akun media sosial di struk bisa diatur sendiri.
+- Tagihan langganan otomatis — saat ini pembayaran langganan franchise dicatat manual oleh superadmin.
+- Harga berbeda per tablet dalam satu franchise — saat ini satu set harga untuk semua tablet sebuah franchise.
 - Stiker dan tulisan dari tamu di langkah edit — saat ini tamu bisa mengganti gaya foto, mengganti frame, dan foto ulang.
 - Deteksi kertas habis — printer tidak dilaporkan statusnya; siapkan kertas cadangan dan cek berkala.
 - Mencetak slip voucher di printer struk — saat ini kodenya disalin atau diunduh sebagai CSV dari dashboard.
 - Voucher saat tablet sedang tanpa internet.
 - Voucher yang bisa dipakai berkali-kali (satu kode untuk banyak tamu).
-- Menu Event, dan pencairan dana: uang QRIS dan tunai langsung masuk ke kamu, jadi dashboard hanya mencatatnya.
+- Menu Event, dan pencairan dana: uang QRIS dan tunai langsung masuk ke tiap franchise, jadi dashboard hanya
+  mencatatnya.
 
 ## Privasi
 

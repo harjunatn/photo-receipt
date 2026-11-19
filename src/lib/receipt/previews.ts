@@ -8,7 +8,7 @@ import type { FrameDef } from './frames';
 const cache = new Map<string, string>();
 
 function cacheKey(frame: FrameDef, settings: Settings): string {
-  return [frame.id, settings.printer.dots, settings.receipt.title, JSON.stringify(settings.printer.raster)].join('|');
+  return [frame.id, frame.version ?? '', settings.printer.dots, settings.receipt.title, JSON.stringify(settings.printer.raster)].join('|');
 }
 
 /** A small picture of a frame filled with sample photos, drawn with the same dots the printer would use. */
@@ -47,7 +47,7 @@ export function useFramePreviews(frames: FrameDef[], settings: Settings): Record
     return urls;
   };
   const [urls, setUrls] = useState(ready);
-  const ids = frames.map((frame) => frame.id).join(',');
+  const ids = frames.map((frame) => `${frame.id}@${frame.version ?? ''}`).join(',');
 
   useEffect(() => {
     let cancelled = false;

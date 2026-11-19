@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'preact/hooks';
-import { outboxStore, pairDevice, pairingStore, settingsBackupStore, syncNow, syncState, unpairDevice } from '../lib/cloud/device';
-import { cloudConfigured } from '../lib/cloud/shared';
+import { outboxStore, pairDevice, pairingStore, settingsBackupStore, subscriptionStore, syncNow, syncState, unpairDevice } from '../lib/cloud/device';
+import { addDays, cloudConfigured, subscriptionState } from '../lib/cloud/shared';
 import { pumpUploads, uploadsWaiting } from '../lib/cloud/upload';
 import { formatDateTime } from '../lib/receipt/compose';
 import { useStore } from '../lib/store';
@@ -13,6 +13,9 @@ export function CloudTab() {
   const sync = useStore(syncState);
   const uploads = useStore(uploadsWaiting);
   const backup = useStore(settingsBackupStore);
+  const subscription = useStore(subscriptionStore);
+  const subscriptionNow = subscriptionState(subscription);
+  const day = (iso: string) => new Date(`${iso}T00:00:00`).toLocaleDateString('id-ID', { day: 'numeric', month: 'long', year: 'numeric' });
 
   // Also refreshes the count of files waiting to be uploaded.
   useEffect(() => void pumpUploads(), []);
@@ -69,9 +72,31 @@ export function CloudTab() {
             <span class={`tag ${sync.error ? 'warn' : 'ok'}`}>{sync.error ? 'Belum tersambung' : 'Terpasang'}</span>
           </div>
           <p class="hint">
-            Kode perangkat <b class="mono">{pairing.code}</b>. Setiap sesi yang selesai dikirim ke dashboard; harga, cara
-            bayar, voucher, frame dan logo diambil dari sana.
+            {pairing.franchise ? (
+              <>
+                Franchise <b>{pairing.franchise}</b>, kode perangkat{' '}
+              </>
+            ) : (
+              'Kode perangkat '
+            )}
+            <b class="mono">{pairing.code}</b>. Setiap sesi yang selesai dikirim ke dashboard; harga, cara bayar, voucher, frame dan
+            logo diambil dari sana.
           </p>
+          {subscription?.paidUntil && subscriptionNow === 'grace' && (
+            <p class="banner">
+              Langganan aplikasi berakhir pada {day(subscription.paidUntil)}. Booth masih berjalan sampai{' '}
+              {day(addDays(subscription.paidUntil, subscription.graceDays))}, lalu berhenti menerima tamu. Hubungi pemilik platform untuk
+              memperpanjang.
+            </p>
+          )}
+          {subscriptionNow === 'expired' && (
+            <p class="banner err">
+              Langganan aplikasi sudah berakhir, jadi booth tidak menerima tamu. Setelah diperpanjang, tekan Sinkronkan sekarang.
+            </p>
+          )}
+          {subscriptionNow === 'suspended' && (
+            <p class="banner err">Franchise ini sedang dihentikan oleh pemilik platform, jadi booth tidak menerima tamu.</p>
+          )}
           <p class="hint">
             Pengaturan printer, sesi & kamera, teks struk, riwayat dan PIN petugas tablet ini juga disimpan di dashboard
             {backup ? <> (terakhir {formatDateTime(new Date(backup.at))})</> : ' begitu tersambung'}. Tablet pengganti yang

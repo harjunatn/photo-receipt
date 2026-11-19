@@ -89,3 +89,17 @@ export function deviceState(device: DeviceLike, now: number): { label: string; t
   if (!device.paired) return { label: 'Belum dipasangkan', tag: 'warn' };
   return isOnline(device, now) ? { label: 'Online', tag: 'ok' } : { label: 'Offline', tag: '' };
 }
+
+/** YYYY-MM-DD moved by whole months, keeping the day where the month has it (31 Jan + 1 month = 28/29 Feb). */
+export function addMonths(day: string, months: number): string {
+  const [y, m, d] = day.split('-').map(Number);
+  const target = new Date(Date.UTC(y, m - 1 + months, 1));
+  const lastDay = new Date(Date.UTC(target.getUTCFullYear(), target.getUTCMonth() + 1, 0)).getUTCDate();
+  target.setUTCDate(Math.min(d, lastDay));
+  return target.toISOString().slice(0, 10);
+}
+
+/** What a subscription extended by some months runs to: counted from its current end, or from today when that has passed. */
+export function extendFrom(paidUntil: string | null, today: string, months: number): string {
+  return addMonths(paidUntil && paidUntil > today ? paidUntil : today, months);
+}

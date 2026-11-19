@@ -16,6 +16,8 @@ export interface ComposedReceipt {
   photoRects: Rect[];
   /** Where each of the guest's photos landed, by photo number, so a preview can make them tappable. */
   slotRects: (Rect | undefined)[];
+  /** Artwork with colours or gradients (a franchise's own frame): shaded like a photo, but without the photo's tone settings. */
+  artRects: Rect[];
 }
 
 function sourceSize(src: CanvasImageSource): { w: number; h: number } {
@@ -56,6 +58,7 @@ export class Page {
   readonly ctx: CanvasRenderingContext2D;
   readonly photoRects: Rect[] = [];
   readonly slotRects: (Rect | undefined)[] = [];
+  readonly artRects: Rect[] = [];
   /** The guest's photos and how each was zoomed, to recognise them when a frame draws them. */
   private slotPhotos: (CanvasImageSource | undefined)[] = [];
   private slotCrops: (Crop | undefined)[] = [];
@@ -209,7 +212,12 @@ export class Page {
     const height = Math.round(width / aspect);
     if (edge > 0) this.rect(x, y, width, height);
 
-    const rect: Rect = { x: Math.round(x) + edge, y: Math.round(y) + edge, w: Math.round(width) - edge * 2, h: height - edge * 2 };
+    this.photoIn(src, { x: Math.round(x) + edge, y: Math.round(y) + edge, w: Math.round(width) - edge * 2, h: height - edge * 2 });
+    return height;
+  }
+
+  /** Fills an exact rectangle with a photo, without a border. A missing photo leaves it grey. */
+  photoIn(src: CanvasImageSource | undefined, rect: Rect): void {
     const { w: sw, h: sh } = src ? sourceSize(src) : { w: 0, h: 0 };
     const index = src ? this.slotPhotos.indexOf(src) : -1;
     if (index >= 0) this.slotRects[index] = rect;
@@ -221,7 +229,15 @@ export class Page {
       this.rect(rect.x, rect.y, rect.w, rect.h, '#d2d2d2');
     }
     this.photoRects.push(rect);
-    return height;
+  }
+
+  /**
+   * Lays a picture over what is already drawn, e.g. a frame design whose transparent holes let the
+   * photos underneath show. 'dither' prints its colours as shades; 'ink' as solid black and white.
+   */
+  overlay(image: CanvasImageSource, rect: Rect, print: 'ink' | 'dither'): void {
+    this.ctx.drawImage(image, rect.x, rect.y, rect.w, rect.h);
+    if (print === 'dither') this.artRects.push(rect);
   }
 
   /** Draws a framed photo at the cursor and returns its height (the cursor is left where it was). */
@@ -345,6 +361,6 @@ export class Page {
     out.width = this.width;
     out.height = Math.min(this.canvas.height, Math.ceil(this.y));
     out.getContext('2d', { willReadFrequently: true })!.drawImage(this.canvas, 0, 0);
-    return { canvas: out, photoRects: this.photoRects, slotRects: this.slotRects };
+    return { canvas: out, photoRects: this.photoRects, slotRects: this.slotRects, artRects: this.artRects };
   }
 }

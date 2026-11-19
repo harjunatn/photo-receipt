@@ -40,7 +40,7 @@ export function Devices({ api }: PageProps) {
 
   return (
     <>
-      <PageHead title="Perangkat" lead="Satu perangkat untuk satu tablet booth. Tablet dipasangkan dari menu ⚙ → Dashboard di tablet itu.">
+      <PageHead title="Perangkat" lead="Satu perangkat untuk satu tablet booth. Tablet dipasangkan dari menu ⚙ → Sambungan di tablet itu.">
         <button class="btn small" onClick={load.reload}>
           {load.loading ? 'Memuat…' : 'Muat ulang'}
         </button>

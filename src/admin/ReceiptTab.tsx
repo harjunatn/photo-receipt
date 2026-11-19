@@ -34,6 +34,7 @@ export function ReceiptTab() {
         when: new Date(),
         sessionNo: 12,
         logo,
+        platformLine: settings.platform.receiptLine,
       });
       if (!cancelled) setPreview(receiptToBits(composed, printer.raster));
     }, 200);
@@ -41,17 +42,17 @@ export function ReceiptTab() {
       cancelled = true;
       clearTimeout(timer);
     };
-  }, [receipt, frame, printer.dots, printer.raster]);
+  }, [receipt, frame, printer.dots, printer.raster, settings.platform.receiptLine]);
 
   return (
     <div class="admin-grid">
       <section class="panel">
         <h2>Teks struk</h2>
-        <p class="hint">Khusus tablet ini. Logo dan frame diatur di dashboard pemilik.</p>
+        <p class="hint">Khusus tablet ini. Logo dan frame diatur di dashboard franchise.</p>
         <TextField label="Judul" value={receipt.title} onChange={(v) => edit((s) => void (s.receipt.title = v))} />
         <TextField label="Sub-judul" value={receipt.subtitle} onChange={(v) => edit((s) => void (s.receipt.subtitle = v))} />
         <TextField label="Kalimat penutup" value={receipt.closing} onChange={(v) => edit((s) => void (s.receipt.closing = v))} />
-        <TextField label="Media sosial" value={receipt.social} placeholder="@hellosnaply" onChange={(v) => edit((s) => void (s.receipt.social = v))} />
+        <TextField label="Media sosial" value={receipt.social} placeholder="@namabooth" onChange={(v) => edit((s) => void (s.receipt.social = v))} />
         <Check label="Tampilkan tanggal dan nomor sesi" checked={receipt.showMeta} onChange={(v) => edit((s) => void (s.receipt.showMeta = v))} />
         <Check label="Tampilkan barcode hiasan" checked={receipt.barcode} onChange={(v) => edit((s) => void (s.receipt.barcode = v))} />
       </section>
@@ -76,7 +77,10 @@ export function ReceiptTab() {
 
       <section class="panel">
         <h2>Pratinjau struk</h2>
-        <p class="hint">Contoh frame {frame.name} dengan foto uji, persis titik-titik yang dikirim ke printer.</p>
+        <p class="hint">
+          Contoh frame {frame.name} dengan foto uji, persis titik-titik yang dikirim ke printer.
+          {settings.platform.receiptLine.trim() ? ` Baris paling bawah (${settings.platform.receiptLine.trim()}) berasal dari platform.` : ''}
+        </p>
         <div class="preview-box">
           <ReceiptPaper bits={preview} />
         </div>

@@ -1,7 +1,24 @@
 import type { PayMethod } from '../lib/log';
 import { newShareCode } from '../lib/cloud/shared';
 import { normalizeCode, voucherStatus, type VoucherStatus } from '../lib/vouchers';
-import { newDeviceCode, newDevicePin, type Device, type OwnerApi, type PaymentRow, type Tx, type VoucherRow } from './api';
+import { DEFAULT_PLATFORM, type PlatformConfig } from '../lib/cloud/shared';
+import {
+  newDeviceCode,
+  newDevicePin,
+  type Account,
+  type AdminApi,
+  type CustomFrameRow,
+  type Device,
+  type DokuState,
+  type Franchise,
+  type FranchiseRow,
+  type MemberRow,
+  type OwnerApi,
+  type PaymentRow,
+  type SubscriptionState,
+  type Tx,
+  type VoucherRow,
+} from './api';
 import { dayKey, type StatRow } from './stats';
 
 /** A small repeatable random source, so the sample data looks the same on every visit. */
@@ -16,21 +33,141 @@ function seeded(seed: number): () => number {
 const MINUTE = 60_000;
 const DAY = 86_400_000;
 
+interface DemoFranchise extends Franchise {
+  active: boolean;
+  paid_until: string | null;
+  note: string | null;
+  created_at: string;
+  seed: number;
+  booths: string[];
+}
+
+const today = () => new Date().toISOString().slice(0, 10);
+const dayFrom = (days: number) => new Date(Date.now() + days * DAY).toISOString().slice(0, 10);
+
+function stateOf(franchise: Pick<DemoFranchise, 'active' | 'paid_until'>, graceDays: number): SubscriptionState {
+  if (!franchise.active) return 'suspended';
+  if (!franchise.paid_until || today() <= franchise.paid_until) return 'active';
+  return today() <= new Date(Date.parse(franchise.paid_until) + graceDays * DAY).toISOString().slice(0, 10) ? 'grace' : 'expired';
+}
+
 /**
  * Sample data kept in memory, for looking at the dashboard before Supabase is
- * connected. Everything works, and everything is forgotten on reload.
+ * connected: a platform owner with three franchises. Everything works, and
+ * everything is forgotten on reload.
  */
-export function createDemoApi(): OwnerApi {
-  const random = seeded(7);
+export function createDemo(): { account: Account; admin: AdminApi; apiFor(franchise: Franchise): OwnerApi } {
+  let platform: PlatformConfig = { ...DEFAULT_PLATFORM };
+  let franchises: DemoFranchise[] = [
+    { id: 'demo-pusat', name: 'Hello Snaply', active: true, paid_until: null, note: 'Booth milik sendiri', created_at: new Date(Date.now() - 60 * DAY).toISOString(), seed: 7, booths: ['Booth Kafe Senja', 'Booth Mal Lantai 2', 'Booth Acara'] },
+    { id: 'demo-budi', name: 'Booth Budi', active: true, paid_until: dayFrom(4), note: 'Transfer tiap tanggal 5', created_at: new Date(Date.now() - 26 * DAY).toISOString(), seed: 21, booths: ['Tablet Budi 1', 'Tablet Budi 2'] },
+    { id: 'demo-citra', name: 'Citra Photo', active: true, paid_until: dayFrom(-3), note: null, created_at: new Date(Date.now() - 34 * DAY).toISOString(), seed: 33, booths: ['Tablet Citra'] },
+  ];
+  const members = new Map<string, MemberRow[]>([
+    ['demo-budi', [{ user_id: 'demo-u1', email: 'budi@contoh.id', created_at: new Date(Date.now() - 26 * DAY).toISOString(), last_sign_in_at: new Date(Date.now() - DAY).toISOString(), must_change_password: false }]],
+    ['demo-citra', [{ user_id: 'demo-u2', email: 'citra@contoh.id', created_at: new Date(Date.now() - 34 * DAY).toISOString(), last_sign_in_at: null, must_change_password: true }]],
+  ]);
+  const apis = new Map<string, OwnerApi>();
+  const find = (id: string) => franchises.find((franchise) => franchise.id === id);
+
+  const apiFor = (franchise: Franchise): OwnerApi => {
+    const known = find(franchise.id);
+    const existing = apis.get(franchise.id);
+    if (existing) return { ...existing, franchise };
+    const made = createDemoApi(franchise, known?.seed ?? 5, known?.booths ?? ['Tablet 1'], {
+      platform: () => platform,
+      subscription: () => find(franchise.id) ?? { active: true, paid_until: null },
+    });
+    apis.set(franchise.id, made);
+    return made;
+  };
+
+  const admin: AdminApi = {
+    demo: true,
+    async listFranchises() {
+      const rows: FranchiseRow[] = await Promise.all(
+        franchises.map(async (franchise) => {
+          const api = apiFor(franchise);
+          const devices = await api.listDevices();
+          const month = await api.dailyStats(new Date(Date.now() - 30 * DAY), new Date(Date.now() + DAY));
+          const seen = devices.map((device) => device.last_seen_at).filter((at): at is string => at !== null).sort();
+          return {
+            id: franchise.id,
+            name: franchise.name,
+            active: franchise.active,
+            paid_until: franchise.paid_until,
+            note: franchise.note,
+            state: stateOf(franchise, platform.graceDays),
+            created_at: franchise.created_at,
+            devices: devices.length,
+            devices_online: devices.filter((device) => device.last_seen_at && Date.now() - Date.parse(device.last_seen_at) < 3 * MINUTE).length,
+            last_seen_at: seen[seen.length - 1] ?? null,
+            members: members.get(franchise.id)?.length ?? 0,
+            sessions_30d: month.reduce((sum, row) => sum + row.sessions, 0),
+            revenue_30d: month.reduce((sum, row) => sum + row.revenue, 0),
+          };
+        }),
+      );
+      return { today: today(), graceDays: platform.graceDays, franchises: rows };
+    },
+    async saveFranchise(input) {
+      if (input.id === null) {
+        const id = `demo-${crypto.randomUUID().slice(0, 8)}`;
+        franchises = [...franchises, { id, name: input.name, active: input.active, paid_until: input.paid_until, note: input.note || null, created_at: new Date().toISOString(), seed: 0, booths: [] }];
+        return id;
+      }
+      franchises = franchises.map((franchise) =>
+        franchise.id === input.id ? { ...franchise, name: input.name, active: input.active, paid_until: input.paid_until, note: input.note || null } : franchise,
+      );
+      return input.id;
+    },
+    async deleteFranchise(id) {
+      franchises = franchises.filter((franchise) => franchise.id !== id);
+      apis.delete(id);
+      members.delete(id);
+    },
+    async listMembers(franchiseId) {
+      return structuredClone(members.get(franchiseId) ?? []);
+    },
+    async addMember(franchiseId, email) {
+      if ([...members.values()].flat().some((member) => member.email === email)) throw new Error('Email itu sudah dipakai akun lain.');
+      members.set(franchiseId, [
+        ...(members.get(franchiseId) ?? []),
+        { user_id: crypto.randomUUID(), email, created_at: new Date().toISOString(), last_sign_in_at: null, must_change_password: true },
+      ]);
+    },
+    async setMemberPassword(userId) {
+      for (const list of members.values()) for (const member of list) if (member.user_id === userId) member.must_change_password = true;
+    },
+    async removeMember(userId) {
+      for (const [id, list] of members) members.set(id, list.filter((member) => member.user_id !== userId));
+    },
+    async getPlatform() {
+      return { ...platform };
+    },
+    async savePlatform(config) {
+      platform = { ...config };
+    },
+  };
+
+  return { account: { email: 'pemilik@contoh.id', superadmin: true, franchise: null, mustChangePassword: false }, admin, apiFor };
+}
+
+/** One franchise's sample data. */
+function createDemoApi(
+  franchise: Franchise,
+  seed: number,
+  booths: string[],
+  shared: { platform: () => PlatformConfig; subscription: () => { active: boolean; paid_until: string | null } },
+): OwnerApi {
+  const random = seeded(seed || 1);
   const now = Date.now();
   const iso = (time: number) => new Date(time).toISOString();
 
-  let devices: Device[] = [
-    { name: 'Booth Kafe Senja', seen: 20_000, printer: 'connected', queued: 0 },
-    { name: 'Booth Mal Lantai 2', seen: 50_000, printer: 'connected', queued: 2 },
-    { name: 'Booth Acara', seen: 3 * DAY, printer: 'disconnected', queued: 0 },
-  ].map((d, i) => ({
-    id: `demo-${i}`,
+  let devices: Device[] = booths
+    .map((name, i) => ({ name, seen: [20_000, 50_000, 3 * DAY][i % 3], printer: i === 2 ? 'disconnected' : 'connected', queued: i === 1 ? 2 : 0 }))
+    .map((d, i) => ({
+    id: `${franchise.id}-${i}`,
     name: d.name,
     code: newDeviceCode(),
     pin: newDevicePin(),
@@ -45,26 +182,26 @@ export function createDemoApi(): OwnerApi {
     created_at: iso(now - 41 * DAY),
   }));
 
-  const frames = ['Klasik', 'Kolase', 'Film', 'Polaroid', 'Nota'];
+  const frameNames = ['Klasik', 'Kolase', 'Film', 'Polaroid', 'Nota'];
   const methods: PayMethod[] = ['cash', 'cash', 'qris', 'qris', 'qris', 'voucher'];
   const transactions: Tx[] = [];
-  for (let back = 34; back >= 0; back--) {
+  for (let back = devices.length > 0 ? 34 : -1; back >= 0; back--) {
     const date = new Date(now - back * DAY);
     const weekend = date.getDay() === 0 || date.getDay() === 6;
     const count = Math.round((weekend ? 22 : 9) + random() * (weekend ? 16 : 8));
     for (let n = 0; n < count; n++) {
       const at = new Date(date.getFullYear(), date.getMonth(), date.getDate(), 10, 0).getTime() + random() * 11 * 60 * MINUTE;
       if (at > now) continue;
-      const device = devices[random() < 0.5 ? 0 : random() < 0.75 ? 1 : 2];
+      const device = devices[(random() < 0.5 ? 0 : random() < 0.75 ? 1 : 2) % devices.length];
       const double = random() < 0.25;
       const method = methods[Math.floor(random() * methods.length)];
       transactions.push({
-        id: `demo-tx-${back}-${n}`,
+        id: `${franchise.id}-tx-${back}-${n}`,
         device_id: device.id,
         device_name: device.name,
         at: iso(at),
         session_no: n + 1,
-        frame: frames[Math.floor(random() * frames.length)],
+        frame: frameNames[Math.floor(random() * frameNames.length)],
         package: double ? '2 lembar' : '1 lembar',
         price: double ? 25000 : 15000,
         method,
@@ -82,9 +219,18 @@ export function createDemoApi(): OwnerApi {
     created_at: iso(now - (i < 12 ? 20 : 3) * DAY),
     expires_at: i < 12 ? iso(now - (i < 6 ? 2 : -10) * DAY) : null,
     used_at: i % 4 === 0 ? iso(now - (i + 1) * 3 * 60 * MINUTE) : null,
-    used_by_name: i % 4 === 0 ? devices[i % 2].name : null,
+    used_by_name: i % 4 === 0 ? (devices[i % 2]?.name ?? 'Tablet') : null,
   }));
   let outlet: unknown = {};
+  let frames: (CustomFrameRow & { image: string })[] = [];
+  let doku: DokuState = {
+    can_save: true,
+    source: 'none',
+    doku: { clientId: '', merchantId: '', terminalId: '', postalCode: '', sandbox: false, publicKeyPem: '' },
+    has_keys: false,
+    notify_url: 'https://contoh.supabase.co/functions/v1/doku-notify',
+    updated_at: null,
+  };
 
   // Every QRIS session has a paid charge; a few charges ran out unpaid, and one was paid without a session.
   const payments: PaymentRow[] = transactions
@@ -92,8 +238,8 @@ export function createDemoApi(): OwnerApi {
     .slice(0, 60)
     .flatMap((tx, i) => {
       const base = { device_name: tx.device_name, package_name: tx.package, amount: tx.price, partner_ref: `FS${String(100000 + i)}`, provider_ref: `DK${String(700000 + i)}` };
-      const paidRow: PaymentRow = { ...base, id: `demo-pay-${i}`, status: 'paid', created_at: tx.at, paid_at: tx.at, has_session: i !== 3 };
-      const unpaid: PaymentRow = { ...base, id: `demo-pay-x${i}`, status: 'expired', created_at: iso(Date.parse(tx.at) - 6 * MINUTE), paid_at: null, has_session: false, provider_ref: `DK${String(800000 + i)}` };
+      const paidRow: PaymentRow = { ...base, id: `${franchise.id}-pay-${i}`, status: 'paid', created_at: tx.at, paid_at: tx.at, has_session: i !== 3 };
+      const unpaid: PaymentRow = { ...base, id: `${franchise.id}-pay-x${i}`, status: 'expired', created_at: iso(Date.parse(tx.at) - 6 * MINUTE), paid_at: null, has_session: false, provider_ref: `DK${String(800000 + i)}` };
       return i % 7 === 2 ? [paidRow, unpaid] : [paidRow];
     });
 
@@ -105,9 +251,70 @@ export function createDemoApi(): OwnerApi {
 
   return {
     demo: true,
-    email: 'contoh@hellosnaply.id',
+    email: 'pemilik@contoh.id',
+    superadmin: true,
+    franchise,
     async signOut() {},
     async changePassword() {},
+    async status() {
+      const subscription = shared.subscription();
+      const graceDays = shared.platform().graceDays;
+      return { ...franchise, active: subscription.active, paid_until: subscription.paid_until, grace_days: graceDays, state: stateOf(subscription, graceDays), today: today() };
+    },
+    async getPlatform() {
+      return { ...shared.platform() };
+    },
+    async dokuGet() {
+      return structuredClone(doku);
+    },
+    async dokuSave(fields) {
+      if (!doku.has_keys && (!fields.secret_key || !fields.private_key_pem)) throw new Error('Secret Key dan private key belum diisi.');
+      doku = {
+        ...doku,
+        source: 'saved',
+        has_keys: true,
+        updated_at: new Date().toISOString(),
+        doku: {
+          clientId: fields.client_id,
+          merchantId: fields.merchant_id,
+          terminalId: fields.terminal_id,
+          postalCode: fields.postal_code,
+          sandbox: fields.sandbox,
+          publicKeyPem: fields.public_key_pem || doku.doku.publicKeyPem,
+        },
+      };
+    },
+    async dokuTest() {
+      return doku.has_keys
+        ? { ok: true, sure: true, message: 'Contoh: DOKU menerima Client ID, private key dan Secret Key.' }
+        : { ok: false, message: 'Kunci DOKU belum diisi.' };
+    },
+    async dokuClear() {
+      doku = { ...doku, source: 'none', has_keys: false, updated_at: null, doku: { clientId: '', merchantId: '', terminalId: '', postalCode: '', sandbox: false, publicKeyPem: '' } };
+    },
+    async listFrames() {
+      return frames.map(({ image: _image, ...row }) => structuredClone(row));
+    },
+    async frameImage(id) {
+      const found = frames.find((frame) => frame.id === id);
+      if (!found) throw new Error('Data itu tidak ditemukan.');
+      return found.image;
+    },
+    async saveFrame(input) {
+      const updated_at = new Date().toISOString();
+      if (input.id === null) {
+        frames = [...frames, { id: crypto.randomUUID(), name: input.name, blurb: input.blurb, layout: input.layout, image: input.image ?? '', thumb: input.thumb ?? '', active: input.active, updated_at }];
+      } else {
+        frames = frames.map((frame) =>
+          frame.id === input.id
+            ? { ...frame, name: input.name, blurb: input.blurb, layout: input.layout, active: input.active, updated_at, image: input.image ?? frame.image, thumb: input.thumb ?? frame.thumb }
+            : frame,
+        );
+      }
+    },
+    async deleteFrame(id) {
+      frames = frames.filter((frame) => frame.id !== id);
+    },
     async listDevices() {
       return structuredClone(devices);
     },

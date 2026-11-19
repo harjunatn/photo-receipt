@@ -25,6 +25,7 @@ async function recompose(record: SessionRecord): Promise<ComposedReceipt> {
     when: new Date(record.createdAt),
     sessionNo: record.no,
     logo,
+    platformLine: settings.platform.receiptLine,
   });
 }
 

@@ -1,3 +1,4 @@
+import { createStore } from '../store';
 import { pad, type Page } from './page';
 
 type Photos = (CanvasImageSource | undefined)[];
@@ -10,6 +11,8 @@ export interface FrameDef {
   blurb: string;
   /** Width ÷ height of each photo, in the order they are taken. */
   slots: number[];
+  /** Changes when a franchise's own frame is edited, so pictures made of the old one are not reused. */
+  version?: string;
   /** Draws the photos and their decoration at the page cursor and moves the cursor past them. */
   draw(page: Page, photos: Photos, when: Date): void;
 }
@@ -192,15 +195,27 @@ const potret: FrameDef = {
   },
 };
 
+/** The frames built into the app, available to every franchise. */
 export const FRAMES: FrameDef[] = [klasik, kolase, film, polaroid, nota, pesta, potret];
 
-/** The frame with this id, or the first frame when the id is unknown (e.g. a saved session from an older version). */
+/**
+ * Frames the franchise made itself, ready to draw. Filled from the tablet's own
+ * store when the booth starts and again whenever the server has newer ones.
+ */
+export const customFramesStore = createStore<FrameDef[]>([]);
+
+function allFrames(): FrameDef[] {
+  return [...FRAMES, ...customFramesStore.get()];
+}
+
+/** The frame with this id, or the first frame when the id is unknown (e.g. a frame that was deleted since). */
 export function frameById(id: string | undefined): FrameDef {
-  return FRAMES.find((frame) => frame.id === id) ?? FRAMES[0];
+  return allFrames().find((frame) => frame.id === id) ?? FRAMES[0];
 }
 
 /** The frames guests may choose, in the operator's order. Never empty. */
 export function activeFrames(ids: string[]): FrameDef[] {
-  const chosen = ids.map((id) => FRAMES.find((frame) => frame.id === id)).filter((frame) => frame !== undefined);
+  const all = allFrames();
+  const chosen = ids.map((id) => all.find((frame) => frame.id === id)).filter((frame) => frame !== undefined);
   return chosen.length > 0 ? chosen : FRAMES;
 }

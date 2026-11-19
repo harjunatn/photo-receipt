@@ -25,6 +25,8 @@ export interface ReceiptInput {
   compact?: boolean;
   /** Where the guest downloads the digital copies, printed as a QR code; and for how many days. */
   share?: { url: string; days: number };
+  /** The platform's own last line, under everything the franchise chose. */
+  platformLine?: string;
 }
 
 /** Lays out one printed receipt: header, the frame with its photos, quote, QR code and footer. */
@@ -104,6 +106,11 @@ export function composeReceipt(input: ReceiptInput): ComposedReceipt {
     page.barcode(sessionCode(input.when, input.sessionNo));
     page.gap(6);
   }
+  if (input.platformLine?.trim()) {
+    page.gap(8);
+    page.text(input.platformLine.trim(), 18);
+    page.gap(4);
+  }
   page.gap(10);
   return page.finish();
 }
@@ -158,7 +165,7 @@ export function receiptToBits(composed: ComposedReceipt, raster: RasterSettings,
   const { width, height } = composed.canvas;
   const ctx = composed.canvas.getContext('2d', { willReadFrequently: true })!;
   const gray = rgbaToGray(ctx.getImageData(0, 0, width, height).data, width, height);
-  return rasterizeReceipt(gray, composed.photoRects, raster, style);
+  return rasterizeReceipt(gray, composed.photoRects, raster, style, composed.artRects);
 }
 
 /** Draws printer dots onto a canvas, for the on-screen preview. */

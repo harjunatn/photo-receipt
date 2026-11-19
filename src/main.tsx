@@ -6,6 +6,7 @@ import { App } from './app';
 import { startCloudSync } from './lib/cloud/device';
 import { keepScreenAwake, persistStorage } from './lib/kiosk';
 import { printer } from './lib/printer/manager';
+import { startCustomFrames } from './lib/receipt/customStore';
 import { registerServiceWorker } from './lib/update';
 
 const root = document.getElementById('app')!;
@@ -31,6 +32,8 @@ function startBooth(): void {
   void persistStorage();
   // Picks the printer back up after a reload, when the browser still has permission for it.
   void printer.reconnect();
+  // The franchise's own frames: from the tablet's store first, then whatever the server has newer.
+  startCustomFrames();
   startCloudSync();
 
   render(<App />, root);

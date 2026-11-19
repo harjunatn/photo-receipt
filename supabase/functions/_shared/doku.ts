@@ -86,12 +86,12 @@ const RSA_SHA256 = { name: 'RSASSA-PKCS1-v1_5', hash: 'SHA-256' } as const;
 
 /** Why a pasted key cannot be used, in words the owner can act on. Never includes the key itself. */
 const WRONG_KIND: Record<string, string> = {
-  'PUBLIC KEY': 'DOKU_PRIVATE_KEY berisi kunci PUBLIK. Yang dibutuhkan adalah kunci PRIVAT (pasangannya), bukan Merchant Public Key yang diunggah ke DOKU.',
-  'RSA PUBLIC KEY': 'DOKU_PRIVATE_KEY berisi kunci PUBLIK. Yang dibutuhkan adalah kunci PRIVAT (pasangannya), bukan Merchant Public Key yang diunggah ke DOKU.',
-  CERTIFICATE: 'DOKU_PRIVATE_KEY berisi sertifikat, bukan kunci privat.',
-  'ENCRYPTED PRIVATE KEY': 'DOKU_PRIVATE_KEY masih dikunci dengan password. Buka kuncinya dulu (lihat README), lalu tempel hasilnya.',
-  'OPENSSH PRIVATE KEY': 'DOKU_PRIVATE_KEY berformat OpenSSH. Ubah ke format PEM dulu (lihat README), lalu tempel hasilnya.',
-  'EC PRIVATE KEY': 'DOKU_PRIVATE_KEY adalah kunci EC, sedangkan DOKU memakai kunci RSA.',
+  'PUBLIC KEY': 'Private key berisi kunci PUBLIK. Yang dibutuhkan adalah kunci PRIVAT (pasangannya), bukan Merchant Public Key yang diunggah ke DOKU.',
+  'RSA PUBLIC KEY': 'Private key berisi kunci PUBLIK. Yang dibutuhkan adalah kunci PRIVAT (pasangannya), bukan Merchant Public Key yang diunggah ke DOKU.',
+  CERTIFICATE: 'Private key berisi sertifikat, bukan kunci privat.',
+  'ENCRYPTED PRIVATE KEY': 'Private key masih dikunci dengan password. Buka kuncinya dulu (lihat README), lalu tempel hasilnya.',
+  'OPENSSH PRIVATE KEY': 'Private key berformat OpenSSH. Ubah ke format PEM dulu (lihat README), lalu tempel hasilnya.',
+  'EC PRIVATE KEY': 'Private key adalah kunci EC, sedangkan DOKU memakai kunci RSA.',
 };
 
 /**
@@ -106,12 +106,12 @@ export async function importPrivateKey(pem: string): Promise<CryptoKey> {
   if (/^(ssh-rsa|ssh-ed25519) /.test(text)) throw new DokuError(WRONG_KIND['PUBLIC KEY'], 'config');
 
   const base64 = text.replace(/-----[^-]+-----/g, '').replace(/[\s"']+/g, '');
-  if (!base64) throw new DokuError('DOKU_PRIVATE_KEY kosong.', 'config');
+  if (!base64) throw new DokuError('Private key kosong.', 'config');
   let der: Uint8Array<ArrayBuffer>;
   try {
     der = fromBase64(base64);
   } catch {
-    throw new DokuError('DOKU_PRIVATE_KEY bukan format PEM: ada karakter yang tidak semestinya. Tempel ulang tanpa diubah.', 'config');
+    throw new DokuError('Private key bukan format PEM: ada karakter yang tidak semestinya. Tempel ulang tanpa diubah.', 'config');
   }
 
   // Without a label the form is unknown, so both are tried.
@@ -126,7 +126,7 @@ export async function importPrivateKey(pem: string): Promise<CryptoKey> {
   // Only the shape of the key is reported, never its content.
   const shape = label ? `berlabel "${label}"` : 'tanpa baris BEGIN/END';
   throw new DokuError(
-    `DOKU_PRIVATE_KEY tidak bisa dibaca (${shape}, ${der.length} byte). Kemungkinan terpotong saat ditempel, atau bukan kunci privat RSA. Tempel ulang utuh dari berkasnya.`,
+    `Private key tidak bisa dibaca (${shape}, ${der.length} byte). Kemungkinan terpotong saat ditempel, atau bukan kunci privat RSA. Tempel ulang utuh dari berkasnya.`,
     'config',
   );
 }
@@ -182,10 +182,19 @@ type Fetch = (url: string, init: RequestInit) => Promise<Response>;
 // Access tokens live for 15 minutes; one is reused for as long as this function instance stays warm.
 const tokens = new Map<string, { value: string; until: number }>();
 
+/** A short fingerprint of a text, to tell two keys apart without keeping either. */
+function fingerprint(text: string): string {
+  let hash = 5381;
+  for (let i = 0; i < text.length; i++) hash = ((hash << 5) + hash + text.charCodeAt(i)) | 0;
+  return (hash >>> 0).toString(36);
+}
+
 export function createDoku(config: DokuConfig, fetchFn: Fetch = fetch, now: () => Date = () => new Date()) {
-  const accessToken = async (): Promise<string> => {
-    const cached = tokens.get(config.clientId);
-    if (cached && cached.until > now().getTime()) return cached.value;
+  // Two franchises entering the same Client ID with different keys must not share, or evict, each other's token.
+  const tokenKey = `${config.baseUrl}|${config.clientId}|${fingerprint(config.privateKeyPem)}`;
+  const accessToken = async (fresh = false): Promise<string> => {
+    const cached = tokens.get(tokenKey);
+    if (!fresh && cached && cached.until > now().getTime()) return cached.value;
     const timestamp = jakartaTimestamp(now());
     const response = await fetchFn(config.baseUrl + TOKEN_PATH, {
       method: 'POST',
@@ -202,7 +211,7 @@ export function createDoku(config: DokuConfig, fetchFn: Fetch = fetch, now: () =
       throw new DokuError(`DOKU menolak permintaan token: ${result?.responseMessage ?? `HTTP ${response.status}`}`, result?.responseCode ?? String(response.status), result);
     }
     // Refreshed a minute early, so a token never runs out in the middle of a request.
-    tokens.set(config.clientId, { value: result.accessToken, until: now().getTime() + Math.max(60, (result.expiresIn ?? 900) - 60) * 1000 });
+    tokens.set(tokenKey, { value: result.accessToken, until: now().getTime() + Math.max(60, (result.expiresIn ?? 900) - 60) * 1000 });
     return result.accessToken;
   };
 
@@ -226,11 +235,30 @@ export function createDoku(config: DokuConfig, fetchFn: Fetch = fetch, now: () =
       body,
     });
     // A rejected token is not kept for the next attempt.
-    if (response.status === 401) tokens.delete(config.clientId);
+    if (response.status === 401) tokens.delete(tokenKey);
     return { status: response.status, body: ((await response.json().catch(() => null)) as Record<string, unknown> | null) ?? {} };
   };
 
   return {
+    /**
+     * Tries the keys without charging anyone. A new access token proves the Client ID and the
+     * private key (whose public half DOKU holds). Asking about a QR that does not exist then
+     * proves the Secret Key: DOKU answers "not found" to a well-signed request and 401 to a badly signed one.
+     */
+    async check(): Promise<{ signature: 'ok' | 'refused' | 'unknown'; message: string }> {
+      await accessToken(true);
+      const { status, body } = await post(QUERY_PATH, {
+        originalReferenceNo: 'TES-KONEKSI',
+        originalPartnerReferenceNo: `TES${now().getTime()}`,
+        serviceCode: '47',
+        merchantId: config.merchantId,
+      });
+      const message = String(body.responseMessage ?? `HTTP ${status}`);
+      if (status === 401) return { signature: 'refused', message };
+      if (status === 200 || status === 404) return { signature: 'ok', message };
+      return { signature: 'unknown', message };
+    },
+
     /** Makes a QR that pays exactly `amount` rupiah. */
     async generateQr(input: { partnerRef: string; amount: number; expiresAt: Date }): Promise<{ providerRef: string; qr: string; detail: unknown }> {
       const { status, body } = await post(GENERATE_PATH, {

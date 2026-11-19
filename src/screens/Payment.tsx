@@ -18,6 +18,7 @@ const VOUCHER_ERRORS = {
   used: 'Voucher ini sudah pernah dipakai.',
   expired: 'Voucher ini sudah kedaluwarsa.',
   offline: 'Voucher butuh internet, dan tablet ini sedang tidak tersambung. Mohon panggil petugas.',
+  subscription: 'Booth ini sedang tidak menerima voucher. Mohon panggil petugas.',
 };
 
 const METHODS: Record<PaymentChoice, { icon: string; title: string; hint: string }> = {

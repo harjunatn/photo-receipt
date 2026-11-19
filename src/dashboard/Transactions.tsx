@@ -199,7 +199,7 @@ export function Transactions({ api }: PageProps) {
         download(`${name}.xlsx`, new Blob([sheet], { type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' }));
       } else {
         const outlet = (await api.getOutlet().catch(() => null)) as { brand?: { title?: unknown } } | null;
-        const brand = typeof outlet?.brand?.title === 'string' && outlet.brand.title.trim() ? outlet.brand.title.trim() : 'Hello Snaply';
+        const brand = typeof outlet?.brand?.title === 'string' && outlet.brand.title.trim() ? outlet.brand.title.trim() : api.franchise.name;
         const deviceName = devices.data?.find((device) => device.id === deviceId)?.name;
         const report = pdfReport(all, {
           brand,

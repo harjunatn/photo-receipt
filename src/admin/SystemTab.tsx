@@ -7,7 +7,7 @@ import { edit } from './actions';
 
 /** Staff PIN, full-screen mode and backup of the configuration. */
 export function SystemTab() {
-  const { admin } = useSettings();
+  const { admin, platform } = useSettings();
   const [newPin, setNewPin] = useState('');
   const [confirmReset, setConfirmReset] = useState(false);
   const [, rerender] = useState(0);
@@ -61,7 +61,7 @@ export function SystemTab() {
       <section class="panel">
         <h2>Tentang aplikasi</h2>
         <p class="hint">
-          Hello Snaply · versi <b class="mono">{__BUILT_AT__}</b>
+          {platform.name} · versi <b class="mono">{__BUILT_AT__}</b>
         </p>
         <p class="hint">
           Versi baru dipasang sendiri saat booth menganggur di layar sambutan. Tanggal di atas berubah setelah tablet memakai

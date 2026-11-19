@@ -1,15 +1,23 @@
 /**
- * What the three payment functions do, kept apart from the Deno entry points so
+ * What the payment functions do, kept apart from the Deno entry points so
  * that the whole flow can be run in tests against a stand-in for DOKU.
+ *
+ * Every franchise is paid into its own DOKU account: the keys are looked up per
+ * franchise, from what its admin saved on the payment setup page.
  */
 import { createDoku, DokuError, verifyNotification, type DokuConfig } from './doku.ts';
+import { open } from './secrets.ts';
 
 export interface Env {
   supabaseUrl: string;
   /** Service role key: lets these functions call the payment_* database functions. */
   serviceKey: string;
-  /** null while the DOKU keys have not been filled in. */
+  /** DOKU keys kept in the functions' own secrets, from before franchises had a setup page. null when not filled in. */
   doku: DokuConfig | null;
+  /** The one franchise that uses those keys for as long as it has saved none of its own. */
+  dokuEnvFranchise: string;
+  /** Master key that seals the franchises' saved keys. '' while it has not been set. */
+  secretsKey: string;
   /** How long a QR may be paid, in minutes. */
   qrMinutes: number;
   /** The path DOKU calls for notifications, as it appears in the notification URL given to DOKU. */
@@ -36,6 +44,8 @@ export function readEnv(get: (name: string) => string | undefined): Env {
     serviceKey: value('SUPABASE_SERVICE_ROLE_KEY'),
     qrMinutes: Number.isFinite(minutes) && minutes >= 1 && minutes <= 60 ? minutes : 5,
     notifyPath: value('DOKU_NOTIFY_PATH') || '/functions/v1/doku-notify',
+    dokuEnvFranchise: value('DOKU_ENV_FRANCHISE'),
+    secretsKey: value('SECRETS_KEY'),
     doku: complete
       ? {
           baseUrl: (value('DOKU_BASE_URL') || 'https://api.doku.com').replace(/\/+$/, ''),
@@ -66,18 +76,83 @@ export async function rpc<T>(env: Pick<Env, 'supabaseUrl' | 'serviceKey'>, fetch
 
 const text = (value: unknown) => (typeof value === 'string' ? value : '');
 
+export const DOKU_PRODUCTION = 'https://api.doku.com';
+export const DOKU_SANDBOX = 'https://api-sandbox.doku.com';
+
+/** What a franchise saved, as the database holds it. */
+export interface SavedDoku {
+  doku?: { clientId?: unknown; merchantId?: unknown; terminalId?: unknown; postalCode?: unknown; sandbox?: unknown; sendValidity?: unknown; publicKeyPem?: unknown };
+  sealed?: string | null;
+  updated_at?: string;
+}
+
+export type DokuSource = 'saved' | 'server' | 'none' | 'unreadable';
+
+/** The DOKU keys to use for one franchise, and where they came from. */
+export async function resolveDoku(env: Env, fetchFn: Fetch, franchiseId: string): Promise<{ config: DokuConfig | null; source: DokuSource; saved: SavedDoku }> {
+  const saved = (await rpc<SavedDoku | null>(env, fetchFn, 'svc_doku_get', { p_franchise: franchiseId })) ?? {};
+  if (saved.sealed && saved.doku) {
+    const opened = env.secretsKey ? await open(saved.sealed, env.secretsKey, franchiseId) : null;
+    let secrets: { secretKey?: unknown; privateKeyPem?: unknown } = {};
+    try {
+      secrets = opened ? JSON.parse(opened) : {};
+    } catch {
+      secrets = {};
+    }
+    const config: DokuConfig = {
+      baseUrl: saved.doku.sandbox === true ? DOKU_SANDBOX : DOKU_PRODUCTION,
+      clientId: text(saved.doku.clientId),
+      secretKey: text(secrets.secretKey),
+      privateKeyPem: text(secrets.privateKeyPem),
+      merchantId: text(saved.doku.merchantId),
+      terminalId: text(saved.doku.terminalId),
+      postalCode: text(saved.doku.postalCode),
+      sendValidity: saved.doku.sendValidity !== false,
+    };
+    const complete = [config.clientId, config.secretKey, config.privateKeyPem, config.merchantId, config.terminalId, config.postalCode].every((part) => part !== '');
+    // Saved keys that cannot be opened (another master key) are not silently replaced by the server's.
+    return complete ? { config, source: 'saved', saved } : { config: null, source: 'unreadable', saved };
+  }
+  if (env.doku && env.dokuEnvFranchise !== '' && env.dokuEnvFranchise === franchiseId) return { config: env.doku, source: 'server', saved };
+  return { config: null, source: 'none', saved };
+}
+
+// Looked up once a minute per franchise while a function instance stays warm, not on every poll of a waiting QR.
+const dokuCache = new Map<string, { config: DokuConfig | null; until: number }>();
+const DOKU_CACHE_MS = 60_000;
+
+/** Makes the next payment call read a franchise's keys afresh, e.g. right after they were saved. */
+export function forgetDoku(env: Pick<Env, 'supabaseUrl'>, franchiseId: string): void {
+  dokuCache.delete(`${env.supabaseUrl}|${franchiseId}`);
+}
+
+async function dokuFor(env: Env, fetchFn: Fetch, franchiseId: string, now: () => Date): Promise<DokuConfig | null> {
+  if (!franchiseId) return null;
+  const key = `${env.supabaseUrl}|${franchiseId}`;
+  const cached = dokuCache.get(key);
+  if (cached && cached.until > now().getTime()) return cached.config;
+  const { config } = await resolveDoku(env, fetchFn, franchiseId);
+  dokuCache.set(key, { config, until: now().getTime() + DOKU_CACHE_MS });
+  return config;
+}
+
 /** qris-create: opens a charge for one price option and returns the QR to show. */
 export async function handleCreate(input: Record<string, unknown>, env: Env, fetchFn: Fetch = fetch, now: () => Date = () => new Date()): Promise<Reply> {
-  if (!env.doku) return { status: 200, body: { error: 'not-configured', message: 'Kunci DOKU belum diisi di Supabase.' } };
-  const started = await rpc<{ error?: string; id?: string; amount?: number; partner_ref?: string }>(env, fetchFn, 'payment_begin', {
+  const started = await rpc<{ error?: string; id?: string; amount?: number; partner_ref?: string; franchise_id?: string }>(env, fetchFn, 'payment_begin', {
     p_token: text(input.token),
     p_package_id: text(input.package_id),
   });
   if (started.error || !started.id || !started.partner_ref || !started.amount) return { status: 200, body: { error: started.error ?? 'provider' } };
 
+  const doku = await dokuFor(env, fetchFn, text(started.franchise_id), now);
+  if (!doku) {
+    await rpc(env, fetchFn, 'payment_settle', { p_id: started.id, p_status: 'failed', p_detail: { error: { code: 'config', message: 'Kunci DOKU belum diisi.' } } }).catch(() => undefined);
+    return { status: 200, body: { error: 'not-configured', message: 'Kunci DOKU belum diisi. Isi di dashboard → Pengaturan → Cara bayar.' } };
+  }
+
   const expiresAt = new Date(now().getTime() + env.qrMinutes * 60_000);
   try {
-    const made = await createDoku(env.doku, fetchFn, now).generateQr({ partnerRef: started.partner_ref, amount: started.amount, expiresAt });
+    const made = await createDoku(doku, fetchFn, now).generateQr({ partnerRef: started.partner_ref, amount: started.amount, expiresAt });
     await rpc(env, fetchFn, 'payment_attach', {
       p_id: started.id,
       p_provider_ref: made.providerRef,
@@ -101,6 +176,7 @@ export async function handleCreate(input: Record<string, unknown>, env: Env, fet
 
 interface PendingPayment {
   id: string;
+  franchise_id?: string;
   status?: string;
   partner_ref?: string;
   provider_ref?: string | null;
@@ -118,11 +194,12 @@ async function resolvePending(payment: PendingPayment, env: Env, fetchFn: Fetch,
   const ranOut = payment.expires_at ? now().getTime() > Date.parse(payment.expires_at) + GRACE_MS : now().getTime() > Date.parse(payment.created_at ?? '') + 60_000;
 
   // No QR was ever attached: creating it failed half-way, so there is nothing anyone could pay.
-  if (!payment.provider_ref || !env.doku) {
+  const config = payment.provider_ref ? await dokuFor(env, fetchFn, text(payment.franchise_id), now) : null;
+  if (!payment.provider_ref || !config) {
     return { status: ranOut || cancel ? await settle('failed', { reason: 'no-qr' }) : 'pending' };
   }
 
-  const doku = createDoku(env.doku, fetchFn, now);
+  const doku = createDoku(config, fetchFn, now);
   const refs = { partnerRef: payment.partner_ref ?? '', providerRef: payment.provider_ref };
   let asked: { state: string; detail: unknown };
   try {
@@ -173,11 +250,11 @@ export async function handleCancel(input: Record<string, unknown>, env: Env, fet
 
 /** qris-sweep: settles this tablet's QRs that were left behind unresolved, a few at a time. */
 export async function handleSweep(input: Record<string, unknown>, env: Env, fetchFn: Fetch = fetch, now: () => Date = () => new Date()): Promise<Reply> {
-  const stale = await rpc<{ error?: string; payments?: PendingPayment[] }>(env, fetchFn, 'payment_stale', { p_token: text(input.token) });
+  const stale = await rpc<{ error?: string; franchise_id?: string; payments?: PendingPayment[] }>(env, fetchFn, 'payment_stale', { p_token: text(input.token) });
   if (stale.error) return { status: 200, body: { error: stale.error } };
   const results: { id: string; status: string }[] = [];
   for (const payment of stale.payments ?? []) {
-    results.push({ id: payment.id, status: (await resolvePending(payment, env, fetchFn, now, false)).status });
+    results.push({ id: payment.id, status: (await resolvePending({ ...payment, franchise_id: stale.franchise_id }, env, fetchFn, now, false)).status });
   }
   const open = results.filter((r) => r.status === 'pending').length;
   return { status: 200, body: { checked: results.length, open, results } };
@@ -187,10 +264,23 @@ export async function handleSweep(input: Record<string, unknown>, env: Env, fetc
  * doku-notify: DOKU's own message that a QR was paid. A safety net for a
  * payment that arrives when no tablet is asking any more.
  */
-export async function handleNotify(headers: Headers, rawBody: string, env: Env, fetchFn: Fetch = fetch): Promise<Reply> {
-  if (!env.doku) return { status: 503, body: { error: 'not-configured' } };
+export async function handleNotify(headers: Headers, rawBody: string, env: Env, fetchFn: Fetch = fetch, now: () => Date = () => new Date()): Promise<Reply> {
+  let message: { order?: { invoice_number?: unknown; amount?: unknown }; transaction?: { status?: unknown } };
+  try {
+    message = JSON.parse(rawBody);
+  } catch {
+    return { status: 400, body: { error: 'bad-json' } };
+  }
+  // The charge named in the message tells whose keys must have signed it.
+  const reference = text(message.order?.invoice_number);
+  const franchiseId = reference ? await rpc<string | null>(env, fetchFn, 'payment_franchise', { p_partner_ref: reference }) : null;
+  // Not one of our charges (the merchant may use the same DOKU account elsewhere): nothing to do, nothing revealed.
+  if (!franchiseId) return { status: 200, body: { ok: true, ignored: true } };
+
+  const doku = await dokuFor(env, fetchFn, franchiseId, now);
+  if (!doku) return { status: 503, body: { error: 'not-configured' } };
   const genuine = await verifyNotification(
-    env.doku.secretKey,
+    doku.secretKey,
     {
       clientId: headers.get('Client-Id') ?? '',
       requestId: headers.get('Request-Id') ?? '',
@@ -200,17 +290,11 @@ export async function handleNotify(headers: Headers, rawBody: string, env: Env, 
     env.notifyPath,
     rawBody,
   );
-  if (!genuine || headers.get('Client-Id') !== env.doku.clientId) return { status: 401, body: { error: 'bad-signature' } };
+  if (!genuine || headers.get('Client-Id') !== doku.clientId) return { status: 401, body: { error: 'bad-signature' } };
 
-  let message: { order?: { invoice_number?: unknown; amount?: unknown }; transaction?: { status?: unknown } };
-  try {
-    message = JSON.parse(rawBody);
-  } catch {
-    return { status: 400, body: { error: 'bad-json' } };
-  }
   if (message.transaction?.status === 'SUCCESS') {
     await rpc(env, fetchFn, 'payment_settle_by_ref', {
-      p_partner_ref: text(message.order?.invoice_number),
+      p_partner_ref: reference,
       p_amount: Math.round(Number(message.order?.amount)),
       p_detail: { notification: message },
     });

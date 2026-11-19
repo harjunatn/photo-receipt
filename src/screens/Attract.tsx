@@ -1,5 +1,5 @@
-import { pairingStore } from '../lib/cloud/device';
-import { cloudConfigured } from '../lib/cloud/shared';
+import { pairingStore, subscriptionStore } from '../lib/cloud/device';
+import { cloudConfigured, subscriptionState } from '../lib/cloud/shared';
 import { usePrinter } from '../lib/printer/manager';
 import { activeFrames } from '../lib/receipt/frames';
 import { useFramePreviews } from '../lib/receipt/previews';
@@ -16,6 +16,8 @@ export function Attract({ onStart, onAdmin }: Props) {
   const settings = useSettings();
   const printer = usePrinter();
   const paired = useStore(pairingStore) !== null;
+  const subscription = subscriptionState(useStore(subscriptionStore));
+  const stopped = subscription === 'expired' || subscription === 'suspended';
   const showcase = activeFrames(settings.frames.active).slice(0, 3);
   const previews = useFramePreviews(showcase, settings);
   const prices = settings.packages.filter((p) => p.active).map((p) => p.price);
@@ -33,6 +35,12 @@ export function Attract({ onStart, onAdmin }: Props) {
           <p class="banner">
             Tablet ini belum disambungkan ke dashboard, jadi belum bisa dipakai tamu. Petugas: ketuk ⚙ di pojok kanan
             bawah → <b>Sambungan</b>.
+          </p>
+        ) : stopped ? (
+          <p class="banner">
+            Booth ini sedang tidak menerima tamu. Petugas:{' '}
+            {subscription === 'expired' ? 'langganan aplikasi sudah berakhir' : 'franchise ini sedang dihentikan'}; hubungi pemilik platform,
+            lalu ketuk ⚙ → <b>Sambungan</b> → Sinkronkan sekarang.
           </p>
         ) : prices.length > 0 ? (
           <>

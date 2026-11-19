@@ -2,12 +2,15 @@ import { createHash, createHmac, createVerify, generateKeyPairSync } from 'node:
 import { beforeEach, describe, expect, it } from 'vitest';
 import { jakartaTimestamp, signRequest, stateFromStatus, verifyNotification } from '../supabase/functions/_shared/doku.ts';
 import { handleCancel, handleCreate, handleNotify, handleStatus, handleSweep, readEnv, type Env } from '../supabase/functions/_shared/handlers.ts';
+import { handleDokuSetup } from '../supabase/functions/_shared/setup.ts';
 
 const keys = generateKeyPairSync('rsa', { modulusLength: 2048 });
 const PKCS8 = keys.privateKey.export({ type: 'pkcs8', format: 'pem' }).toString();
 const PKCS1 = keys.privateKey.export({ type: 'pkcs1', format: 'pem' }).toString();
 const SECRET = 'SK-rahasia-uji';
 const CLIENT = 'BRN-0000-1111111111111';
+const FRANCHISE = '11111111-1111-4111-8111-111111111111';
+const MASTER = 'kunci-induk-uji';
 
 function env(overrides: Record<string, string> = {}): Env {
   const values: Record<string, string> = {
@@ -20,6 +23,9 @@ function env(overrides: Record<string, string> = {}): Env {
     DOKU_MERCHANT_ID: '4455',
     DOKU_TERMINAL_ID: 'A01',
     DOKU_POSTAL_CODE: '40123',
+    // The franchise in these tests still uses the keys kept in the functions' own secrets.
+    DOKU_ENV_FRANCHISE: FRANCHISE,
+    SECRETS_KEY: MASTER,
     ...overrides,
   };
   return readEnv((name) => values[name]);
@@ -36,6 +42,8 @@ function world() {
     dokuDown: false,
     expired: [] as Record<string, unknown>[],
     expireRefused: false,
+    /** What the franchise saved on the setup page; null while it has saved nothing. */
+    saved: null as null | { doku: Record<string, unknown>; sealed: string; updated_at: string },
   };
   let token = 0;
 
@@ -50,9 +58,21 @@ function world() {
       const args = JSON.parse(body);
       if (name === 'payment_begin') {
         if (args.p_token !== 'token-tablet') return reply(200, { error: 'unpaired' });
-        state.payment = { id: 'pay-1', status: 'pending', amount: 15000, partner_ref: 'FS1', provider_ref: null, expires_at: null, created_at: new Date(0).toISOString() };
-        return reply(200, { id: 'pay-1', amount: 15000, partner_ref: 'FS1' });
+        state.payment = { id: 'pay-1', franchise_id: FRANCHISE, status: 'pending', amount: 15000, partner_ref: 'FS1', provider_ref: null, expires_at: null, created_at: new Date(0).toISOString() };
+        return reply(200, { id: 'pay-1', amount: 15000, partner_ref: 'FS1', franchise_id: FRANCHISE });
       }
+      if (name === 'svc_doku_get') return reply(200, args.p_franchise === FRANCHISE && state.saved ? state.saved : {});
+      if (name === 'svc_doku_save') {
+        state.saved = { doku: args.p_doku, sealed: args.p_sealed, updated_at: clock.toISOString() };
+        return new Response('', { status: 200 });
+      }
+      if (name === 'svc_doku_clear') {
+        state.saved = null;
+        return new Response('', { status: 200 });
+      }
+      if (name === 'payment_franchise') return reply(200, args.p_partner_ref === 'FS1' && state.payment ? FRANCHISE : null);
+      if (name === 'svc_can_access') return reply(200, args.p_franchise === FRANCHISE && (args.p_user === ADMIN_USER || args.p_user === SUPER_USER));
+      if (name === 'svc_is_superadmin') return reply(200, args.p_user === SUPER_USER);
       if (name === 'payment_attach') {
         Object.assign(state.payment!, { provider_ref: args.p_provider_ref, expires_at: args.p_expires });
         // Like Supabase: a function returning void answers with an empty body.
@@ -68,7 +88,7 @@ function world() {
         if (args.p_token !== 'token-tablet') return reply(200, { error: 'unpaired' });
         const p = state.payment;
         const stale = p && p.status === 'pending' && Date.parse(String(p.expires_at ?? p.created_at)) + 15_000 < clock.getTime();
-        return reply(200, { payments: stale ? [p] : [] });
+        return reply(200, { franchise_id: FRANCHISE, payments: stale ? [p] : [] });
       }
       if (name === 'payment_settle_by_ref') {
         if (args.p_partner_ref === 'FS1' && args.p_amount === 15000) {
@@ -80,8 +100,15 @@ function world() {
       throw new Error(`rpc tak dikenal: ${name}`);
     }
 
+    // Supabase Auth: who a dashboard account's token belongs to.
+    if (url === 'https://proyek.supabase.co/auth/v1/user') {
+      const who = { 'jwt-admin': ADMIN_USER, 'jwt-super': SUPER_USER, 'jwt-lain': OTHER_USER }[headers.Authorization.replace('Bearer ', '')];
+      return who ? reply(200, { id: who, email: 'akun@contoh.id' }) : reply(401, { msg: 'invalid JWT' });
+    }
+
     if (state.dokuDown) throw new TypeError('fetch failed');
-    const path = url.replace('https://doku.test', '');
+    // Keys saved by a franchise go to DOKU's real address; the ones from the functions' secrets to the test address.
+    const path = url.replace(/^https:\/\/(doku\.test|api\.doku\.com)/, '');
     if (path === '/authorization/v1/access-token/b2b') {
       state.tokenRequests += 1;
       const verifier = createVerify('RSA-SHA256').update(`${headers['X-CLIENT-KEY']}|${headers['X-TIMESTAMP']}`);
@@ -109,6 +136,8 @@ function world() {
       return reply(200, { responseCode: '2004700', referenceNo: 'DOKU-9', partnerReferenceNo: request.partnerReferenceNo, qrContent: '00020101021226...6304ABCD' });
     }
     if (path === '/snap-adapter/b2b/v1.0/qr/qr-mpm-query') {
+      // The connection test asks about a QR that does not exist.
+      if (request.originalReferenceNo === 'TES-KONEKSI') return reply(404, { responseCode: '4045101', responseMessage: 'Transaction Not Found' });
       expect(request).toEqual({ originalReferenceNo: 'DOKU-9', originalPartnerReferenceNo: 'FS1', serviceCode: '47', merchantId: '4455' });
       return reply(200, { responseCode: '2004700', latestTransactionStatus: state.paidAtDoku ? '00' : '03' });
     }
@@ -121,6 +150,10 @@ function world() {
   };
   return { state, fetchFn };
 }
+
+const ADMIN_USER = '22222222-2222-4222-8222-222222222222';
+const SUPER_USER = '33333333-3333-4333-8333-333333333333';
+const OTHER_USER = '44444444-4444-4444-8444-444444444444';
 
 const NOON = new Date('2026-11-17T05:00:00Z');
 let clock = NOON;
@@ -191,6 +224,8 @@ describe('qris-create', () => {
 
   it('says plainly when the key is the public half, locked with a password, or cut short', async () => {
     const message = async (key: string) => {
+      // Later than the minute for which a franchise's keys are remembered.
+      clock = new Date(clock.getTime() + 20 * 60_000);
       const { fetchFn } = world();
       const reply = await handleCreate({ token: 'token-tablet', package_id: 'a' }, env({ DOKU_PRIVATE_KEY: key }), fetchFn, now);
       expect(reply.body.error).toBe('not-configured');
@@ -394,8 +429,16 @@ describe('doku-notify', () => {
     const { state, fetchFn } = world();
     await handleCreate({ token: 'token-tablet', package_id: 'a' }, env(), fetchFn, now);
     expect((await handleNotify(signed(body, 'kunci-penipu'), body, env(), fetchFn)).status).toBe(401);
-    expect((await handleNotify(signed(body), body.replace('FS1', 'FS2'), env(), fetchFn)).status).toBe(401);
+    expect((await handleNotify(signed(body), body.replace('15000', '1'), env(), fetchFn)).status).toBe(401);
     expect((await handleNotify(new Headers(), body, env(), fetchFn)).status).toBe(401);
+    expect(state.payment?.status).toBe('pending');
+  });
+
+  it('ignores a notification about a charge that is not ours, without saying whose keys it would need', async () => {
+    const { state, fetchFn } = world();
+    await handleCreate({ token: 'token-tablet', package_id: 'a' }, env(), fetchFn, now);
+    const other = body.replace('FS1', 'FS2');
+    expect(await handleNotify(signed(other, 'kunci-penipu'), other, env(), fetchFn)).toEqual({ status: 200, body: { ok: true, ignored: true } });
     expect(state.payment?.status).toBe('pending');
   });
 
@@ -405,5 +448,119 @@ describe('doku-notify', () => {
     const failed = body.replace('SUCCESS', 'FAILED');
     expect((await handleNotify(signed(failed), failed, env(), fetchFn)).status).toBe(200);
     expect(state.payment?.status).toBe('pending');
+  });
+});
+
+describe('doku-setup', () => {
+  /** A franchise that has no keys in the functions' own secrets, like every franchise but the first. */
+  const plain = (overrides: Record<string, string> = {}) => env({ DOKU_CLIENT_ID: '', DOKU_ENV_FRANCHISE: '', ...overrides });
+  const fields = {
+    franchise_id: FRANCHISE,
+    client_id: CLIENT,
+    merchant_id: '4455',
+    terminal_id: 'A01',
+    postal_code: '40123',
+    secret_key: SECRET,
+    private_key_pem: PKCS8,
+    public_key_pem: '-----BEGIN PUBLIC KEY-----\nPUB\n-----END PUBLIC KEY-----',
+  };
+  const later = () => {
+    clock = new Date(clock.getTime() + 20 * 60_000);
+  };
+
+  it('is only for accounts of that franchise and the superadmin', async () => {
+    const { fetchFn } = world();
+    const ask = (bearer: string) => handleDokuSetup({ action: 'get', franchise_id: FRANCHISE }, bearer, plain(), fetchFn, now);
+    expect((await ask('')).status).toBe(401);
+    expect((await ask('jwt-palsu')).status).toBe(401);
+    expect((await ask('jwt-lain')).body).toEqual({ error: 'forbidden' });
+    expect((await ask('jwt-admin')).body.source).toBe('none');
+    expect((await ask('jwt-super')).body.source).toBe('none');
+    expect((await handleDokuSetup({ action: 'save', ...fields }, 'jwt-lain', plain(), fetchFn, now)).body).toEqual({ error: 'forbidden' });
+  });
+
+  it('seals the keys, never hands the secret parts back, and pays that franchise with them', async () => {
+    const { state, fetchFn } = world();
+    expect((await handleDokuSetup({ action: 'save', ...fields }, 'jwt-admin', plain(), fetchFn, now)).body).toEqual({ ok: true });
+    const stored = JSON.stringify(state.saved);
+    expect(stored).not.toContain(SECRET);
+    expect(stored).not.toContain('PRIVATE KEY');
+    expect(state.saved?.doku).toMatchObject({ clientId: CLIENT, merchantId: '4455', sandbox: false });
+
+    const shown = await handleDokuSetup({ action: 'get', franchise_id: FRANCHISE }, 'jwt-admin', plain(), fetchFn, now);
+    expect(shown.body).toMatchObject({ source: 'saved', has_keys: true, can_save: true, notify_url: 'https://proyek.supabase.co/functions/v1/doku-notify' });
+    expect(shown.body.doku).toMatchObject({ clientId: CLIENT, terminalId: 'A01', postalCode: '40123', publicKeyPem: fields.public_key_pem });
+    expect(JSON.stringify(shown.body)).not.toContain(SECRET);
+    expect(JSON.stringify(shown.body)).not.toContain('PRIVATE KEY');
+
+    later();
+    const made = await handleCreate({ token: 'token-tablet', package_id: 'a' }, plain(), fetchFn, now);
+    expect(made.body.qr).toBeTruthy();
+    expect(state.generated[0]).toMatchObject({ merchantId: '4455', terminalId: 'A01' });
+  });
+
+  it('keeps the saved secrets when only the other fields are changed', async () => {
+    const { state, fetchFn } = world();
+    await handleDokuSetup({ action: 'save', ...fields }, 'jwt-admin', plain(), fetchFn, now);
+    const changed = await handleDokuSetup({ action: 'save', ...fields, secret_key: '', private_key_pem: '', public_key_pem: '', terminal_id: 'B02' }, 'jwt-super', plain(), fetchFn, now);
+    expect(changed.body).toEqual({ ok: true });
+    expect(state.saved?.doku).toMatchObject({ terminalId: 'B02', publicKeyPem: fields.public_key_pem });
+    later();
+    await handleCreate({ token: 'token-tablet', package_id: 'a' }, plain(), fetchFn, now);
+    expect(state.generated[0]).toMatchObject({ terminalId: 'B02' });
+  });
+
+  it('tests the keys at DOKU without charging anyone, and says which part is refused', async () => {
+    const { state, fetchFn } = world();
+    const test = () => handleDokuSetup({ action: 'test', franchise_id: FRANCHISE }, 'jwt-admin', plain(), fetchFn, now);
+    expect((await test()).body.error).toBe('not-configured');
+
+    await handleDokuSetup({ action: 'save', ...fields }, 'jwt-admin', plain(), fetchFn, now);
+    expect((await test()).body).toMatchObject({ ok: true, sure: true });
+    expect(state.generated).toHaveLength(0);
+
+    await handleDokuSetup({ action: 'save', ...fields, secret_key: 'SK-keliru' }, 'jwt-admin', plain(), fetchFn, now);
+    expect((await test()).body).toMatchObject({ ok: false, step: 'secret' });
+
+    const stranger = generateKeyPairSync('rsa', { modulusLength: 2048 }).privateKey.export({ type: 'pkcs8', format: 'pem' }).toString();
+    await handleDokuSetup({ action: 'save', ...fields, private_key_pem: stranger }, 'jwt-admin', plain(), fetchFn, now);
+    expect((await test()).body).toMatchObject({ ok: false, step: 'token' });
+
+    state.dokuDown = true;
+    expect((await test()).body).toMatchObject({ ok: false, step: 'network' });
+  });
+
+  it('refuses incomplete or unusable input with a message that says what to fix', async () => {
+    const { state, fetchFn } = world();
+    const save = (change: Record<string, unknown>, e = plain()) => handleDokuSetup({ action: 'save', ...fields, ...change }, 'jwt-admin', e, fetchFn, now);
+    expect((await save({}, plain({ SECRETS_KEY: '' }))).body.error).toBe('no-master-key');
+    expect(String((await save({ postal_code: '12' })).body.message)).toContain('Kode pos');
+    expect(String((await save({ secret_key: '' })).body.message)).toContain('Secret Key');
+    expect(String((await save({ private_key_pem: '' })).body.message)).toContain('Private key');
+    const publicPem = keys.publicKey.export({ type: 'spki', format: 'pem' }).toString();
+    expect(String((await save({ private_key_pem: publicPem })).body.message)).toContain('kunci PUBLIK');
+    expect(state.saved).toBeNull();
+  });
+
+  it('does not quietly fall back to other keys when the saved ones cannot be opened', async () => {
+    const { fetchFn } = world();
+    // This franchise is the one that may use the server keys, and has now saved its own.
+    await handleDokuSetup({ action: 'save', ...fields }, 'jwt-admin', env(), fetchFn, now);
+    const otherMaster = env({ SECRETS_KEY: 'kunci-induk-lain' });
+    expect((await handleDokuSetup({ action: 'get', franchise_id: FRANCHISE }, 'jwt-admin', otherMaster, fetchFn, now)).body).toMatchObject({ source: 'unreadable', has_keys: false });
+    later();
+    expect((await handleCreate({ token: 'token-tablet', package_id: 'a' }, otherMaster, fetchFn, now)).body.error).toBe('not-configured');
+  });
+
+  it('lets the first franchise keep using the server keys until it saves or after it clears its own', async () => {
+    const { state, fetchFn } = world();
+    const get = async () => (await handleDokuSetup({ action: 'get', franchise_id: FRANCHISE }, 'jwt-super', env(), fetchFn, now)).body;
+    expect(await get()).toMatchObject({ source: 'server', has_keys: true });
+    expect((await get()).doku).toMatchObject({ clientId: CLIENT, merchantId: '4455' });
+    await handleDokuSetup({ action: 'save', ...fields, terminal_id: 'C03' }, 'jwt-super', env(), fetchFn, now);
+    expect(await get()).toMatchObject({ source: 'saved' });
+    expect((await handleDokuSetup({ action: 'clear', franchise_id: FRANCHISE }, 'jwt-super', env(), fetchFn, now)).body).toEqual({ ok: true });
+    expect(state.saved).toBeNull();
+    expect(await get()).toMatchObject({ source: 'server' });
   });
 });
