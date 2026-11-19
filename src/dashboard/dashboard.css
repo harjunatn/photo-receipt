@@ -531,6 +531,30 @@ html.dash-page body {
   height: auto;
 }
 
+.thumb-btn {
+  display: block;
+  padding: 0;
+  border: 0;
+  background: none;
+  cursor: zoom-in;
+}
+
+.photo-dialog {
+  width: min(92vw, 560px);
+  max-height: 92vh;
+  overflow-y: auto;
+}
+
+.photo-dialog-img {
+  display: block;
+  width: 100%;
+  max-height: 68vh;
+  object-fit: contain;
+  border: 1px solid var(--line);
+  border-radius: 4px;
+  background: #fff;
+}
+
 .share-qr-url {
   max-width: 100%;
   overflow-wrap: anywhere;

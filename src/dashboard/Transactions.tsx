@@ -1,4 +1,5 @@
 import { useMemo, useState } from 'preact/hooks';
+import { Overlay } from '../ui/components';
 import { download } from '../lib/kiosk';
 import { PAY_METHOD_LABEL, toCsv, type PayMethod } from '../lib/log';
 import { formatRupiah } from '../lib/settings';
@@ -6,22 +7,32 @@ import { toast } from '../ui/components';
 import { EyeIcon, QrIcon } from '../ui/icons';
 import { ShareQrDialog } from '../ui/ShareQr';
 import { shareUrl } from '../lib/cloud/shared';
-import type { Tx, TxFilter } from './api';
+import type { ShareState, Tx, TxFilter } from './api';
 import type { PageProps } from './Dashboard';
 import { dayKey, total } from './stats';
 import { LoadState, PageHead, Pager, dateTime, describe, useLoad } from './ui';
 
-const PAGE_SIZE = 50;
+const PAGE_SIZES = [20, 50, 100, 200];
+const PAGE_SIZE_KEY = 'dashboard.tx-page-size';
 const EXPORT_LIMIT = 20_000;
+
+function savedPageSize(): number {
+  try {
+    const saved = Number(localStorage.getItem(PAGE_SIZE_KEY));
+    return PAGE_SIZES.includes(saved) ? saved : 50;
+  } catch {
+    return 50;
+  }
+}
 const METHODS: PayMethod[] = ['qris', 'cash', 'voucher', 'free'];
 
+/** Shortcuts that fill in the dates; typing a date by hand leaves none of them chosen. */
 type Preset = 'today' | '7' | '30' | 'month' | 'custom';
-const PRESETS: { id: Preset; label: string }[] = [
+const PRESETS: { id: Exclude<Preset, 'custom'>; label: string }[] = [
   { id: 'today', label: 'Hari ini' },
   { id: '7', label: '7 hari' },
   { id: '30', label: '30 hari' },
   { id: 'month', label: 'Bulan ini' },
-  { id: 'custom', label: 'Pilih tanggal' },
 ];
 
 function presetDays(preset: Preset, now: Date): [string, string] {
@@ -40,8 +51,10 @@ export function Transactions({ api }: PageProps) {
   const [method, setMethod] = useState<PayMethod | ''>('');
   const [deviceId, setDeviceId] = useState('');
   const [offset, setOffset] = useState(0);
+  const [pageSize, setPageSize] = useState(savedPageSize);
   const [exporting, setExporting] = useState(false);
   const [qrFor, setQrFor] = useState<Tx | null>(null);
+  const [viewing, setViewing] = useState<Tx | null>(null);
   const devices = useLoad(() => api.listDevices(), [api]);
 
   const filter = useMemo<TxFilter | null>(() => {
@@ -53,10 +66,10 @@ export function Transactions({ api }: PageProps) {
 
   const load = useLoad(async () => {
     if (!filter) return { rows: [] as Tx[], total: 0, sum: { sessions: 0, prints: 0, revenue: 0 } };
-    const [page, stats] = await Promise.all([api.listTransactions(filter, offset, PAGE_SIZE), api.dailyStats(filter.from, filter.to)]);
+    const [page, stats] = await Promise.all([api.listTransactions(filter, offset, pageSize), api.dailyStats(filter.from, filter.to)]);
     const sum = total(stats, (row) => (!filter.method || row.method === filter.method) && (!filter.deviceId || row.device_id === filter.deviceId));
     return { ...page, sum };
-  }, [api, filter, offset]);
+  }, [api, filter, offset, pageSize]);
 
   const codes = (load.data?.rows ?? []).flatMap((tx) => (tx.share_code ? [tx.share_code] : []));
   const shares = useLoad(() => api.shareStates(codes), [api, codes.join(',')]);
@@ -117,7 +130,7 @@ export function Transactions({ api }: PageProps) {
               onClick={() =>
                 change(() => {
                   setPreset(option.id);
-                  if (option.id !== 'custom') setDays(presetDays(option.id, new Date()));
+                  setDays(presetDays(option.id, new Date()));
                 })
               }
             >
@@ -126,18 +139,34 @@ export function Transactions({ api }: PageProps) {
           ))}
         </div>
         <div class="filters">
-          {preset === 'custom' && (
-            <>
-              <label class="field">
-                <span>Dari</span>
-                <input type="date" value={first} max={last} onChange={(event) => change(() => setDays([event.currentTarget.value, last]))} />
-              </label>
-              <label class="field">
-                <span>Sampai</span>
-                <input type="date" value={last} min={first} onChange={(event) => change(() => setDays([first, event.currentTarget.value]))} />
-              </label>
-            </>
-          )}
+          <label class="field">
+            <span>Dari</span>
+            <input
+              type="date"
+              value={first}
+              max={last}
+              onChange={(event) =>
+                change(() => {
+                  setPreset('custom');
+                  setDays([event.currentTarget.value, last]);
+                })
+              }
+            />
+          </label>
+          <label class="field">
+            <span>Sampai</span>
+            <input
+              type="date"
+              value={last}
+              min={first}
+              onChange={(event) =>
+                change(() => {
+                  setPreset('custom');
+                  setDays([first, event.currentTarget.value]);
+                })
+              }
+            />
+          </label>
           <label class="field">
             <span>Cara bayar</span>
             <select value={method} onChange={(event) => change(() => setMethod(event.currentTarget.value as PayMethod | ''))}>
@@ -156,6 +185,29 @@ export function Transactions({ api }: PageProps) {
               {devices.data?.map((device) => (
                 <option key={device.id} value={device.id}>
                   {device.name}
+                </option>
+              ))}
+            </select>
+          </label>
+          <label class="field">
+            <span>Per halaman</span>
+            <select
+              value={pageSize}
+              onChange={(event) =>
+                change(() => {
+                  const size = Number(event.currentTarget.value);
+                  setPageSize(size);
+                  try {
+                    localStorage.setItem(PAGE_SIZE_KEY, String(size));
+                  } catch {
+                    // Remembered only where the browser allows it.
+                  }
+                })
+              }
+            >
+              {PAGE_SIZES.map((size) => (
+                <option key={size} value={size}>
+                  {size}
                 </option>
               ))}
             </select>
@@ -211,7 +263,11 @@ export function Transactions({ api }: PageProps) {
                         </td>
                         <td class="num">{formatRupiah(tx.price)}</td>
                         <td>
-                          <ShareThumb code={tx.share_code} state={tx.share_code ? shares.data?.[tx.share_code] : undefined} />
+                          <ShareThumb
+                            code={tx.share_code}
+                            state={tx.share_code ? shares.data?.[tx.share_code] : undefined}
+                            onOpen={() => setViewing(tx)}
+                          />
                         </td>
                         <td class="num">
                           {tx.share_code && (
@@ -219,9 +275,9 @@ export function Transactions({ api }: PageProps) {
                               <button class="icon-btn" title="Tampilkan QR unduhan" aria-label="Tampilkan QR unduhan" onClick={() => setQrFor(tx)}>
                                 <QrIcon />
                               </button>
-                              <a class="icon-btn" title="Lihat hasil foto" aria-label="Lihat hasil foto" href={shareUrl(tx.share_code)} target="_blank" rel="noopener">
+                              <button class="icon-btn" title="Lihat hasil foto" aria-label="Lihat hasil foto" onClick={() => setViewing(tx)}>
                                 <EyeIcon />
-                              </a>
+                              </button>
                             </div>
                           )}
                         </td>
@@ -231,19 +287,67 @@ export function Transactions({ api }: PageProps) {
                 </table>
               </div>
             )}
-            <Pager offset={offset} limit={PAGE_SIZE} total={load.data.total} onChange={setOffset} />
+            <Pager offset={offset} limit={pageSize} total={load.data.total} onChange={setOffset} />
           </section>
           {qrFor?.share_code && <ShareQrDialog code={qrFor.share_code} sessionAt={qrFor.at} onClose={() => setQrFor(null)} />}
+          {viewing?.share_code && (
+            <PhotoDialog tx={viewing} state={shares.data?.[viewing.share_code]} onClose={() => setViewing(null)} />
+          )}
         </>
       )}
     </>
   );
 }
 
-/** The small picture of a session's digital copy, or why there is none. */
-function ShareThumb({ code, state }: { code: string | null; state: { status: string; thumb?: string } | undefined }) {
+/** The small picture of a session's digital copy, or why there is none. Tapping it opens the photo. */
+function ShareThumb({ code, state, onOpen }: { code: string | null; state: ShareState | undefined; onOpen: () => void }) {
   if (!code) return <span class="hint">—</span>;
-  if (state?.thumb) return <img class="share-thumb" src={state.thumb} alt="" loading="lazy" />;
+  if (state?.thumb) {
+    return (
+      <button class="thumb-btn" title="Lihat hasil foto" aria-label="Lihat hasil foto" onClick={onOpen}>
+        <img class="share-thumb" src={state.thumb} alt="" loading="lazy" />
+      </button>
+    );
+  }
   if (state?.status === 'expired') return <span class="hint">Kedaluwarsa</span>;
   return <span class="hint">{state ? 'Belum terunggah' : '…'}</span>;
+}
+
+/** A session's photo inside the dashboard, closed again with a button rather than a browser tab. */
+function PhotoDialog({ tx, state, onClose }: { tx: Tx; state: ShareState | undefined; onClose: () => void }) {
+  const code = tx.share_code ?? '';
+  return (
+    <Overlay onClose={onClose}>
+      <div class="card dialog photo-dialog">
+        <div class="row">
+          <h2 class="heading small grow">Hasil foto</h2>
+          <button class="btn small primary" onClick={onClose}>
+            Tutup
+          </button>
+        </div>
+        <p class="hint">
+          {tx.device_name} · {dateTime(tx.at)}
+        </p>
+        {state?.photo ? (
+          <img class="photo-dialog-img" src={state.photo} alt="Hasil foto sesi ini" />
+        ) : (
+          <p class="banner">
+            {state?.status === 'expired'
+              ? 'Masa simpan hasil foto ini sudah habis, jadi berkasnya sudah dihapus.'
+              : 'Foto sesi ini belum terunggah dari tablet.'}
+          </p>
+        )}
+        <div class="row center">
+          {state?.photo && (
+            <a class="btn small" href={state.photo} target="_blank" rel="noopener">
+              Buka ukuran penuh
+            </a>
+          )}
+          <a class="btn small" href={shareUrl(code)} target="_blank" rel="noopener">
+            Halaman tamu
+          </a>
+        </div>
+      </div>
+    </Overlay>
+  );
 }

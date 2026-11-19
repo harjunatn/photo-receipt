@@ -43,6 +43,8 @@ export interface ShareState {
   status: 'ready' | 'pending' | 'expired';
   /** A small picture of the photo, while it is still stored. */
   thumb?: string;
+  /** The full photo, while it is still stored. */
+  photo?: string;
 }
 
 export interface VoucherRow {
@@ -224,7 +226,7 @@ export function createSupabaseApi(db: SupabaseClient, email: string): OwnerApi {
       };
       const states: Record<string, ShareState> = {};
       for (const share of answer.shares ?? []) {
-        states[share.code] = { status: share.status, thumb: share.files?.thumb?.view ?? share.files?.photo?.view };
+        states[share.code] = { status: share.status, thumb: share.files?.thumb?.view ?? share.files?.photo?.view, photo: share.files?.photo?.view };
       }
       return states;
     },

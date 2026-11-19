@@ -76,7 +76,6 @@ export interface Settings {
     paperWidth: 58 | 80;
     /** Printable dots per line: 384 for most 58 mm printers, 576 for 80 mm. */
     dots: number;
-    autoPrint: boolean;
     cut: CutMode;
     feedLines: number;
     rasterMode: RasterMode;
@@ -168,7 +167,6 @@ export const DEFAULT_SETTINGS: Settings = {
     transport: 'usb',
     paperWidth: 80,
     dots: 576,
-    autoPrint: true,
     cut: 'partial',
     feedLines: 3,
     rasterMode: 'gsv0',
@@ -239,6 +237,16 @@ function load(): Settings {
 
 let current: Settings = load();
 const listeners = new Set<() => void>();
+
+// The booth may be open twice on one tablet (the installed app and a Chrome tab). Take over what the
+// other one saves, so that a stale copy here never writes old values back over it.
+if (typeof window !== 'undefined') {
+  window.addEventListener('storage', (event) => {
+    if (event.key !== STORAGE_KEY) return;
+    current = load();
+    listeners.forEach((listener) => listener());
+  });
+}
 
 export const settingsStore = {
   get: (): Settings => current,

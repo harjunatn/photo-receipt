@@ -18,7 +18,7 @@ interface Props {
   onFinish: () => void;
 }
 
-type Phase = 'preparing' | 'ready' | 'printing' | 'done' | 'no-printer' | 'error';
+type Phase = 'preparing' | 'printing' | 'done' | 'no-printer' | 'error';
 
 /** Seconds the "take your receipt" message stays up before the booth resets for the next guest. */
 const RETURN_SECONDS = 15;
@@ -128,8 +128,8 @@ export function Result({ draft, onFinish }: Props) {
             .catch(() => undefined);
         }
 
-        if (settings.printer.autoPrint) await print(image);
-        else setPhase('ready');
+        // The guest chose to print on the edit screen, so the receipt goes out right away.
+        await print(image);
       } catch (cause) {
         setMessage(cause instanceof Error ? cause.message : 'Struk gagal disusun.');
         setPhase('error');
@@ -177,15 +177,6 @@ export function Result({ draft, onFinish }: Props) {
 
           {phase === 'preparing' && <h1 class="heading">Menyiapkan strukmu…</h1>}
 
-          {phase === 'ready' && (
-            <>
-              <h1 class="heading">Strukmu siap!</h1>
-              <button class="btn primary huge glow" onClick={() => bits && void print(bits)}>
-                Cetak sekarang
-              </button>
-            </>
-          )}
-
           {phase === 'printing' && (
             <>
               <h1 class="heading">Sedang mencetak…</h1>
@@ -193,6 +184,8 @@ export function Result({ draft, onFinish }: Props) {
                 <i style={{ width: `${Math.round(printerState.progress * 100)}%` }} />
               </div>
               <p class="lead">Tunggu sampai kertas berhenti keluar, ya.</p>
+              {/* Guests can already scan while the receipt prints. */}
+              {draft.shareCode && <ShareCode code={draft.shareCode} />}
             </>
           )}
 

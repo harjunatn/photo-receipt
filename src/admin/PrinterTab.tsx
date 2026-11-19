@@ -18,6 +18,8 @@ const KIND_HINTS: Record<TransportKind, string> = {
   preview: 'Tidak mencetak ke kertas. Hasil cetak ditampilkan di layar — cocok untuk mencoba aplikasi tanpa printer.',
 };
 
+const KIND_LABEL: Record<TransportKind, string> = { usb: 'USB', bluetooth: 'Bluetooth', serial: 'Serial', preview: 'Simulasi' };
+
 const STATUS_LABEL = {
   disconnected: 'Belum terhubung',
   connecting: 'Menghubungkan…',
@@ -29,7 +31,12 @@ export function PrinterTab() {
   const { printer: p } = useSettings();
   const state = usePrinter();
   const [sample, setSample] = useState<CanvasImageSource>(() => samplePhoto(4 / 3, 2));
-  const supported = transportSupported(p.transport);
+  // Picking a kind only chooses what Hubungkan connects to; the printer in use stays connected until then.
+  const [kind, setKind] = useState<TransportKind>(p.transport);
+  useEffect(() => setKind(p.transport), [p.transport]);
+  const supported = transportSupported(kind);
+  const linked = state.status === 'connected' || state.status === 'printing';
+  const otherLink = linked && state.kind !== kind;
 
   // Tune against a real guest photo when there is one; skin tones are what matters.
   useEffect(() => {
@@ -61,21 +68,11 @@ export function PrinterTab() {
         <h2>Koneksi printer</h2>
         <Segmented
           label="Jenis koneksi"
-          value={p.transport}
-          options={[
-            { value: 'usb', label: 'USB' },
-            { value: 'bluetooth', label: 'Bluetooth' },
-            { value: 'serial', label: 'Serial' },
-            { value: 'preview', label: 'Simulasi' },
-          ]}
-          onChange={(transport) => {
-            edit((s) => {
-              s.printer.transport = transport;
-            });
-            void printer.switchKind();
-          }}
+          value={kind}
+          options={(['usb', 'bluetooth', 'serial', 'preview'] as const).map((value) => ({ value, label: KIND_LABEL[value] }))}
+          onChange={setKind}
         />
-        <p class="hint">{KIND_HINTS[p.transport]}</p>
+        <p class="hint">{KIND_HINTS[kind]}</p>
         {!supported && (
           <p class="banner err">
             Browser ini tidak mendukung koneksi tersebut. Pakai Google Chrome di tablet Android atau di komputer.
@@ -87,13 +84,20 @@ export function PrinterTab() {
           </span>
           {state.deviceName && <span class="mono">{state.deviceName}</span>}
         </div>
+        {otherLink && (
+          <p class="hint">
+            Printer masih tersambung lewat {KIND_LABEL[state.kind]}. Tekan Hubungkan untuk beralih ke {KIND_LABEL[kind]}; sambungan
+            lama tetap dipakai sampai yang baru berhasil.
+          </p>
+        )}
         {state.error && <p class="error-text">{state.error}</p>}
         <div class="row">
-          {state.status === 'disconnected' ? (
-            <button class="btn primary" disabled={!supported} onClick={() => void printer.connect()}>
+          {(state.status === 'disconnected' || otherLink) && (
+            <button class="btn primary" disabled={!supported} onClick={() => void printer.connect(kind)}>
               Hubungkan
             </button>
-          ) : (
+          )}
+          {state.status !== 'disconnected' && (
             <button class="btn" disabled={state.status === 'printing'} onClick={() => void printer.disconnect()}>
               Putuskan
             </button>
@@ -102,7 +106,7 @@ export function PrinterTab() {
             Tes cetak
           </button>
         </div>
-        {p.transport === 'usb' && (
+        {kind === 'usb' && (
           <Check
             label="Tampilkan semua perangkat USB"
             hint="Nyalakan jika printer tidak muncul di daftar saat menekan Hubungkan."
@@ -121,21 +125,26 @@ export function PrinterTab() {
             { value: 80, label: '80 mm' },
             { value: 58, label: '58 mm' },
           ]}
-          onChange={(width) =>
+          onChange={(width) => {
+            // Tapping the width already chosen must not undo a hand-tuned print width.
+            if (width === p.paperWidth) return;
             edit((s) => {
               s.printer.paperWidth = width;
               s.printer.dots = width === 80 ? 576 : 384;
-            })
-          }
+            });
+          }}
         />
         <NumberField
           label="Lebar cetak (titik per baris)"
-          hint="Biasanya 576 untuk 80 mm dan 384 untuk 58 mm. Kecilkan jika tepi kanan terpotong."
+          hint="Biasanya 576 untuk 80 mm dan 384 untuk 58 mm. Kecilkan jika tepi kanan terpotong. Selalu kelipatan 8."
           value={p.dots}
           min={200}
           max={832}
           step={8}
-          onChange={(v) => edit((s) => void (s.printer.dots = Math.round(v / 8) * 8))}
+          onChange={(v) => {
+            const dots = Math.round(v / 8) * 8;
+            edit((s) => void (s.printer.dots = dots), dots === v ? undefined : `Lebar cetak disimpan ${dots} titik (harus kelipatan 8).`);
+          }}
         />
         <Segmented
           label="Potong kertas setelah cetak"
@@ -154,12 +163,6 @@ export function PrinterTab() {
           min={0}
           max={12}
           onChange={(v) => edit((s) => void (s.printer.feedLines = v))}
-        />
-        <Check
-          label="Cetak otomatis"
-          hint="Struk langsung dicetak begitu sesi foto selesai, tanpa tombol Cetak."
-          checked={p.autoPrint}
-          onChange={(v) => edit((s) => void (s.printer.autoPrint = v))}
         />
       </section>
 

@@ -127,3 +127,50 @@ describe('printer manager with a serial printer', () => {
     expect(printer.state.get()).toMatchObject({ status: 'connected', error: '' });
   });
 });
+
+describe('choosing another kind of printer link', () => {
+  beforeEach(() => vi.useFakeTimers());
+  afterEach(() => {
+    vi.useRealTimers();
+    Reflect.deleteProperty(globalThis, 'localStorage');
+  });
+
+  async function connectedOverSerial() {
+    const memory = new Map<string, string>();
+    Object.defineProperty(globalThis, 'localStorage', {
+      configurable: true,
+      value: { getItem: (k: string) => memory.get(k) ?? null, setItem: (k: string, v: string) => memory.set(k, v), removeItem: (k: string) => memory.delete(k) },
+    });
+    vi.resetModules();
+    const { settingsStore } = await import('../src/lib/settings');
+    settingsStore.update((s) => void (s.printer.transport = 'serial'));
+    const { printer } = await import('../src/lib/printer/manager');
+    const fake = fakeSerialPrinter();
+    expect(await printer.connect()).toBe(true);
+    return { settingsStore, printer, fake };
+  }
+
+  it('keeps the working printer when the other link cannot be opened', async () => {
+    const { settingsStore, printer, fake } = await connectedOverSerial();
+    // This test browser has no WebUSB, so the USB link fails.
+    expect(await printer.connect('usb')).toBe(false);
+    expect(printer.state.get()).toMatchObject({ status: 'connected', kind: 'serial', deviceName: 'Printer Bluetooth (serial)' });
+    expect(printer.state.get().error).not.toBe('');
+    expect(fake.port.close).not.toHaveBeenCalled();
+    expect(settingsStore.get().printer.transport).toBe('serial');
+    // And it still prints.
+    await printer.print({ width: 8, height: 8, bytesPerRow: 1, data: new Uint8Array(8) });
+    expect(fake.written.length).toBeGreaterThan(0);
+  });
+
+  it('lets go of the old printer only once the new link works, and remembers the new kind', async () => {
+    const { settingsStore, printer, fake } = await connectedOverSerial();
+    expect(await printer.connect('preview')).toBe(true);
+    expect(printer.state.get()).toMatchObject({ status: 'connected', kind: 'preview' });
+    expect(fake.port.close).toHaveBeenCalled();
+    expect(settingsStore.get().printer.transport).toBe('preview');
+    // Letting go of the old link on purpose is not a dropped printer.
+    await vi.advanceTimersByTimeAsync(10_000);
+    expect(printer.state.get()).toMatchObject({ status: 'connected', kind: 'preview', error: '' });
+  });
+});

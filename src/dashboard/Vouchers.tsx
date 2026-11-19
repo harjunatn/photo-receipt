@@ -77,6 +77,15 @@ export function Vouchers({ api }: PageProps) {
     }
   };
 
+  const copyOne = async (code: string) => {
+    try {
+      await navigator.clipboard.writeText(code);
+      toast(`Kode ${code} disalin.`);
+    } catch {
+      toast('Browser tidak mengizinkan menyalin.');
+    }
+  };
+
   const copyFresh = async () => {
     try {
       await navigator.clipboard.writeText(fresh.join('\n'));
@@ -200,7 +209,10 @@ export function Vouchers({ api }: PageProps) {
                       <td>{row.label ?? ''}</td>
                       <td>{row.expires_at ? dateOnly(row.expires_at) : 'Selamanya'}</td>
                       <td>{row.used_at ? `${dateTime(row.used_at)}${row.used_by_name ? ` · ${row.used_by_name}` : ''}` : '—'}</td>
-                      <td class="num">
+                      <td class="num" style={{ whiteSpace: 'nowrap' }}>
+                        <button class="link" onClick={() => void copyOne(row.code)}>
+                          Salin
+                        </button>{' '}
                         {confirmDelete === row.code ? (
                           <button class="link danger" onClick={() => void remove(row.code)}>
                             Yakin hapus?

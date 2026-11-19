@@ -17,7 +17,7 @@ export function SystemTab() {
       toast('PIN harus 4 sampai 8 angka.');
       return;
     }
-    edit((s) => void (s.admin.pin = newPin));
+    edit((s) => void (s.admin.pin = newPin), false);
     setNewPin('');
     toast('PIN petugas diganti.');
   };

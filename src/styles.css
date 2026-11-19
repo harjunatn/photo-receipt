@@ -962,12 +962,17 @@ textarea {
   gap: 14px;
 }
 
-/* Two per row, so even six photos fit beside the viewfinder without scrolling. */
+/* One column in shooting order, top to bottom; each shrinks so that even six fit beside the viewfinder. */
 .thumbs {
-  display: grid;
-  grid-template-columns: repeat(2, minmax(0, 1fr));
+  display: flex;
+  flex-direction: column;
   align-items: center;
   gap: 10px;
+}
+
+.thumbs .thumb {
+  height: min(150px, calc((100dvh - 330px) / var(--count, 4)));
+  max-width: 100%;
 }
 
 .thumb {
@@ -1671,12 +1676,13 @@ textarea {
   }
 
   .thumbs {
-    display: flex;
+    flex-direction: row;
     justify-content: center;
   }
 
   .thumbs .thumb {
     width: clamp(56px, 13vw, 110px);
+    height: auto;
   }
 
   .edit,

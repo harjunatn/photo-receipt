@@ -55,12 +55,15 @@ function connectOptions() {
   return { baudRate, usbShowAll };
 }
 
+function newTransport(kind: TransportKind): Transport {
+  const made = createTransport(kind);
+  made.onDisconnect = handleUnexpectedDisconnect;
+  return made;
+}
+
 function ensureTransport(): Transport {
   const kind = settingsStore.get().printer.transport;
-  if (transport?.kind !== kind) {
-    transport = createTransport(kind);
-    transport.onDisconnect = handleUnexpectedDisconnect;
-  }
+  if (transport?.kind !== kind) transport = newTransport(kind);
   return transport;
 }
 
@@ -82,21 +85,41 @@ function scheduleRetry(delayMs: number): void {
 export const printer = {
   state,
 
-  /** Opens the browser's printer chooser. Must be called from a tap handler. */
-  async connect(): Promise<boolean> {
+  /**
+   * Opens the browser's printer chooser. Must be called from a tap handler.
+   * With another kind of link than the current one, the current printer stays
+   * connected until the new one is; only then is it let go, and the new kind
+   * becomes the one the booth reconnects to after a reload.
+   */
+  async connect(kind: TransportKind = settingsStore.get().printer.transport): Promise<boolean> {
     clearTimeout(retryTimer);
     const mine = generation;
-    patch({ status: 'connecting', error: '', kind: settingsStore.get().printer.transport });
+    const before = state.get();
+    const previous = transport;
+    const switching = previous !== null && previous.kind !== kind;
+    patch({ status: 'connecting', error: '', kind });
     try {
-      const active = ensureTransport();
-      const deviceName = await active.connect(connectOptions());
+      // Made inside the try: a kind this browser cannot do throws, like a failed link.
+      const next = previous?.kind === kind ? previous : newTransport(kind);
+      const deviceName = await next.connect(connectOptions());
       if (mine !== generation) return false;
+      if (switching && previous) {
+        previous.onDisconnect = null;
+        await previous.disconnect().catch(() => undefined);
+      }
+      transport = next;
       wanted = true;
-      patch({ status: 'connected', deviceName, error: '' });
+      if (settingsStore.get().printer.transport !== kind) settingsStore.update((s) => void (s.printer.transport = kind));
+      patch({ status: 'connected', deviceName, error: '', kind });
       return true;
     } catch (error) {
       // Another attempt may have connected meanwhile; a late failure must not undo that.
       if (mine !== generation || state.get().status === 'connected') return state.get().status === 'connected';
+      if (switching && previous && before.status === 'connected') {
+        // Trying another printer failed: the one that was working stays in use.
+        patch({ status: 'connected', kind: previous.kind, deviceName: before.deviceName, error: describe(error) });
+        return false;
+      }
       patch({ status: 'disconnected', error: describe(error) });
       // The operator asked for this printer, so keep trying in the background too.
       if (wanted) scheduleRetry(5000);
@@ -133,13 +156,6 @@ export const printer = {
     await transport?.disconnect().catch(() => undefined);
     transport = null;
     patch({ status: 'disconnected', deviceName: '', error: '', progress: 0 });
-  },
-
-  /** Call after the connection type changes in the settings. */
-  async switchKind(): Promise<void> {
-    await this.disconnect();
-    patch({ kind: settingsStore.get().printer.transport });
-    if (settingsStore.get().printer.transport === 'preview') await this.reconnect();
   },
 
   /** Prints the image the given number of times. Rejects with a readable message on failure. */

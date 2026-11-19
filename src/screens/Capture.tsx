@@ -144,6 +144,8 @@ export function Capture({ frame, shots: initialShots, targets, retake, onDone, o
   // The preview is mirrored like a selfie camera; the saved photo may not be, so flip the still to match.
   const flipStill = session.mirrorPreview !== session.mirrorPhoto;
   const one = targets.length === 1;
+  // Only a photo being taken again is a retake; the single photo of a one-photo frame is a fresh start.
+  const redo = retake && one;
 
   return (
     <div class="screen">
@@ -174,7 +176,7 @@ export function Capture({ frame, shots: initialShots, targets, retake, onDone, o
         </div>
 
         <div class="side">
-          <div class="thumbs">
+          <div class="thumbs" style={{ '--count': String(shots.length) }}>
             {shots.map((shot, i) => (
               <div
                 key={i}
@@ -194,7 +196,7 @@ export function Capture({ frame, shots: initialShots, targets, retake, onDone, o
                   void shoot();
                 }}
               >
-                {one ? `Ulangi foto ${targets[0] + 1}` : 'Mulai!'}
+                {redo ? `Ulangi foto ${targets[0] + 1}` : 'Mulai!'}
               </button>
               <p class="note">
                 {autoIn !== null

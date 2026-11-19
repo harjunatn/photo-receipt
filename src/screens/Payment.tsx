@@ -1,10 +1,10 @@
-import { useRef, useState } from 'preact/hooks';
+import { useEffect, useRef, useState } from 'preact/hooks';
 import { redeemCloudVoucher } from '../lib/cloud/device';
 import type { PayMethod } from '../lib/log';
 import type { FrameDef } from '../lib/receipt/frames';
 import { useFramePreviews } from '../lib/receipt/previews';
 import { formatRupiah, paymentChoices, useSettings, type PackageDef, type PaymentChoice } from '../lib/settings';
-import { CodeKeyboard, PinPad, Steps } from '../ui/components';
+import { CodeKeyboard, PinPad, Steps, toast } from '../ui/components';
 import { AutoQris } from './AutoQris';
 
 interface Props {
@@ -48,6 +48,34 @@ export function Payment({ frame, onPaid, onBack }: Props) {
     then();
   };
   const pkg = packages.find((p) => p.id === pkgId) ?? packages[0];
+
+  /** Puts a code copied elsewhere into the voucher field. */
+  const takeCode = (text: string): boolean => {
+    // Kept as printed (FOTO-AB12): the server ignores the dash, but guests recognise their code.
+    const pasted = text.trim().toUpperCase().replace(/[^A-Z0-9-]/g, '').slice(0, 20);
+    if (!pasted) return false;
+    setCode(pasted);
+    setError('');
+    return true;
+  };
+
+  // A code pasted with a keyboard (Ctrl+V) lands in the voucher field too.
+  useEffect(() => {
+    if (choice !== 'voucher') return;
+    const onPaste = (event: ClipboardEvent) => {
+      if (takeCode(event.clipboardData?.getData('text') ?? '')) event.preventDefault();
+    };
+    window.addEventListener('paste', onPaste);
+    return () => window.removeEventListener('paste', onPaste);
+  }, [choice]);
+
+  const pasteCode = async () => {
+    try {
+      if (!takeCode(await navigator.clipboard.readText())) toast('Belum ada kode voucher yang disalin.');
+    } catch {
+      toast('Tablet tidak mengizinkan menempel. Ketik kodenya saja.');
+    }
+  };
 
   if (!pkg) return null;
 
@@ -163,6 +191,9 @@ export function Payment({ frame, onPaid, onBack }: Props) {
               {choice === 'voucher' && (
                 <>
                   <div class={`code-display ${code ? '' : 'empty'}`}>{code || 'Ketik kode voucher'}</div>
+                  <button class="btn small quiet" onClick={() => void pasteCode()}>
+                    Tempel kode yang disalin
+                  </button>
                   <p class="error-text">{error}</p>
                   <CodeKeyboard
                     value={code}
