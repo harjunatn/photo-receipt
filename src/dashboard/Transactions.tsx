@@ -1,6 +1,8 @@
 import { useMemo, useState } from 'preact/hooks';
 import { Overlay } from '../ui/components';
 import { download } from '../lib/kiosk';
+import { buildPdf } from '../lib/export/pdf';
+import { buildXlsx, type SheetColumn } from '../lib/export/xlsx';
 import { PAY_METHOD_LABEL, toCsv, type PayMethod } from '../lib/log';
 import { formatRupiah } from '../lib/settings';
 import { toast } from '../ui/components';
@@ -44,6 +46,99 @@ function presetDays(preset: Preset, now: Date): [string, string] {
   return [today, today];
 }
 
+type ExportKind = 'xlsx' | 'pdf' | 'csv';
+const EXPORT_LABEL: Record<ExportKind, string> = { xlsx: 'Unduh Excel', pdf: 'Unduh PDF', csv: 'CSV' };
+
+/** Money that actually came in: QRIS and cash; vouchers and free sessions bring none. */
+const received = (tx: Tx) => (tx.method === 'qris' || tx.method === 'cash' ? tx.price : 0);
+
+function csvRows(all: Tx[]): (string | number)[][] {
+  return [
+    ['waktu', 'perangkat', 'no_sesi', 'frame', 'pilihan', 'cara_bayar', 'harga', 'uang_diterima', 'voucher', 'lembar'],
+    ...all.map((tx) => [
+      dateTime(tx.at),
+      tx.device_name,
+      tx.session_no ?? '',
+      tx.frame ?? '',
+      tx.package ?? '',
+      PAY_METHOD_LABEL[tx.method],
+      tx.price,
+      received(tx),
+      tx.voucher_code ?? '',
+      tx.prints,
+    ]),
+  ];
+}
+
+const SHEET_COLUMNS: SheetColumn[] = [
+  { header: 'Waktu', width: 17, format: 'datetime' },
+  { header: 'Perangkat', width: 22 },
+  { header: 'No. sesi', width: 9, format: 'integer' },
+  { header: 'Frame', width: 16 },
+  { header: 'Pilihan', width: 16 },
+  { header: 'Cara bayar', width: 12 },
+  { header: 'Voucher', width: 16 },
+  { header: 'Lembar', width: 9, format: 'integer', sum: true },
+  { header: 'Harga', width: 13, format: 'rupiah', sum: true },
+  { header: 'Uang diterima', width: 15, format: 'rupiah', sum: true },
+];
+
+function sheetRow(tx: Tx): (string | number | Date | null)[] {
+  return [
+    new Date(tx.at),
+    tx.device_name,
+    tx.session_no,
+    tx.frame,
+    tx.package,
+    PAY_METHOD_LABEL[tx.method],
+    tx.voucher_code,
+    tx.prints,
+    tx.price,
+    received(tx),
+  ];
+}
+
+function shortDate(day: string): string {
+  const [y, m, d] = day.split('-');
+  return `${d}/${m}/${y}`;
+}
+
+/** The report as a printable PDF table, with the period, filters and totals above it. */
+function pdfReport(all: Tx[], context: { brand: string; period: string; method: string; device: string }) {
+  const sessions = all.length;
+  const prints = all.reduce((sum, tx) => sum + tx.prints, 0);
+  const money = all.reduce((sum, tx) => sum + received(tx), 0);
+  return {
+    title: `Laporan transaksi ${context.brand}`,
+    lines: [
+      `Periode ${context.period} · Cara bayar: ${context.method} · Perangkat: ${context.device}`,
+      `${sessions.toLocaleString('id-ID')} sesi · ${prints.toLocaleString('id-ID')} lembar dicetak · Uang diterima ${formatRupiah(money)} (QRIS dan tunai)`,
+    ],
+    columns: [
+      { header: 'Waktu', width: 100 },
+      { header: 'Perangkat', width: 120 },
+      { header: 'No.', width: 40, align: 'right' as const },
+      { header: 'Frame · pilihan', width: 170 },
+      { header: 'Cara bayar', width: 125 },
+      { header: 'Lembar', width: 45, align: 'right' as const },
+      { header: 'Harga', width: 80, align: 'right' as const },
+      { header: 'Diterima', width: 90, align: 'right' as const },
+    ],
+    rows: all.map((tx) => [
+      dateTime(tx.at),
+      tx.device_name,
+      tx.session_no === null ? '' : String(tx.session_no),
+      [tx.frame, tx.package].filter(Boolean).join(' · '),
+      tx.voucher_code ? `${PAY_METHOD_LABEL[tx.method]} ${tx.voucher_code}` : PAY_METHOD_LABEL[tx.method],
+      String(tx.prints),
+      formatRupiah(tx.price),
+      formatRupiah(received(tx)),
+    ]),
+    total: ['Total', '', '', '', '', prints.toLocaleString('id-ID'), formatRupiah(all.reduce((sum, tx) => sum + tx.price, 0)), formatRupiah(money)],
+    footer: `Dibuat ${new Date().toLocaleString('id-ID', { day: '2-digit', month: 'short', year: 'numeric', hour: '2-digit', minute: '2-digit' })}`,
+  };
+}
+
 /** Every finished session from every tablet, filterable and exportable. */
 export function Transactions({ api }: PageProps) {
   const [preset, setPreset] = useState<Preset>('7');
@@ -52,7 +147,7 @@ export function Transactions({ api }: PageProps) {
   const [deviceId, setDeviceId] = useState('');
   const [offset, setOffset] = useState(0);
   const [pageSize, setPageSize] = useState(savedPageSize);
-  const [exporting, setExporting] = useState(false);
+  const [exporting, setExporting] = useState<ExportKind | null>(null);
   const [qrFor, setQrFor] = useState<Tx | null>(null);
   const [viewing, setViewing] = useState<Tx | null>(null);
   const devices = useLoad(() => api.listDevices(), [api]);
@@ -79,46 +174,56 @@ export function Transactions({ api }: PageProps) {
     setOffset(0);
   };
 
-  const exportCsv = async () => {
+  /** Every transaction matching the filters, page by page, up to EXPORT_LIMIT. */
+  const collectAll = async (current: TxFilter): Promise<Tx[]> => {
+    const all: Tx[] = [];
+    for (;;) {
+      const page = await api.listTransactions(current, all.length, 1000);
+      all.push(...page.rows);
+      if (page.rows.length === 0 || all.length >= page.total || all.length >= EXPORT_LIMIT) break;
+    }
+    return all.slice(0, EXPORT_LIMIT);
+  };
+
+  const exportAs = async (kind: ExportKind) => {
     if (!filter) return;
-    setExporting(true);
+    setExporting(kind);
     try {
-      const all: Tx[] = [];
-      for (;;) {
-        const page = await api.listTransactions(filter, all.length, 1000);
-        all.push(...page.rows);
-        if (page.rows.length === 0 || all.length >= page.total || all.length >= EXPORT_LIMIT) break;
+      const all = await collectAll(filter);
+      const name = `transaksi-${first}-sd-${last}`;
+      if (kind === 'csv') {
+        // The BOM makes Excel read the file as UTF-8.
+        download(`${name}.csv`, new Blob(['\ufeff', toCsv(csvRows(all))], { type: 'text/csv' }));
+      } else if (kind === 'xlsx') {
+        const sheet = buildXlsx('Transaksi', SHEET_COLUMNS, all.map(sheetRow));
+        download(`${name}.xlsx`, new Blob([sheet], { type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' }));
+      } else {
+        const outlet = (await api.getOutlet().catch(() => null)) as { brand?: { title?: unknown } } | null;
+        const brand = typeof outlet?.brand?.title === 'string' && outlet.brand.title.trim() ? outlet.brand.title.trim() : 'Hello Snaply';
+        const deviceName = devices.data?.find((device) => device.id === deviceId)?.name;
+        const report = pdfReport(all, {
+          brand,
+          period: `${shortDate(first)} – ${shortDate(last)}`,
+          method: method ? PAY_METHOD_LABEL[method] : 'Semua',
+          device: deviceName ?? 'Semua',
+        });
+        download(`${name}.pdf`, new Blob([buildPdf(report)], { type: 'application/pdf' }));
       }
-      const rows = [
-        ['waktu', 'perangkat', 'no_sesi', 'frame', 'pilihan', 'cara_bayar', 'harga', 'uang_diterima', 'voucher', 'lembar'],
-        ...all.map((tx) => [
-          dateTime(tx.at),
-          tx.device_name,
-          tx.session_no ?? '',
-          tx.frame ?? '',
-          tx.package ?? '',
-          PAY_METHOD_LABEL[tx.method],
-          tx.price,
-          tx.method === 'qris' || tx.method === 'cash' ? tx.price : 0,
-          tx.voucher_code ?? '',
-          tx.prints,
-        ]),
-      ];
-      // The BOM makes Excel read the file as UTF-8.
-      download(`transaksi-${first}-sd-${last}.csv`, new Blob(['﻿', toCsv(rows)], { type: 'text/csv' }));
-      if (all.length >= EXPORT_LIMIT) toast(`Hanya ${EXPORT_LIMIT.toLocaleString('id-ID')} baris pertama yang diekspor. Persempit rentang tanggalnya.`);
+      if (all.length >= EXPORT_LIMIT) toast(`Hanya ${EXPORT_LIMIT.toLocaleString('id-ID')} baris pertama yang diunduh. Persempit rentang tanggalnya.`);
     } catch (cause) {
       toast(describe(cause));
     }
-    setExporting(false);
+    setExporting(null);
   };
 
   return (
     <>
       <PageHead title="Transaksi" lead="Semua sesi yang selesai, dari semua perangkat.">
-        <button class="btn small" disabled={exporting || !filter || !load.data?.total} onClick={() => void exportCsv()}>
-          {exporting ? 'Menyiapkan…' : 'Unduh CSV'}
-        </button>
+        {(['xlsx', 'pdf', 'csv'] as const).map((kind) => (
+          <button key={kind} class="btn small" disabled={exporting !== null || !filter || !load.data?.total} onClick={() => void exportAs(kind)}>
+            {exporting === kind ? 'Menyiapkan…' : EXPORT_LABEL[kind]}
+          </button>
+        ))}
       </PageHead>
 
       <section class="panel">

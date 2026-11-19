@@ -2,7 +2,7 @@ import type { PhotoStyle } from './image/style';
 import type { BitImage, Rect } from './image/types';
 import type { PayMethod } from './log';
 import { composeReceipt, loadImage, loadReceiptFonts, receiptToBits } from './receipt/compose';
-import type { Crop } from './receipt/crop';
+import { cropWindow, type Crop } from './receipt/crop';
 import type { FrameDef } from './receipt/frames';
 import { SHARE_DAYS, shareUrl } from './cloud/shared';
 import type { PackageDef, Settings } from './settings';
@@ -109,7 +109,8 @@ export async function renderPreviews(
 
 /** Width of the digital copy: sharp on a phone, still a reasonable download. */
 const DIGITAL_WIDTH = 1080;
-const THUMB_WIDTH = 240;
+/** The dashboard's picture of a session: the first photo alone, large enough to recognise faces. */
+const THUMB_WIDTH = 480;
 
 function toJpeg(canvas: HTMLCanvasElement, quality: number): Promise<Blob> {
   return new Promise((resolve, reject) => {
@@ -118,18 +119,37 @@ function toJpeg(canvas: HTMLCanvasElement, quality: number): Promise<Blob> {
 }
 
 /**
+ * The session's first photo on its own, cropped the way the guest framed it in
+ * its slot, so sessions are easy to tell apart in the dashboard. Without a photo,
+ * a small picture of the whole receipt stands in.
+ */
+function thumbnail(draft: Draft, fallback: HTMLCanvasElement): HTMLCanvasElement {
+  const first = draft.shots.findIndex((shot) => shot);
+  const shot = first >= 0 ? draft.shots[first] : null;
+  const small = document.createElement('canvas');
+  const ctx = small.getContext('2d')!;
+  ctx.imageSmoothingQuality = 'high';
+  if (!shot) {
+    small.width = THUMB_WIDTH;
+    small.height = Math.max(1, Math.round((fallback.height * THUMB_WIDTH) / fallback.width));
+    ctx.drawImage(fallback, 0, 0, small.width, small.height);
+    return small;
+  }
+  const aspect = draft.frame.slots[first] ?? 4 / 3;
+  const win = cropWindow(shot.canvas.width, shot.canvas.height, aspect, shot.crop);
+  small.width = THUMB_WIDTH;
+  small.height = Math.max(1, Math.round(THUMB_WIDTH / aspect));
+  ctx.drawImage(shot.canvas, win.sx, win.sy, win.sw, win.sh, 0, 0, small.width, small.height);
+  return small;
+}
+
+/**
  * The guest's digital copy: the same frame and texts as the print, but with the
- * photos in full colour and at phone resolution. Plus a small picture of it for
- * lists. The download QR code itself is left off.
+ * photos in full colour and at phone resolution. Plus the first photo on its own
+ * for the dashboard's lists. The download QR code itself is left off.
  */
 export async function renderDigital(draft: Draft, sessionNo: number, settings: Settings): Promise<{ photo: Blob; thumb: Blob }> {
   const composed = await composeColour(draft, sessionNo, settings, DIGITAL_WIDTH);
   const full = composed.canvas;
-  const small = document.createElement('canvas');
-  small.width = THUMB_WIDTH;
-  small.height = Math.max(1, Math.round((full.height * THUMB_WIDTH) / full.width));
-  const ctx = small.getContext('2d')!;
-  ctx.imageSmoothingQuality = 'high';
-  ctx.drawImage(full, 0, 0, small.width, small.height);
-  return { photo: await toJpeg(full, 0.9), thumb: await toJpeg(small, 0.8) };
+  return { photo: await toJpeg(full, 0.9), thumb: await toJpeg(thumbnail(draft, full), 0.82) };
 }

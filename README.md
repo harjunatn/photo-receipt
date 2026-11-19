@@ -114,7 +114,7 @@ tablet mengirim transaksinya ke satu tempat dan kamu melihat serta mengaturnya d
 | --- | --- |
 | Dashboard | Omzet hari ini, 7 hari, bulan ini; grafik per hari; cara bayar; per perangkat; transaksi terbaru |
 | Perangkat | Daftar tablet, kode perangkat + PIN, online/offline, status printer, kapan pengaturan tablet terakhir tersimpan |
-| Transaksi | Semua sesi dari semua tablet, saring tanggal / cara bayar / perangkat, unduh CSV |
+| Transaksi | Semua sesi dari semua tablet, saring tanggal / cara bayar / perangkat, lihat hasil foto, unduh Excel / PDF / CSV |
 | Pembayaran QRIS | Setiap kode QR otomatis: lunas, tidak dibayar, dan "lunas tanpa sesi" yang perlu diperiksa |
 | Voucher | Buat massal, status aktif / terpakai / kedaluwarsa; berlaku di semua tablet, sekali pakai |
 | Koleksi Frame | Frame yang ditawarkan, per perangkat |
