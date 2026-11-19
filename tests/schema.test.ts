@@ -109,8 +109,20 @@ beforeAll(async () => {
 }, 60_000);
 
 describe('schema', () => {
-  it('can be run again without error', async () => {
+  it('can be run again without error, and without undoing what the platform owner saved', async () => {
+    await db.exec(`update platform set config = '{"name":"Nama Baru","graceDays":3}'`);
     await db.exec(SCHEMA);
+    expect((await rows('select config from platform'))[0].config).toEqual({ name: 'Nama Baru', graceDays: 3 });
+    await db.exec(`update platform set config = '{"name":"jepretin","watermark":"didukung oleh jepretin","receiptLine":"@jepretin","graceDays":7}'`);
+  });
+
+  it('starts with the same platform settings the app shows by default', async () => {
+    const fresh = new PGlite();
+    await fresh.exec(SUPABASE);
+    await fresh.exec(SCHEMA);
+    const config = (await fresh.query<{ config: unknown }>('select config from platform')).rows[0].config;
+    expect(config).toEqual({ name: 'jepretin', watermark: 'didukung oleh jepretin', receiptLine: '@jepretin', graceDays: 7 });
+    await fresh.close();
   });
 
   it.skipIf(!OLD_SCHEMA)('replaces the earlier single-owner schema after a reset', async () => {

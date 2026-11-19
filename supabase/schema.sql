@@ -34,6 +34,11 @@ create table if not exists public.platform (
 );
 alter table public.platform add column if not exists superadmin_claimed_at timestamptz;
 insert into public.platform (id) values (1) on conflict (id) do nothing;
+-- Nilai awal, sama dengan bawaan di aplikasi, supaya tablet, dashboard dan halaman unduh tamu memakai
+-- nilai yang sama sebelum superadmin mengubahnya di Pengaturan platform.
+update public.platform
+  set config = '{"name": "jepretin", "watermark": "didukung oleh jepretin", "receiptLine": "@jepretin", "graceDays": 7}'::jsonb
+  where id = 1 and config = '{}'::jsonb;
 
 drop trigger if exists platform_touch on public.platform;
 create trigger platform_touch before update on public.platform
