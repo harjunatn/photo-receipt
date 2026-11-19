@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState } from 'preact/hooks';
 import { Admin } from './admin/Admin';
 import { pairingStore, refetchSettings, setBoothIdle, subscriptionStore } from './lib/cloud/device';
-import { cloudConfigured, newShareCode, subscriptionState } from './lib/cloud/shared';
+import { boothTitle, cloudConfigured, newShareCode, subscriptionState } from './lib/cloud/shared';
 import { useIdle } from './lib/kiosk';
 import type { PayMethod } from './lib/log';
 import { activeFrames, customFramesStore, type FrameDef } from './lib/receipt/frames';
@@ -41,6 +41,13 @@ export function App() {
     document.documentElement.style.setProperty('--accent', settings.brand.accent);
   }, [settings.brand.accent]);
 
+  // The browser tab carries the franchise's outlet name, or the platform's while the tablet is not paired.
+  const pairing = useStore(pairingStore);
+  const title = boothTitle(settings, pairing ? (pairing.franchise ?? '') : null);
+  useEffect(() => {
+    if (title) document.title = title;
+  }, [title]);
+
   // Updates are applied only while the booth is idle, never in the middle of a guest's session.
   useEffect(() => {
     if (hasUpdate && screen === 'attract' && !askPin) applyUpdate();
@@ -66,13 +73,14 @@ export function App() {
     screen !== 'attract' && screen !== 'admin' && screen !== 'capture',
   );
 
-  const begin = (chosen: FrameDef, pkg: PackageDef, method: PayMethod, voucherCode?: string, paymentId?: string) => {
+  const begin = (chosen: FrameDef, pkg: PackageDef, method: PayMethod, voucherCode?: string, paymentId?: string, staffConfirmed = true) => {
     setDraft({
       frame: chosen,
       pkg,
       method,
       voucherCode,
       paymentId,
+      staffConfirmed,
       shareCode: settings.share.enabled && cloudConfigured ? newShareCode() : undefined,
       shots: chosen.slots.map(() => null),
       style: 'normal',
@@ -109,7 +117,7 @@ export function App() {
         <Payment
           frame={frame}
           onBack={() => (frames.length > 1 ? setScreen('frames') : reset())}
-          onPaid={(pkg, method, voucherCode, paymentId) => begin(frame, pkg, method, voucherCode, paymentId)}
+          onPaid={(pkg, method, voucherCode, paymentId, staffConfirmed) => begin(frame, pkg, method, voucherCode, paymentId, staffConfirmed)}
         />
       )}
       {screen === 'capture' && draft && (

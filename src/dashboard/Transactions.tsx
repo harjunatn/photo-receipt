@@ -49,12 +49,16 @@ function presetDays(preset: Preset, now: Date): [string, string] {
 type ExportKind = 'xlsx' | 'pdf' | 'csv';
 const EXPORT_LABEL: Record<ExportKind, string> = { xlsx: 'Unduh Excel', pdf: 'Unduh PDF', csv: 'CSV' };
 
+/** Whether staff confirmed the payment: only cash and static QRIS can be taken without, when the franchise allows it. */
+const unconfirmed = (tx: Tx) => tx.staff_confirmed === false;
+const confirmation = (tx: Tx) => (unconfirmed(tx) ? 'Tidak' : tx.method === 'cash' || tx.method === 'qris' ? 'Ya' : '');
+
 /** Money that actually came in: QRIS and cash; vouchers and free sessions bring none. */
 const received = (tx: Tx) => (tx.method === 'qris' || tx.method === 'cash' ? tx.price : 0);
 
 function csvRows(all: Tx[]): (string | number)[][] {
   return [
-    ['waktu', 'perangkat', 'no_sesi', 'frame', 'pilihan', 'cara_bayar', 'harga', 'uang_diterima', 'voucher', 'lembar'],
+    ['waktu', 'perangkat', 'no_sesi', 'frame', 'pilihan', 'cara_bayar', 'konfirmasi_petugas', 'harga', 'uang_diterima', 'voucher', 'lembar'],
     ...all.map((tx) => [
       dateTime(tx.at),
       tx.device_name,
@@ -62,6 +66,7 @@ function csvRows(all: Tx[]): (string | number)[][] {
       tx.frame ?? '',
       tx.package ?? '',
       PAY_METHOD_LABEL[tx.method],
+      confirmation(tx),
       tx.price,
       received(tx),
       tx.voucher_code ?? '',
@@ -77,6 +82,7 @@ const SHEET_COLUMNS: SheetColumn[] = [
   { header: 'Frame', width: 16 },
   { header: 'Pilihan', width: 16 },
   { header: 'Cara bayar', width: 12 },
+  { header: 'Konfirmasi petugas', width: 19 },
   { header: 'Voucher', width: 16 },
   { header: 'Lembar', width: 9, format: 'integer', sum: true },
   { header: 'Harga', width: 13, format: 'rupiah', sum: true },
@@ -91,6 +97,7 @@ function sheetRow(tx: Tx): (string | number | Date | null)[] {
     tx.frame,
     tx.package,
     PAY_METHOD_LABEL[tx.method],
+    confirmation(tx),
     tx.voucher_code,
     tx.prints,
     tx.price,
@@ -108,11 +115,15 @@ function pdfReport(all: Tx[], context: { brand: string; period: string; method: 
   const sessions = all.length;
   const prints = all.reduce((sum, tx) => sum + tx.prints, 0);
   const money = all.reduce((sum, tx) => sum + received(tx), 0);
+  const loose = all.filter(unconfirmed);
   return {
     title: `Laporan transaksi ${context.brand}`,
     lines: [
       `Periode ${context.period} · Cara bayar: ${context.method} · Perangkat: ${context.device}`,
       `${sessions.toLocaleString('id-ID')} sesi · ${prints.toLocaleString('id-ID')} lembar dicetak · Uang diterima ${formatRupiah(money)} (QRIS dan tunai)`,
+      ...(loose.length > 0
+        ? [`${loose.length.toLocaleString('id-ID')} sesi tanpa konfirmasi petugas, senilai ${formatRupiah(loose.reduce((sum, tx) => sum + received(tx), 0))}: cocokkan dengan uang yang diterima.`]
+        : []),
     ],
     columns: [
       { header: 'Waktu', width: 100 },
@@ -129,7 +140,7 @@ function pdfReport(all: Tx[], context: { brand: string; period: string; method: 
       tx.device_name,
       tx.session_no === null ? '' : String(tx.session_no),
       [tx.frame, tx.package].filter(Boolean).join(' · '),
-      tx.voucher_code ? `${PAY_METHOD_LABEL[tx.method]} ${tx.voucher_code}` : PAY_METHOD_LABEL[tx.method],
+      tx.voucher_code ? `${PAY_METHOD_LABEL[tx.method]} ${tx.voucher_code}` : unconfirmed(tx) ? `${PAY_METHOD_LABEL[tx.method]} · tanpa konfirmasi` : PAY_METHOD_LABEL[tx.method],
       String(tx.prints),
       formatRupiah(tx.price),
       formatRupiah(received(tx)),
@@ -365,6 +376,14 @@ export function Transactions({ api }: PageProps) {
                         <td>
                           {PAY_METHOD_LABEL[tx.method]}
                           {tx.voucher_code && <small class="mono"> {tx.voucher_code}</small>}
+                          {unconfirmed(tx) && (
+                            <>
+                              {' '}
+                              <span class="tag warn" title="Sesi dimulai tanpa PIN petugas, karena konfirmasi dimatikan di Pengaturan.">
+                                tanpa konfirmasi
+                              </span>
+                            </>
+                          )}
                         </td>
                         <td class="num">{formatRupiah(tx.price)}</td>
                         <td>

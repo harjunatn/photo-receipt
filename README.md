@@ -143,6 +143,18 @@ statis miliknya, atau akun DOKU-nya sendiri.
 | Franchise | Daftar franchise: langganan, tablet online, sesi dan omzet 30 hari; tambah franchise; akun admin; **Buka dashboard-nya** |
 | Pengaturan platform | Nama platform, tulisan kecil di layar tamu semua tablet, baris paling bawah semua struk, masa tenggang langganan |
 
+Nama yang tampil mengikuti siapa pemilik tabletnya, tidak ada nama yang tertanam di aplikasi:
+
+| Tempat | Nama yang tampil |
+| --- | --- |
+| Layar awal dan judul tab tablet yang **belum** dipasangkan | Nama platform (Pengaturan platform) |
+| Layar awal dan judul tab tablet yang sudah dipasangkan | **Nama di layar tamu** dari Pengaturan franchise itu; kalau kosong, nama franchise-nya |
+| Judul struk | Diketik di tiap tablet (⚙ → Struk); selama belum diisi, mengikuti nama di layar tamu |
+| Judul tab dashboard | Nama franchise yang sedang dibuka · nama platform |
+
+Tablet yang dipasangkan ke perangkat franchise lain membuang nama, logo, harga, cara bayar, dan pilihan frame dari
+franchise sebelumnya. Yang diatur di tablet itu sendiri (printer, sesi, teks struk, PIN) tetap.
+
 | Menu tiap franchise | Isi |
 | --- | --- |
 | Dashboard | Omzet hari ini, 7 hari, bulan ini; grafik per hari; cara bayar; per perangkat; transaksi terbaru |
@@ -373,6 +385,13 @@ Cara bayar yang dinyalakan di dashboard (menu **Pengaturan**) muncul sebagai pil
 - **Tunai** — tamu membayar ke petugas, lalu petugas mengonfirmasi dengan PIN.
 - **Voucher** — kode sekali pakai yang dibuat di dashboard (menu **Voucher**), berlaku di semua tablet. Tamu mengetik
   kodenya sendiri, jadi booth bisa jalan tanpa penjaga. Butuh internet.
+
+**Konfirmasi petugas.** Untuk tunai dan QRIS manual, tiap franchise bisa mematikan *Perlu konfirmasi petugas (PIN)* di
+dashboard → Pengaturan → Cara bayar (bawaannya menyala, masing-masing sendiri). Tanpa konfirmasi, tamu menekan *Sudah
+bayar · mulai foto* sendiri: lebih cepat untuk booth yang selalu dijaga, tetapi siapa pun bisa memulai sesi tanpa
+membayar dan sesi itu tetap tercatat sebagai uang masuk. Karena itu sesinya ditandai **tanpa konfirmasi** di menu
+Transaksi dan di unduhan Excel/PDF/CSV, supaya bisa dicocokkan dengan uang yang diterima. Booth tanpa penjaga
+sebaiknya hanya menyalakan QRIS otomatis (dan voucher), yang memeriksa pembayarannya sendiri.
 
 Harga diatur di dashboard (menu **Pengaturan**) dan berlaku untuk semua frame. Dengan satu pilihan harga aktif, tamu langsung melihat harga
 itu; dengan beberapa pilihan (misalnya 1 lembar dan 2 lembar), tamu memilihnya di langkah pembayaran. Harga 0 berarti

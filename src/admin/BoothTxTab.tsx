@@ -152,6 +152,7 @@ export function BoothTxTab() {
                     <td>
                       {PAY_METHOD_LABEL[tx.method]}
                       {tx.voucher_code && <small class="mono"> {tx.voucher_code}</small>}
+                      {tx.staff_confirmed === false && <small> · tanpa konfirmasi</small>}
                     </td>
                     <td class="num">{formatRupiah(tx.price)}</td>
                     <td class="num">

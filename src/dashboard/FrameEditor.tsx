@@ -62,14 +62,18 @@ interface Preview {
 }
 
 /** The frame with sample photos, in colour and as the printer would print it. */
-async function renderPreview(loaded: { image: HTMLImageElement; layout: FrameLayout }, name: string): Promise<{ preview: Preview; composed: ComposedReceipt }> {
+async function renderPreview(
+  loaded: { image: HTMLImageElement; layout: FrameLayout },
+  name: string,
+  outlet: string,
+): Promise<{ preview: Preview; composed: ComposedReceipt }> {
   await loadReceiptFonts();
   const frame = toFrameDef({ id: 'pratinjau', name, blurb: '', layout: loaded.layout, image: loaded.image });
   const composed = composeReceipt({
     width: DEFAULT_SETTINGS.printer.dots,
     frame,
     photos: frame.slots.map((aspect, i) => samplePhoto(aspect, 0.4 + i * 1.9)),
-    texts: DEFAULT_SETTINGS.receipt,
+    texts: { ...DEFAULT_SETTINGS.receipt, title: outlet.toUpperCase() },
     quote: '',
     when: new Date(),
     sessionNo: 1,
@@ -133,7 +137,7 @@ export function FrameEditor({ api, frame, onClose, onSaved }: Props) {
   useEffect(() => {
     if (!loaded) return setPreview(null);
     let cancelled = false;
-    void renderPreview(loaded, name).then(({ preview: made }) => {
+    void renderPreview(loaded, name, api.franchise.name).then(({ preview: made }) => {
       if (!cancelled) setPreview(made);
     });
     return () => {
@@ -180,7 +184,7 @@ export function FrameEditor({ api, frame, onClose, onSaved }: Props) {
     setError('');
     try {
       // Drawn once more so the small picture always matches what is saved.
-      const { composed } = await renderPreview(loaded, name);
+      const { composed } = await renderPreview(loaded, name, api.franchise.name);
       await api.saveFrame({
         id: frame?.id ?? null,
         name: name.trim(),

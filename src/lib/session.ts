@@ -23,6 +23,8 @@ export interface Draft {
   voucherCode?: string;
   /** The automatic QRIS payment that paid for this session, if any. */
   paymentId?: string;
+  /** false when a cash or static-QRIS session started without staff confirming the payment. */
+  staffConfirmed: boolean;
   /** Code of the digital copies the guest downloads; set when that is switched on. */
   shareCode?: string;
   /** One entry per slot of the frame; null until that photo is taken. */

@@ -66,8 +66,15 @@ export interface Settings {
     qrisAuto: boolean;
     /** Data URL of the merchant's static QRIS image, for the manual way. */
     qrisImage: string;
-    /** Pay staff in cash; staff confirm with their PIN. */
+    /** Pay staff in cash. */
     cash: boolean;
+    /**
+     * Staff confirm a cash payment with their PIN before the session starts. Off only for booths
+     * that are always attended: without it anyone can start a session that is recorded as paid.
+     */
+    cashConfirm: boolean;
+    /** The same for the static QRIS image (never asked for automatic QRIS, which checks the payment itself). */
+    qrisConfirm: boolean;
     /** Single-use voucher codes typed by the guest. */
     voucher: boolean;
   };
@@ -117,7 +124,9 @@ export const DEFAULT_PIN = '1234';
 
 export const DEFAULT_SETTINGS: Settings = {
   brand: {
-    title: 'Hello Snaply',
+    // Empty until the franchise's own name arrives from its dashboard; the screens then fall back to the
+    // franchise's or the platform's name, never to another franchise's.
+    title: '',
     subtitle: 'Foto seru, langsung tercetak ala struk belanja',
     accent: '#c2552d',
   },
@@ -134,7 +143,8 @@ export const DEFAULT_SETTINGS: Settings = {
     active: ['klasik', 'kolase', 'film', 'polaroid', 'nota', 'pesta', 'potret'],
   },
   receipt: {
-    title: 'HELLO SNAPLY',
+    // Replaced by the outlet's name the first time a tablet is paired (see applyRemote).
+    title: 'PHOTOBOOTH',
     subtitle: 'Terima kasih sudah mampir!',
     logo: '',
     showMeta: true,
@@ -169,6 +179,8 @@ export const DEFAULT_SETTINGS: Settings = {
     qrisAuto: false,
     qrisImage: '',
     cash: true,
+    cashConfirm: true,
+    qrisConfirm: true,
     voucher: true,
   },
   printer: {

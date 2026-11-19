@@ -75,7 +75,13 @@ export function OutletSettings({ api }: PageProps) {
       <div class="admin-grid">
         <section class="panel">
           <h2>Outlet</h2>
-          <TextField label="Nama di layar tamu" value={draft.brand.title} onChange={(v) => edit((d) => void (d.brand.title = v))} />
+          <TextField
+            label="Nama di layar tamu"
+            hint="Juga menjadi judul tab di tablet. Kalau kosong, nama franchise yang dipakai."
+            value={draft.brand.title}
+            placeholder={api.franchise.name}
+            onChange={(v) => edit((d) => void (d.brand.title = v))}
+          />
           <TextField label="Kalimat di bawah nama" value={draft.brand.subtitle} onChange={(v) => edit((d) => void (d.brand.subtitle = v))} />
           <label class="field">
             <span>Warna aksen</span>
@@ -105,7 +111,7 @@ export function OutletSettings({ api }: PageProps) {
                 value={draft.payment.qrisAuto ? 'auto' : 'manual'}
                 options={[
                   { value: 'auto', label: 'Otomatis (DOKU)' },
-                  { value: 'manual', label: 'Manual (gambar + PIN)' },
+                  { value: 'manual', label: 'Manual (gambar QRIS)' },
                 ]}
                 onChange={(v) => edit((d) => void (d.payment.qrisAuto = v === 'auto'))}
               />
@@ -117,14 +123,32 @@ export function OutletSettings({ api }: PageProps) {
                 </p>
               ) : (
                 <>
-                  <p class="hint">Gambar QRIS tokomu ditampilkan; petugas mengecek bukti bayar lalu mengonfirmasi dengan PIN.</p>
+                  <p class="hint">Gambar QRIS tokomu ditampilkan; tamu membayar lalu menunjukkan buktinya ke petugas.</p>
                   <ImageField label="Gambar QRIS" value={draft.payment.qrisImage} maxSide={720} onChange={(v) => edit((d) => void (d.payment.qrisImage = v))} />
                   {!draft.payment.qrisImage && <p class="banner">Unggah gambar QRIS dulu — tanpa gambar, pilihan QRIS tidak ditampilkan ke tamu.</p>}
+                  <Check
+                    label="Perlu konfirmasi petugas (PIN)"
+                    hint="Sesi baru mulai setelah petugas mengecek bukti bayar dan memasukkan PIN-nya."
+                    checked={draft.payment.qrisConfirm}
+                    onChange={(v) => edit((d) => void (d.payment.qrisConfirm = v))}
+                  />
+                  {!draft.payment.qrisConfirm && <NoConfirmWarning what="QRIS manual" />}
                 </>
               )}
             </div>
           )}
-          <Check label="Tunai" hint="Tamu membayar ke petugas; petugas mengonfirmasi dengan PIN." checked={draft.payment.cash} onChange={(v) => edit((d) => void (d.payment.cash = v))} />
+          <Check label="Tunai" hint="Tamu membayar langsung ke petugas." checked={draft.payment.cash} onChange={(v) => edit((d) => void (d.payment.cash = v))} />
+          {draft.payment.cash && (
+            <div class="panel">
+              <Check
+                label="Perlu konfirmasi petugas (PIN)"
+                hint="Sesi baru mulai setelah petugas menerima uangnya dan memasukkan PIN-nya."
+                checked={draft.payment.cashConfirm}
+                onChange={(v) => edit((d) => void (d.payment.cashConfirm = v))}
+              />
+              {!draft.payment.cashConfirm && <NoConfirmWarning what="tunai" />}
+            </div>
+          )}
           <Check label="Voucher" hint="Kode sekali pakai dari menu Voucher." checked={draft.payment.voucher} onChange={(v) => edit((d) => void (d.payment.voucher = v))} />
         </section>
 
@@ -215,5 +239,15 @@ export function OutletSettings({ api }: PageProps) {
         </section>
       </div>
     </>
+  );
+}
+
+/** What switching off staff confirmation means, said where it is switched off. */
+function NoConfirmWarning({ what }: { what: string }) {
+  return (
+    <p class="banner">
+      Tanpa konfirmasi, siapa pun bisa memulai sesi {what} tanpa membayar, dan sesi itu tetap tercatat sebagai uang masuk. Pakai hanya
+      untuk booth yang selalu dijaga. Sesinya ditandai <b>tanpa konfirmasi</b> di menu Transaksi supaya bisa dicocokkan dengan uangnya.
+    </p>
   );
 }

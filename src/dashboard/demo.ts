@@ -59,7 +59,7 @@ function stateOf(franchise: Pick<DemoFranchise, 'active' | 'paid_until'>, graceD
 export function createDemo(): { account: Account; admin: AdminApi; apiFor(franchise: Franchise): OwnerApi } {
   let platform: PlatformConfig = { ...DEFAULT_PLATFORM };
   let franchises: DemoFranchise[] = [
-    { id: 'demo-pusat', name: 'Hello Snaply', active: true, paid_until: null, note: 'Booth milik sendiri', created_at: new Date(Date.now() - 60 * DAY).toISOString(), seed: 7, booths: ['Booth Kafe Senja', 'Booth Mal Lantai 2', 'Booth Acara'] },
+    { id: 'demo-pusat', name: 'Foto Senja', active: true, paid_until: null, note: 'Booth milik sendiri', created_at: new Date(Date.now() - 60 * DAY).toISOString(), seed: 7, booths: ['Booth Kafe Senja', 'Booth Mal Lantai 2', 'Booth Acara'] },
     { id: 'demo-budi', name: 'Booth Budi', active: true, paid_until: dayFrom(4), note: 'Transfer tiap tanggal 5', created_at: new Date(Date.now() - 26 * DAY).toISOString(), seed: 21, booths: ['Tablet Budi 1', 'Tablet Budi 2'] },
     { id: 'demo-citra', name: 'Citra Photo', active: true, paid_until: dayFrom(-3), note: null, created_at: new Date(Date.now() - 34 * DAY).toISOString(), seed: 33, booths: ['Tablet Citra'] },
   ];
@@ -208,6 +208,8 @@ function createDemoApi(
         voucher_code: method === 'voucher' ? `FOTO-${newDeviceCode()}` : null,
         prints: double ? 2 : 1,
         share_code: back < 7 ? newShareCode() : null,
+        // A few cash sessions were taken without the staff PIN, to show how they are marked.
+        staff_confirmed: !(method === 'cash' && n % 5 === 0),
       });
     }
   }

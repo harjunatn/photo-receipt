@@ -277,6 +277,24 @@ describe('one franchise cannot reach another', () => {
     });
   });
 
+  it('tells anyone the platform name and its public lines, and nothing else of the platform', async () => {
+    await db.exec(`update platform set config = '{"name":"jepretin","watermark":"didukung oleh jepretin","receiptLine":"@jepretin","graceDays":7,"catatan":"rahasia"}'`);
+    for (const role of ['anon', 'service_role'] as const) {
+      await asRole(role, async () => {
+        expect(await one('select platform_public() r')).toEqual({ name: 'jepretin', watermark: 'didukung oleh jepretin', receiptLine: '@jepretin' });
+      });
+    }
+    await asUser(ANI, async () => {
+      expect((await one('select platform_public() r')).name).toBe('jepretin');
+    });
+    // A platform whose owner saved only a name: the tablet fills the rest with its defaults.
+    await db.exec(`update platform set config = '{"name":"Nama Baru"}'`);
+    await asRole('anon', async () => {
+      expect(await one('select platform_public() r')).toEqual({ name: 'Nama Baru', watermark: null, receiptLine: null });
+    });
+    await db.exec(`update platform set config = '{"name":"jepretin","watermark":"didukung oleh jepretin","receiptLine":"@jepretin","graceDays":7}'`);
+  });
+
   it('lets the superadmin see and change everything', async () => {
     await asUser(OWNER, async () => {
       expect(await rows('select name from devices order by name')).toHaveLength(2);
@@ -309,6 +327,28 @@ describe('tablets', () => {
     const after = await one(`select device_sync($1, '{}'::jsonb, $2) r`, [tokenA, first.outlet_version]);
     expect(after.platform.social).toBe('@jepretin');
     expect((await one(`select device_sync($1) r`, [tokenB])).outlet.brand.title).toBe('Budi Booth');
+  });
+
+  it('record whether staff confirmed a cash or static-QRIS payment, and count an older tablet as confirmed', async () => {
+    const at = new Date().toISOString();
+    const loose = crypto.randomUUID();
+    const older = crypto.randomUUID();
+    await db.query(`select device_push($1, $2::jsonb)`, [
+      tokenA,
+      JSON.stringify([
+        { id: loose, at, method: 'cash', price: 15000, staff_confirmed: false },
+        // A tablet that has not updated yet does not send the field.
+        { id: older, at, method: 'cash', price: 15000 },
+      ]),
+    ]);
+    const stored = await rows('select id, staff_confirmed from transactions where id = any($1::uuid[])', [[loose, older]]);
+    expect(Object.fromEntries(stored.map((row) => [row.id, row.staff_confirmed]))).toEqual({ [loose]: false, [older]: true });
+    const listed = await one(`select device_transactions($1, now() - interval '1 day', now() + interval '1 day') r`, [tokenA]);
+    expect(listed.rows.find((row: Row) => row.id === loose).staff_confirmed).toBe(false);
+    await asUser(ANI, async () => {
+      expect((await rows('select staff_confirmed from transactions where id = $1', [loose]))[0].staff_confirmed).toBe(false);
+    });
+    await db.query('delete from transactions where id = any($1::uuid[])', [[loose, older]]);
   });
 
   it('redeem only their own franchise vouchers, even when two franchises use the same code', async () => {

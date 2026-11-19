@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'preact/hooks';
+import { useEffect, useMemo, useState } from 'preact/hooks';
 import { Check } from '../admin/fields';
 import { customFrameId } from '../lib/receipt/custom';
 import { FRAMES } from '../lib/receipt/frames';
@@ -26,7 +26,12 @@ export function FrameSets({ api }: PageProps) {
   // undefined: editor closed · null: adding a frame · a row: changing that frame.
   const [editing, setEditing] = useState<CustomFrameRow | null | undefined>(undefined);
   const [confirmDelete, setConfirmDelete] = useState('');
-  const previews = useFramePreviews(FRAMES, DEFAULT_SETTINGS);
+  // The sample receipts carry this franchise's name.
+  const previewSettings = useMemo(
+    () => ({ ...DEFAULT_SETTINGS, receipt: { ...DEFAULT_SETTINGS.receipt, title: api.franchise.name.toUpperCase() } }),
+    [api.franchise.name],
+  );
+  const previews = useFramePreviews(FRAMES, previewSettings);
   const [deviceId, setDeviceId] = useState('');
   const [draft, setDraft] = useState<string[]>([]);
   const [busy, setBusy] = useState(false);

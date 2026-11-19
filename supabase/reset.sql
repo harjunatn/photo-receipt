@@ -23,7 +23,7 @@ begin
            or p.proname = any (array[
              'is_owner', 'claim_owner', 'touch_updated_at', 'token_hash', 'stats_daily', 'voucher_counts',
              'franchise_touch_config', 'is_superadmin', 'my_franchise', 'can_access', 'grace_days', 'franchise_state',
-             'whoami', 'password_changed', 'franchise_status', 'save_outlet', 'new_device_code', 'enforce_quota', 'device_before_insert'
+             'whoami', 'password_changed', 'franchise_status', 'save_outlet', 'new_device_code', 'enforce_quota', 'device_before_insert', 'platform_public'
            ]))
   loop
     execute 'drop function if exists ' || r.signature || ' cascade';

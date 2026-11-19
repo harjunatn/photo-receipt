@@ -1,5 +1,5 @@
 import { pairingStore, subscriptionStore } from '../lib/cloud/device';
-import { cloudConfigured, subscriptionState } from '../lib/cloud/shared';
+import { boothTitle, cloudConfigured, subscriptionState } from '../lib/cloud/shared';
 import { usePrinter } from '../lib/printer/manager';
 import { activeFrames } from '../lib/receipt/frames';
 import { useFramePreviews } from '../lib/receipt/previews';
@@ -15,7 +15,8 @@ interface Props {
 export function Attract({ onStart, onAdmin }: Props) {
   const settings = useSettings();
   const printer = usePrinter();
-  const paired = useStore(pairingStore) !== null;
+  const pairing = useStore(pairingStore);
+  const paired = pairing !== null;
   const subscription = subscriptionState(useStore(subscriptionStore));
   const stopped = subscription === 'expired' || subscription === 'suspended';
   const showcase = activeFrames(settings.frames.active).slice(0, 3);
@@ -27,7 +28,7 @@ export function Attract({ onStart, onAdmin }: Props) {
     <div class="screen attract">
       <div class="attract-copy">
         <span class="pill">Photobooth struk — cetak instan</span>
-        <h1 class="display">{settings.brand.title}</h1>
+        <h1 class="display">{boothTitle(settings, pairing ? (pairing.franchise ?? '') : null)}</h1>
         <p class="lead">{settings.brand.subtitle}</p>
         {!cloudConfigured ? (
           <p class="banner err">Aplikasi ini belum disambungkan ke Supabase. Isi alamat dan kuncinya di Vercel, lalu deploy ulang.</p>

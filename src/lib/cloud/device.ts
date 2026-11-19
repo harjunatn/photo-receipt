@@ -3,7 +3,7 @@ import type { StatRow } from '../../dashboard/stats';
 import { printer } from '../printer/manager';
 import { settingsStore } from '../settings';
 import { createPersistedStore, createStore } from '../store';
-import { applyDeviceSettings, applyRemote, cloudConfigured, deviceSettingsOf, SUPABASE_KEY, SUPABASE_URL, type Subscription } from './shared';
+import { applyDeviceSettings, applyRemote, cloudConfigured, completePlatform, deviceSettingsOf, forNewPairing, SUPABASE_KEY, SUPABASE_URL, type Subscription } from './shared';
 
 /** What this tablet keeps after being paired with a device from the dashboard. */
 export interface Pairing {
@@ -28,6 +28,8 @@ export interface CloudTx {
   prints: number;
   /** The automatic QRIS payment behind this session, so the dashboard can match money to sessions. */
   payment_id: string | null;
+  /** false when cash or static QRIS was accepted without staff confirming it, so the money can be checked later. */
+  staff_confirmed: boolean;
   /** The code of this session's digital copies, printed as a QR code on the receipt. */
   share_code: string | null;
 }
@@ -97,7 +99,10 @@ export async function pairDevice(code: string, pin: string): Promise<PairResult>
     localStorage.removeItem(VERSION_KEY);
     // A replacement tablet takes over the printer, session and PIN settings of the one before it.
     const restored = typeof result.settings === 'object' && result.settings !== null && !Array.isArray(result.settings);
-    if (restored) settingsStore.replace(applyDeviceSettings(settingsStore.get(), result.settings));
+    // Prices, name and frames of whichever franchise this tablet served before do not carry over; this
+    // franchise's own arrive with the sync that follows.
+    const clean = forNewPairing(settingsStore.get());
+    settingsStore.replace(restored ? applyDeviceSettings(clean, result.settings) : clean);
     // A device without saved settings gets this tablet's on the next sync.
     settingsBackupStore.set(restored ? { json: deviceSettingsJson(), at: Date.now() } : null);
     syncState.set({ lastOk: Date.now(), error: '', revoked: false });
@@ -282,9 +287,25 @@ export async function syncNow(): Promise<boolean> {
   }
 }
 
+/**
+ * A tablet that is not paired yet has no franchise to take a name from: it shows the platform's,
+ * which anyone may read.
+ */
+async function refreshPublicPlatform(): Promise<void> {
+  if (!cloudConfigured || pairingStore.get()) return;
+  try {
+    const platform = completePlatform(await rpc<unknown>('platform_public', {}));
+    const next = { name: platform.name, watermark: platform.watermark, receiptLine: platform.receiptLine };
+    if (JSON.stringify(next) !== JSON.stringify(settingsStore.get().platform)) settingsStore.update((s) => void (s.platform = next));
+  } catch {
+    // Offline, or a server that does not offer it yet: the name known so far stays.
+  }
+}
+
 /** Keeps this tablet in step with the dashboard for as long as the page is open. */
 export function startCloudSync(): void {
   if (!cloudConfigured) return;
+  void refreshPublicPlatform();
   // Once per start, also QRs left open by an earlier run of the booth.
   sweepOnStart = true;
   void syncNow();
@@ -439,6 +460,8 @@ export interface BoothTx {
   voucher_code: string | null;
   prints: number;
   share_code: string | null;
+  /** Missing in answers from a server that does not record it yet. */
+  staff_confirmed?: boolean;
 }
 
 const zone = () => Intl.DateTimeFormat().resolvedOptions().timeZone || 'Asia/Jakarta';

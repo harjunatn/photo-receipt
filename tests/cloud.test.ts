@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { applyRemote, completeOutlet, newShareCode, outletFromSettings, shareUrl } from '../src/lib/cloud/shared';
+import { applyRemote, boothTitle, completeOutlet, forNewPairing, newShareCode, outletFromSettings, shareUrl } from '../src/lib/cloud/shared';
 import { DEFAULT_SETTINGS } from '../src/lib/settings';
 import {
   compactRupiah,
@@ -79,6 +79,93 @@ describe('applyRemote', () => {
   });
 });
 
+describe('the name a booth shows', () => {
+  const settings = (title: string) => ({ brand: { ...DEFAULT_SETTINGS.brand, title }, platform: { ...DEFAULT_SETTINGS.platform, name: 'jepretin' } });
+
+  it('is the platform name while the tablet is not paired, whatever name it still remembers', () => {
+    expect(boothTitle(settings(''), null)).toBe('jepretin');
+    expect(boothTitle(settings('Kopi Senja'), null)).toBe('jepretin');
+  });
+
+  it('is the outlet name of its franchise once paired, or the franchise name while none is set', () => {
+    expect(boothTitle(settings('Kopi Senja'), 'PT Senja')).toBe('Kopi Senja');
+    expect(boothTitle(settings('  '), 'PT Senja')).toBe('PT Senja');
+    // Just paired: the franchise's name has not arrived yet.
+    expect(boothTitle(settings(''), '')).toBe('jepretin');
+  });
+
+  it('has no built-in name that could show up at another franchise', () => {
+    expect(DEFAULT_SETTINGS.brand.title).toBe('');
+    expect(JSON.stringify(DEFAULT_SETTINGS).toLowerCase()).not.toContain('snaply');
+  });
+});
+
+describe('the receipt title', () => {
+  it('follows the outlet name until the tablet chooses its own', () => {
+    const outlet = { brand: { title: 'Kopi Senja' } };
+    expect(applyRemote(DEFAULT_SETTINGS, outlet, null).receipt.title).toBe('KOPI SENJA');
+    // A tablet set up with an earlier version still carries that version's sample title.
+    const older = structuredClone(DEFAULT_SETTINGS);
+    older.receipt.title = 'HELLO SNAPLY';
+    expect(applyRemote(older, outlet, null).receipt.title).toBe('KOPI SENJA');
+    const own = structuredClone(DEFAULT_SETTINGS);
+    own.receipt.title = 'BOOTH LANTAI 2';
+    expect(applyRemote(own, outlet, null).receipt.title).toBe('BOOTH LANTAI 2');
+  });
+
+  it('stays as it is while the outlet has no name', () => {
+    expect(applyRemote(DEFAULT_SETTINGS, { brand: { title: ' ' } }, null).receipt.title).toBe(DEFAULT_SETTINGS.receipt.title);
+  });
+});
+
+describe('pairing a tablet', () => {
+  const used = () => {
+    const local = applyRemote(
+      DEFAULT_SETTINGS,
+      {
+        brand: { title: 'Kopi Senja', accent: '#112233' },
+        receipt: { logo: 'data:image/png;base64,AAAA' },
+        packages: [{ id: 'a', name: 'Paket Senja', description: '', price: 99000, prints: 1, active: true }],
+        payment: { cashConfirm: false },
+        share: { enabled: false },
+      },
+      ['film'],
+    );
+    local.printer.paperWidth = 80;
+    local.admin.pin = '4321';
+    local.receipt.quotes = ['Kutipan tablet ini'];
+    return local;
+  };
+
+  it('drops what the previous franchise decided, so none of it shows at the next one', () => {
+    const next = forNewPairing(used());
+    expect(next.brand).toEqual(DEFAULT_SETTINGS.brand);
+    expect(next.packages).toEqual(DEFAULT_SETTINGS.packages);
+    expect(next.payment).toEqual(DEFAULT_SETTINGS.payment);
+    expect(next.share).toEqual(DEFAULT_SETTINGS.share);
+    expect(next.frames).toEqual(DEFAULT_SETTINGS.frames);
+    expect(next.receipt.logo).toBe(DEFAULT_SETTINGS.receipt.logo);
+    expect(next.receipt.title).toBe(DEFAULT_SETTINGS.receipt.title);
+    expect(JSON.stringify(next)).not.toContain('Senja');
+  });
+
+  it('keeps what belongs to the tablet itself, also a receipt title it chose', () => {
+    const next = forNewPairing(used());
+    expect(next.printer.paperWidth).toBe(80);
+    expect(next.admin.pin).toBe('4321');
+    expect(next.receipt.quotes).toEqual(['Kutipan tablet ini']);
+    const own = used();
+    own.receipt.title = 'BOOTH LANTAI 2';
+    expect(forNewPairing(own).receipt.title).toBe('BOOTH LANTAI 2');
+  });
+
+  it('then takes the name of the new franchise', () => {
+    const next = applyRemote(forNewPairing(used()), { brand: { title: 'Foto Budi' } }, null);
+    expect(next.brand.title).toBe('Foto Budi');
+    expect(next.receipt.title).toBe('FOTO BUDI');
+  });
+});
+
 describe('guest downloads', () => {
   it('makes unguessable codes the server accepts', () => {
     const codes = new Set(Array.from({ length: 500 }, () => newShareCode()));
@@ -101,6 +188,22 @@ describe('guest downloads', () => {
     expect(applyRemote(DEFAULT_SETTINGS, { share: { enabled: 'tidak' } }, null).share.enabled).toBe(true);
     const off = applyRemote(DEFAULT_SETTINGS, { share: { enabled: false } }, null);
     expect(applyRemote(off, { share: { enabled: true } }, null).share.enabled).toBe(true);
+  });
+});
+
+describe('staff confirmation of cash and static QRIS', () => {
+  it('is asked for unless the franchise switched it off, also for settings saved before the switch existed', () => {
+    expect(DEFAULT_SETTINGS.payment).toMatchObject({ cashConfirm: true, qrisConfirm: true });
+    const older = { payment: { qris: true, qrisAuto: false, qrisImage: '', cash: true, voucher: true } };
+    expect(applyRemote(DEFAULT_SETTINGS, older, null).payment).toMatchObject({ cashConfirm: true, qrisConfirm: true });
+    expect(completeOutlet(older, outletFromSettings(DEFAULT_SETTINGS)).payment).toMatchObject({ cashConfirm: true, qrisConfirm: true });
+  });
+
+  it('follows the franchise for each way of paying on its own', () => {
+    const next = applyRemote(DEFAULT_SETTINGS, { payment: { cashConfirm: false } }, null);
+    expect(next.payment).toMatchObject({ cashConfirm: false, qrisConfirm: true });
+    // A damaged value does not switch confirmation off.
+    expect(applyRemote(DEFAULT_SETTINGS, { payment: { cashConfirm: 'tidak' } }, null).payment.cashConfirm).toBe(true);
   });
 });
 

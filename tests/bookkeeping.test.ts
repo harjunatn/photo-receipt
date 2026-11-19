@@ -96,7 +96,7 @@ describe('mergeSettings', () => {
 });
 
 describe('paymentChoices', () => {
-  const none = { qris: false, qrisAuto: false, qrisImage: '', cash: false, voucher: false };
+  const none = { qris: false, qrisAuto: false, qrisImage: '', cash: false, cashConfirm: true, qrisConfirm: true, voucher: false };
 
   it('offers the methods that are switched on, in a fixed order', () => {
     expect(paymentChoices({ ...none, qris: true, qrisImage: 'data:image/png;base64,AAAA', cash: true, voucher: true })).toEqual(['qris', 'cash', 'voucher']);

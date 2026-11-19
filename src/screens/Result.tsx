@@ -86,6 +86,7 @@ export function Result({ draft, onFinish }: Props) {
           voucher_code: draft.voucherCode ?? null,
           prints: draft.pkg.prints,
           payment_id: draft.paymentId ?? null,
+          staff_confirmed: draft.staffConfirmed,
           share_code: draft.shareCode ?? null,
         });
         if (draft.shareCode) {

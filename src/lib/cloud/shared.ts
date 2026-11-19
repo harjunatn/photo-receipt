@@ -116,6 +116,39 @@ export function completeOutlet(saved: unknown, fallback: OutletConfig): OutletCo
   });
 }
 
+/** Receipt titles that mean "never chosen": the placeholder, and the sample name earlier versions shipped with. */
+const UNSET_RECEIPT_TITLES = [DEFAULT_SETTINGS.receipt.title, 'HELLO SNAPLY'];
+
+/**
+ * The name on the booth's welcome screen and browser tab. A paired tablet shows its franchise's
+ * outlet name (or the franchise's name while none is set); one that is not paired shows the platform's,
+ * so a new franchisee never sees another franchise's name. `franchise` is null while not paired.
+ */
+export function boothTitle(settings: Pick<Settings, 'brand' | 'platform'>, franchise: string | null): string {
+  if (franchise === null) return settings.platform.name;
+  return settings.brand.title.trim() || franchise.trim() || settings.platform.name;
+}
+
+/**
+ * What a tablet starts from when it is paired: nothing of what the dashboard of its previous franchise
+ * decided (name, logo, prices, ways of paying, frames) may linger until the new one's settings arrive.
+ * The tablet's own settings stay, receipt texts included. Only a receipt title that merely followed the
+ * previous outlet's name goes back to "not chosen", so that it follows the new one.
+ */
+export function forNewPairing(settings: Settings): Settings {
+  const next = structuredClone(settings);
+  const fresh = structuredClone(DEFAULT_SETTINGS);
+  const outlet = settings.brand.title.trim().toUpperCase();
+  if (outlet && settings.receipt.title === outlet) next.receipt.title = fresh.receipt.title;
+  next.brand = fresh.brand;
+  next.packages = fresh.packages;
+  next.payment = fresh.payment;
+  next.share = fresh.share;
+  next.frames = fresh.frames;
+  next.receipt.logo = fresh.receipt.logo;
+  return next;
+}
+
 /**
  * Lays what the dashboard decides over a tablet's own settings. Only the parts
  * the owner has actually saved are taken; everything about this particular
@@ -139,8 +172,8 @@ export function applyRemote(settings: Settings, outlet: unknown, frames: unknown
       if (packages.length > 0) next.packages = packages;
     }
   }
-  // A tablet that never chose a receipt title prints its outlet's name rather than the app's sample one.
-  if (next.receipt.title === DEFAULT_SETTINGS.receipt.title && next.brand.title.trim() && next.brand.title !== DEFAULT_SETTINGS.brand.title) {
+  // A tablet that never chose a receipt title prints its outlet's name rather than the app's placeholder.
+  if (UNSET_RECEIPT_TITLES.includes(next.receipt.title) && next.brand.title.trim()) {
     next.receipt.title = next.brand.title.trim().toUpperCase();
   }
   // A device whose frames were never chosen in the dashboard offers the standard set.

@@ -9,7 +9,8 @@ import { AutoQris } from './AutoQris';
 
 interface Props {
   frame: FrameDef;
-  onPaid: (pkg: PackageDef, method: PayMethod, voucherCode?: string, paymentId?: string) => void;
+  /** staffConfirmed is false when cash or static QRIS was accepted without the staff PIN. */
+  onPaid: (pkg: PackageDef, method: PayMethod, voucherCode?: string, paymentId?: string, staffConfirmed?: boolean) => void;
   onBack: () => void;
 }
 
@@ -172,20 +173,39 @@ export function Payment({ frame, onPaid, onBack }: Props) {
                   <p class="lead">
                     Scan dan bayar <b>{formatRupiah(pkg.price)}</b>, lalu tunjukkan buktinya ke petugas.
                   </p>
-                  <button class="btn primary" onClick={() => setAskPin(true)}>
-                    Petugas: konfirmasi bayar
-                  </button>
+                  {settings.payment.qrisConfirm ? (
+                    <button class="btn primary" onClick={() => setAskPin(true)}>
+                      Petugas: konfirmasi bayar
+                    </button>
+                  ) : (
+                    <button class="btn primary" onClick={() => onPaid(pkg, 'qris', undefined, undefined, false)}>
+                      Sudah bayar · mulai foto →
+                    </button>
+                  )}
                 </>
               )}
 
               {choice === 'cash' && (
                 <>
-                  <p class="lead">
-                    Serahkan <b>{formatRupiah(pkg.price)}</b> ke petugas. Setelah itu petugas akan memulai sesi fotomu.
-                  </p>
-                  <button class="btn primary huge" onClick={() => setAskPin(true)}>
-                    Petugas: konfirmasi bayar
-                  </button>
+                  {settings.payment.cashConfirm ? (
+                    <>
+                      <p class="lead">
+                        Serahkan <b>{formatRupiah(pkg.price)}</b> ke petugas. Setelah itu petugas akan memulai sesi fotomu.
+                      </p>
+                      <button class="btn primary huge" onClick={() => setAskPin(true)}>
+                        Petugas: konfirmasi bayar
+                      </button>
+                    </>
+                  ) : (
+                    <>
+                      <p class="lead">
+                        Serahkan <b>{formatRupiah(pkg.price)}</b> ke petugas, lalu mulai sesi fotomu.
+                      </p>
+                      <button class="btn primary huge" onClick={() => onPaid(pkg, 'cash', undefined, undefined, false)}>
+                        Sudah bayar · mulai foto →
+                      </button>
+                    </>
+                  )}
                 </>
               )}
 

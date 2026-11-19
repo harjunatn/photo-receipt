@@ -37,6 +37,8 @@ export interface Tx {
   prints: number;
   /** Code of the guest's digital copies, when they were made. */
   share_code: string | null;
+  /** false: cash or static QRIS accepted without the staff PIN, because the franchise switched confirmation off. */
+  staff_confirmed: boolean;
 }
 
 /** What the guest's download page holds for one session, as the dashboard shows it. */
@@ -407,7 +409,7 @@ export function createSupabaseApi(db: SupabaseClient, account: Account, franchis
     async listTransactions(filter, offset, limit) {
       let query = db
         .from('transactions')
-        .select('id,device_id,device_name,at,session_no,frame,package,price,method,voucher_code,prints,share_code', { count: 'exact' })
+        .select('id,device_id,device_name,at,session_no,frame,package,price,method,voucher_code,prints,share_code,staff_confirmed', { count: 'exact' })
         .eq('franchise_id', fid)
         .gte('at', filter.from.toISOString())
         .lt('at', filter.to.toISOString());

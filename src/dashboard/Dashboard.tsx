@@ -158,6 +158,11 @@ export function Dashboard() {
       .catch(() => undefined);
   }, [admin, api]);
 
+  // The browser tab says whose dashboard this is.
+  useEffect(() => {
+    document.title = franchise ? `${franchise.name} · ${platformName}` : `Dashboard · ${platformName}`;
+  }, [franchise?.name, platformName]);
+
   const status = useLoad<FranchiseStatus | null>(async () => {
     if (!api) return null;
     try {
