@@ -98,3 +98,10 @@ export function detectFrame(rgba: Uint8ClampedArray | Uint8Array, width: number,
 
   return { slots, print: opaque > 0 && shaded / opaque > 0.08 ? 'dither' : 'ink' };
 }
+
+/** True when two photo holes share a row. Photos side by side come out small on receipt paper. */
+export function hasSideBySide(slots: Rect[]): boolean {
+  return slots.some((a, i) =>
+    slots.slice(i + 1).some((b) => Math.min(a.y + a.h, b.y + b.h) - Math.max(a.y, b.y) > Math.min(a.h, b.h) * 0.5),
+  );
+}

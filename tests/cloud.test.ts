@@ -90,10 +90,17 @@ describe('guest downloads', () => {
     expect(shareUrl('abc234defg56', { origin: 'https://booth.vercel.app', pathname: '/' })).toBe('https://booth.vercel.app/#s/abc234defg56');
   });
 
-  it('takes the download switch from the dashboard and stays off until then', () => {
-    expect(DEFAULT_SETTINGS.share.enabled).toBe(false);
-    expect(applyRemote(DEFAULT_SETTINGS, { share: { enabled: true } }, null).share.enabled).toBe(true);
-    expect(applyRemote(DEFAULT_SETTINGS, { share: { enabled: 'ya' } }, null).share.enabled).toBe(false);
+  it('are on unless the franchise turned them off in the dashboard', () => {
+    expect(DEFAULT_SETTINGS.share.enabled).toBe(true);
+    // A franchise that never saved its settings, or whose saved settings lack the switch, keeps it on.
+    expect(applyRemote(DEFAULT_SETTINGS, {}, null).share.enabled).toBe(true);
+    expect(applyRemote(DEFAULT_SETTINGS, { brand: { title: 'Booth Budi' } }, null).share.enabled).toBe(true);
+    expect(completeOutlet({ brand: { title: 'Booth Budi' } }, outletFromSettings(DEFAULT_SETTINGS)).share.enabled).toBe(true);
+    // Only an explicit choice turns it off, and a damaged value does not.
+    expect(applyRemote(DEFAULT_SETTINGS, { share: { enabled: false } }, null).share.enabled).toBe(false);
+    expect(applyRemote(DEFAULT_SETTINGS, { share: { enabled: 'tidak' } }, null).share.enabled).toBe(true);
+    const off = applyRemote(DEFAULT_SETTINGS, { share: { enabled: false } }, null);
+    expect(applyRemote(off, { share: { enabled: true } }, null).share.enabled).toBe(true);
   });
 });
 

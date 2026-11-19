@@ -197,8 +197,9 @@ export const DEFAULT_SETTINGS: Settings = {
       dither: 'atkinson',
     },
   },
+  // On unless a franchise turns it off: without it no photo reaches the dashboard, and guests get no download.
   share: {
-    enabled: false,
+    enabled: true,
   },
   storage: {
     keepPhotos: true,

@@ -2,7 +2,7 @@ import { describe, expect, it } from 'vitest';
 import { addMonths, extendFrom } from '../src/dashboard/stats';
 import { applyRemote, completePlatform, DEFAULT_PLATFORM, jakartaDay, subscriptionState } from '../src/lib/cloud/shared';
 import { customFrameId, validLayout } from '../src/lib/receipt/custom';
-import { detectFrame } from '../src/lib/receipt/detect';
+import { detectFrame, hasSideBySide } from '../src/lib/receipt/detect';
 import { activeFrames, customFramesStore, frameById, FRAMES, type FrameDef } from '../src/lib/receipt/frames';
 import { DEFAULT_SETTINGS } from '../src/lib/settings';
 
@@ -67,6 +67,18 @@ describe('finding the photo holes of an uploaded frame', () => {
     expect(detectFrame(picture(100, 100, hole, [255, 255, 255]), 100, 100).print).toBe('ink');
     expect(detectFrame(picture(100, 100, hole, [230, 60, 120]), 100, 100).print).toBe('dither');
     expect(detectFrame(picture(100, 100, hole, [128, 128, 128]), 100, 100).print).toBe('dither');
+  });
+});
+
+describe('photos side by side', () => {
+  it('are noticed in an uploaded frame, so its maker can be told they print small', () => {
+    const stacked = [
+      { x: 10, y: 10, w: 180, h: 120 },
+      { x: 10, y: 140, w: 180, h: 120 },
+    ];
+    expect(hasSideBySide(stacked)).toBe(false);
+    expect(hasSideBySide([...stacked, { x: 100, y: 270, w: 90, h: 60 }, { x: 10, y: 272, w: 80, h: 60 }])).toBe(true);
+    expect(hasSideBySide([])).toBe(false);
   });
 });
 

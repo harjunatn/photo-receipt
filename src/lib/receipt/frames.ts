@@ -40,18 +40,17 @@ const klasik: FrameDef = {
   },
 };
 
+// Every frame puts one photo per row, across the full width: side by side, photos come out
+// too small on receipt paper, above all on 58 mm.
 const kolase: FrameDef = {
   id: 'kolase',
   name: 'Kolase',
-  blurb: '4 foto dalam kotak 2 × 2',
+  blurb: '4 foto berurutan, rapat',
   slots: [LANDSCAPE, LANDSCAPE, LANDSCAPE, LANDSCAPE],
   draw(page, photos) {
-    const gap = page.px(12);
-    const column = Math.floor((page.inner - gap) / 2);
-    for (let i = 0; i < this.slots.length; i += 2) {
-      const height = page.photo(photos[i], page.margin, column, LANDSCAPE);
-      page.photo(photos[i + 1], page.width - page.margin - column, column, LANDSCAPE);
-      page.y += height + gap;
+    // Close together, like one tall strip.
+    for (let i = 0; i < this.slots.length; i++) {
+      page.y += page.photo(photos[i], page.margin, page.inner, this.slots[i]) + page.px(i === this.slots.length - 1 ? 12 : 4);
     }
   },
 };

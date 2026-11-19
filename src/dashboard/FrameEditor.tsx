@@ -4,7 +4,7 @@ import { samplePhoto } from '../lib/demoScene';
 import type { Rect } from '../lib/image/types';
 import { composeReceipt, loadImage, loadReceiptFonts, receiptToBits, type ComposedReceipt } from '../lib/receipt/compose';
 import { toFrameDef, type FrameLayout } from '../lib/receipt/custom';
-import { detectFrame } from '../lib/receipt/detect';
+import { detectFrame, hasSideBySide } from '../lib/receipt/detect';
 import { DEFAULT_SETTINGS } from '../lib/settings';
 import type { BitImage } from '../lib/image/types';
 import { ReceiptPaper, toast } from '../ui/components';
@@ -212,7 +212,8 @@ export function FrameEditor({ api, frame, onClose, onSaved }: Props) {
       <p class="hint">
         Frame adalah gambar dengan <b>lubang transparan</b> tempat foto tamu. Buat di Canva, Figma atau Photoshop, lalu unduh sebagai{' '}
         <b>PNG dengan latar transparan</b>. Lebar yang pas 1080 px; kertas struk dicetak hitam-putih, jadi desain garis hitam di atas putih
-        paling tajam. Lubangnya dikenali sendiri, urut dari atas ke bawah.
+        paling tajam. Lubangnya dikenali sendiri, urut dari atas ke bawah. <b>Susun satu foto per baris</b>, selebar mungkin: kertas struk
+        sempit, jadi foto yang berdampingan hasilnya kecil.
       </p>
       <input ref={picker} type="file" accept="image/png,image/webp" hidden onChange={(event) => void choose(event.currentTarget.files?.[0])} />
       <div class="row">
@@ -222,6 +223,12 @@ export function FrameEditor({ api, frame, onClose, onSaved }: Props) {
       </div>
       {error && <p class="banner err">{error}</p>}
       {busy === 'load' && <div class="spinner" />}
+      {loaded && hasSideBySide(loaded.layout.slots) && (
+        <p class="banner">
+          Di frame ini ada foto yang berdampingan. Di kertas struk, terutama 58 mm, foto seperti itu tercetak kecil. Lebih baik satu foto
+          per baris, turun ke bawah.
+        </p>
+      )}
 
       {loaded && (
         <div class="admin-grid" style={{ margin: 0 }}>

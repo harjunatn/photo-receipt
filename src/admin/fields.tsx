@@ -91,7 +91,8 @@ export function Check(props: FieldProps & { checked: boolean; onChange: (v: bool
       <input type="checkbox" checked={props.checked} onChange={(event) => props.onChange(event.currentTarget.checked)} />
       <span>
         {props.label}
-        {props.hint && <small>{props.hint}</small>}
+        {/* Reading the small print with a finger on it must not flip the setting; only the box and its title do. */}
+        {props.hint && <small onClick={(event) => event.preventDefault()}>{props.hint}</small>}
       </span>
     </label>
   );

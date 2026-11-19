@@ -23,6 +23,8 @@ Di dashboard → **Koleksi Frame** → **+ Tambah frame**, franchise bisa mengun
 
 - Frame adalah **gambar PNG dengan lubang transparan** tempat foto tamu (buat di Canva, Figma atau Photoshop, unduh
   dengan latar transparan). Lebar yang pas 1080 px; tingginya bebas sampai 6 kali lebarnya.
+- **Satu foto per baris, turun ke bawah.** Kertas struk sempit, jadi foto yang berdampingan tercetak kecil; editor
+  memberi peringatan kalau ada. Semua frame bawaan juga satu foto per baris.
 - Lubang foto dikenali sendiri (1 sampai 6 foto), urut dari atas ke bawah lalu kiri ke kanan; urutannya bisa diubah
   dan area transparan yang bukan untuk foto bisa dibuang. Lubang boleh berbentuk bulat atau bersudut tumpul.
 - Struk dicetak hitam-putih. Pilih **Tegas** untuk desain garis dan tulisan, **Halus** untuk desain berwarna atau
@@ -241,7 +243,8 @@ Sesudah terpasang:
   internet**; QRIS dan tunai tidak. Voucher hanya berlaku di tablet franchise yang membuatnya.
 - Satu kode perangkat untuk satu tablet. Memasangkan tablet lain dengan kode yang sama melepas tablet sebelumnya, dan
   tablet baru itu memakai pengaturan tablet sebelumnya (lihat di atas).
-- Foto tamu **tidak** dikirim ke server; hanya catatan transaksinya.
+- Hasil foto berframe dikirim ke Cloudflare R2 selama *Unduh foto lewat QR* menyala (bawaannya menyala) dan dihapus
+  otomatis setelah 3 hari. Kalau dimatikan, hanya catatan transaksinya yang dikirim.
 
 Paket gratis Supabase menjeda proyek yang tidak dipakai sekitar seminggu. Booth yang dipakai rutin tidak kena; setelah
 libur panjang, bangunkan proyeknya dari dashboard Supabase (transaksi yang menunggu di tablet akan terkirim sesudahnya).
@@ -285,7 +288,8 @@ Letak menu di bawah ini ditulis dari ingatan dan bisa sedikit berbeda di dashboa
 5. R2 → **Manage R2 API Tokens → Create API token**: izin *Object Read & Write*, batasi ke bucket tadi. Catat
    **Access Key ID** dan **Secret Access Key** (hanya ditampilkan sekali). **Account ID** ada di halaman R2.
 6. Supabase → Edge Functions → Secrets: isi `R2_ACCOUNT_ID`, `R2_ACCESS_KEY_ID`, `R2_SECRET_ACCESS_KEY`, `R2_BUCKET`.
-7. Dashboard → **Pengaturan → Unduh foto lewat QR** → nyalakan, lalu Simpan.
+7. Dashboard → **Pengaturan → Unduh foto lewat QR**: bawaannya sudah menyala. Pastikan centangnya menyala; kalau mati,
+   halaman itu menampilkan peringatan merah.
 
 Masa simpan 3 hari tertulis di tiga tempat yang harus sama: aturan hapus di bucket R2, `SHARE_DAYS` di
 [`src/lib/cloud/shared.ts`](src/lib/cloud/shared.ts), dan `interval '3 days'` di fungsi `share_claim` pada
@@ -474,9 +478,13 @@ Yang perlu diketahui:
 
 ## Privasi
 
-Foto tamu hanya disimpan di tablet (untuk cetak ulang) dan tidak dikirim ke mana pun. Kalau dashboard dipakai, yang
-dikirim ke Supabase hanya catatan transaksi (waktu, frame, harga, cara bayar, kode voucher) dan status tablet. Jumlah sesi yang disimpan bisa
-diatur, dan penyimpanan bisa dimatikan sepenuhnya di tab **Riwayat**.
+Foto mentah tamu hanya disimpan di tablet (untuk cetak ulang); jumlah sesi yang disimpan bisa diatur, dan penyimpanan
+bisa dimatikan sepenuhnya di tab **Riwayat**. Ke Supabase yang dikirim hanya catatan transaksi (waktu, frame, harga,
+cara bayar, kode voucher) dan status tablet.
+
+Selama *Unduh foto lewat QR* menyala (bawaannya menyala), hasil foto berframe dan satu foto kecil untuk daftar transaksi
+dikirim ke Cloudflare R2 dan dihapus otomatis setelah 3 hari. Selama itu fotonya bisa dibuka oleh tamu pemegang kode
+QR-nya, admin franchise itu, dan superadmin. Mematikannya di dashboard → Pengaturan menghentikan pengiriman foto.
 
 ## Untuk pengembangan
 

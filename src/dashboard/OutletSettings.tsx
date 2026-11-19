@@ -136,10 +136,16 @@ export function OutletSettings({ api }: PageProps) {
             checked={draft.share.enabled}
             onChange={(v) => edit((d) => void (d.share.enabled = v))}
           />
-          {draft.share.enabled && (
-            <p class="banner">
-              Butuh Cloudflare R2 yang sudah disetel di Supabase (lihat README). Kalau belum, tablet tetap mencetak QR, tetapi
-              fotonya menunggu di tablet sampai R2 siap.
+          {!draft.share.enabled && (
+            <p class="banner err">
+              Sedang mati: struk tidak mencetak QR unduhan, foto tamu tidak dikirim, dan kolom Hasil foto di menu Transaksi kosong. Sesi
+              yang sudah lewat tidak bisa disusulkan. Centang lagi lalu Simpan untuk menyalakannya.
+            </p>
+          )}
+          {draft.share.enabled && api.superadmin && (
+            <p class="hint">
+              Fotonya disimpan di Cloudflare R2 milik platform (disetel sekali di Supabase, lihat README). Kalau R2 belum siap, tablet tetap
+              mencetak QR dan fotonya menunggu di tablet.
             </p>
           )}
         </section>

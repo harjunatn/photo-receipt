@@ -149,7 +149,7 @@ export function Franchises({ admin, current, open, changed }: AdminPageProps) {
                 Buka dashboard-nya
               </button>
               <button class="btn small" onClick={() => setEditing(editing === row.id ? null : row.id)}>
-                {editing === row.id ? 'Tutup' : `Atur · ${row.members} admin`}
+                {editing === row.id ? 'Tutup' : `Atur · ${row.members} admin franchise`}
               </button>
             </div>
             {editing === row.id && (
@@ -331,9 +331,10 @@ function FranchiseEditor(props: {
       </div>
 
       <div class="panel" style={{ boxShadow: 'none' }}>
-        <h2>Akun admin</h2>
+        <h2>Akun admin franchise</h2>
+        <p class="hint">Akun yang hanya bisa membuka franchise ini. Kamu sebagai superadmin tidak dihitung di sini.</p>
         <LoadState load={members} />
-        {members.data?.length === 0 && <p class="hint">Belum ada akun. Tanpa akun, hanya kamu yang bisa mengatur franchise ini.</p>}
+        {members.data?.length === 0 && <p class="hint">Belum ada. Tanpa akun admin, hanya superadmin yang bisa mengatur franchise ini.</p>}
         {members.data?.map((member) => (
           <div class="member" key={member.user_id}>
             <div>
