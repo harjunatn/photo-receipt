@@ -15,6 +15,16 @@ export interface PackageDef {
   /** Copies printed per session. */
   prints: number;
   active: boolean;
+  /**
+   * Whether the guest also gets a boomerang and a slideshow video with the download.
+   * Absent (prices saved before videos existed) counts as yes.
+   */
+  videos?: boolean;
+}
+
+/** Whether a price includes the boomerang and the slideshow video. */
+export function includesVideos(pkg: PackageDef): boolean {
+  return pkg.videos !== false;
 }
 
 export interface Settings {

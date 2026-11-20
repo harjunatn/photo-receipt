@@ -13,8 +13,11 @@ interface ShareFile {
 interface Share {
   code: string;
   status: 'ready' | 'pending' | 'expired';
+  created_at?: string;
   expires_at?: string;
   files?: Partial<Record<Kind | 'thumb', ShareFile>>;
+  /** Videos the booth is still making or sending. */
+  coming?: Kind[];
 }
 interface Answer {
   brand?: { title: string; accent: string };
@@ -26,13 +29,15 @@ interface Answer {
 
 const TABS: { kind: Kind; label: string; button: string }[] = [
   { kind: 'photo', label: 'Foto', button: 'Unduh foto' },
-  { kind: 'live', label: 'Live Foto', button: 'Unduh video' },
+  { kind: 'live', label: 'Boomerang', button: 'Unduh boomerang' },
   { kind: 'slideshow', label: 'Video Slideshow', button: 'Unduh video' },
 ];
 
 /** While the booth is still uploading, the page asks again by itself for this long. */
 const RETRY_MS = 8000;
 const GIVE_UP_MS = 15 * 60_000;
+/** Videos still missing this long after the session are not coming any more (e.g. the booth went offline). */
+const VIDEOS_WITHIN_MS = 15 * 60_000;
 
 function codeFromHash(): string {
   return (location.hash.match(/^#s\/([a-z0-9]{12})$/) ?? [])[1] ?? '';
@@ -74,20 +79,22 @@ export function SharePage() {
 
   const share = answer?.shares?.[0];
   const waiting = failed || share?.status === 'pending';
+  const recent = share?.created_at !== undefined && Date.now() - Date.parse(share.created_at) < VIDEOS_WITHIN_MS;
+  const coming = share?.status === 'ready' && recent ? (share.coming ?? []) : [];
 
-  // Ask again until the photos have arrived from the booth.
+  // Ask again until the photos, and the videos that follow them, have arrived from the booth.
   useEffect(() => {
-    if (!waiting || Date.now() - started > GIVE_UP_MS) return;
+    if ((!waiting && coming.length === 0) || Date.now() - started > GIVE_UP_MS) return;
     const timer = setTimeout(() => setTurn((n) => n + 1), RETRY_MS);
     return () => clearTimeout(timer);
-  }, [waiting, turn]);
+  }, [waiting, coming.length, turn]);
 
   useEffect(() => {
     if (answer?.brand?.accent) document.documentElement.style.setProperty('--accent', answer.brand.accent);
     if (answer?.brand?.title) document.title = `Hasil foto · ${answer.brand.title}`;
   }, [answer?.brand]);
 
-  const available = TABS.filter((t) => share?.files?.[t.kind]);
+  const available = TABS.filter((t) => share?.files?.[t.kind] || coming.includes(t.kind));
   const current = available.find((t) => t.kind === tab) ?? available[0];
   const file = current ? share?.files?.[current.kind] : undefined;
 
@@ -134,6 +141,13 @@ export function SharePage() {
               ))}
             </div>
           )}
+          {!file && current && (
+            <section class="share-note">
+              <div class="spinner" />
+              <p class="lead">{current.label} sedang dibuat di booth.</p>
+              <p class="hint">Halaman ini memeriksa lagi sendiri; biasanya kurang dari satu menit.</p>
+            </section>
+          )}
           {file && current && (
             <>
               <figure class="share-media">
@@ -147,7 +161,15 @@ export function SharePage() {
                 {current.button}
               </a>
               <p class="hint share-hint">
-                Di iPhone, kalau berkas terbuka di tab baru: tekan lama gambarnya lalu pilih <b>Simpan ke Foto</b>.
+                {file.type.startsWith('video/') ? (
+                  <>
+                    Di iPhone, kalau video terbuka di tab baru: ketuk tombol bagikan lalu pilih <b>Simpan Video</b>.
+                  </>
+                ) : (
+                  <>
+                    Di iPhone, kalau berkas terbuka di tab baru: tekan lama gambarnya lalu pilih <b>Simpan ke Foto</b>.
+                  </>
+                )}
               </p>
             </>
           )}

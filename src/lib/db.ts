@@ -42,6 +42,8 @@ export interface UploadRecord {
   code: string;
   kind: 'photo' | 'thumb' | 'live' | 'slideshow';
   blob: Blob;
+  /** With the photo: the videos that follow, so the download page waits for them. */
+  expects?: ('live' | 'slideshow')[];
   createdAt: number;
   attempts: number;
 }

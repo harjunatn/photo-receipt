@@ -4,6 +4,7 @@ import { addDays, cloudConfigured, subscriptionState } from '../lib/cloud/shared
 import { pumpUploads, uploadsWaiting } from '../lib/cloud/upload';
 import { formatDateTime } from '../lib/receipt/compose';
 import { useStore } from '../lib/store';
+import { videoSupport } from '../lib/video/encode';
 import { toast } from '../ui/components';
 
 /** Pairs this tablet with the owner's dashboard and shows whether its sales are getting through. */
@@ -12,6 +13,7 @@ export function CloudTab() {
   const queued = useStore(outboxStore).length;
   const sync = useStore(syncState);
   const uploads = useStore(uploadsWaiting);
+  const videos = useStore(videoSupport);
   const backup = useStore(settingsBackupStore);
   const subscription = useStore(subscriptionStore);
   const subscriptionNow = subscriptionState(subscription);
@@ -109,13 +111,19 @@ export function CloudTab() {
             </div>
             <div class="stat">
               <b>{uploads}</b>
-              <span>file foto tamu menunggu diunggah</span>
+              <span>file foto & video tamu menunggu diunggah</span>
             </div>
             <div class="stat">
               <b style={{ fontSize: '20px', lineHeight: '1.7' }}>{sync.lastOk ? formatDateTime(new Date(sync.lastOk)) : '—'}</b>
               <span>terakhir tersambung</span>
             </div>
           </div>
+          {videos === false && (
+            <p class="hint">
+              Browser tablet ini tidak bisa membuat video MP4, jadi tamu di tablet ini tidak mendapat boomerang dan video
+              slideshow. Foto tetap berjalan seperti biasa. Perbarui Chrome untuk mencoba lagi.
+            </p>
+          )}
           {sync.error && (
             <p class="banner">
               {sync.error} Booth tetap bisa dipakai: transaksi disimpan dulu di tablet dan dikirim saat internet kembali.

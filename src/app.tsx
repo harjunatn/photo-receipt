@@ -6,11 +6,12 @@ import { useIdle } from './lib/kiosk';
 import type { PayMethod } from './lib/log';
 import { activeFrames, customFramesStore, type FrameDef } from './lib/receipt/frames';
 import type { Draft, Shot } from './lib/session';
-import { useSettings, type PackageDef } from './lib/settings';
+import { includesVideos, useSettings, type PackageDef } from './lib/settings';
 import { sound } from './lib/sound';
 import { useStore } from './lib/store';
 import { applyUpdate, updateReady } from './lib/update';
 import { pick } from './lib/util';
+import { checkVideoSupport, videoSupport } from './lib/video/encode';
 import { Attract } from './screens/Attract';
 import { Capture } from './screens/Capture';
 import { Edit } from './screens/Edit';
@@ -25,6 +26,7 @@ type Screen = 'attract' | 'frames' | 'payment' | 'capture' | 'edit' | 'result' |
 export function App() {
   const settings = useSettings();
   const hasUpdate = useStore(updateReady);
+  const canMakeVideos = useStore(videoSupport) === true;
   const [screen, setScreen] = useState<Screen>('attract');
   const [frame, setFrame] = useState<FrameDef | null>(null);
   const [draft, setDraft] = useState<Draft | null>(null);
@@ -40,6 +42,9 @@ export function App() {
   useEffect(() => {
     document.documentElement.style.setProperty('--accent', settings.brand.accent);
   }, [settings.brand.accent]);
+
+  // Whether this tablet's browser can make MP4 videos decides if guests are offered them at all.
+  useEffect(() => void checkVideoSupport(), []);
 
   // The browser tab carries the franchise's outlet name, or the platform's while the tablet is not paired.
   const pairing = useStore(pairingStore);
@@ -74,6 +79,7 @@ export function App() {
   );
 
   const begin = (chosen: FrameDef, pkg: PackageDef, method: PayMethod, voucherCode?: string, paymentId?: string, staffConfirmed = true) => {
+    const shareCode = settings.share.enabled && cloudConfigured ? newShareCode() : undefined;
     setDraft({
       frame: chosen,
       pkg,
@@ -81,7 +87,9 @@ export function App() {
       voucherCode,
       paymentId,
       staffConfirmed,
-      shareCode: settings.share.enabled && cloudConfigured ? newShareCode() : undefined,
+      shareCode,
+      // The videos reach the guest only through the download page.
+      videos: shareCode !== undefined && includesVideos(pkg) && canMakeVideos,
       shots: chosen.slots.map(() => null),
       style: 'normal',
       when: new Date(),
@@ -126,9 +134,10 @@ export function App() {
           shots={draft.shots}
           targets={targets}
           retake={allTaken}
+          boomerang={draft.videos ? { caption: [title, settings.platform.receiptLine.trim()].filter(Boolean).join(' · ') } : null}
           onCancel={() => (allTaken ? setScreen('edit') : reset())}
-          onDone={(shots: (Shot | null)[]) => {
-            setDraft({ ...draft, shots });
+          onDone={(shots: (Shot | null)[], clip?: Promise<Blob | null>) => {
+            setDraft({ ...draft, shots, boomerang: clip ?? draft.boomerang });
             setScreen('edit');
           }}
         />

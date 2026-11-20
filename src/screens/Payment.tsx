@@ -1,9 +1,12 @@
 import { useEffect, useRef, useState } from 'preact/hooks';
 import { redeemCloudVoucher } from '../lib/cloud/device';
+import { cloudConfigured } from '../lib/cloud/shared';
 import type { PayMethod } from '../lib/log';
 import type { FrameDef } from '../lib/receipt/frames';
 import { useFramePreviews } from '../lib/receipt/previews';
-import { formatRupiah, paymentChoices, useSettings, type PackageDef, type PaymentChoice } from '../lib/settings';
+import { formatRupiah, includesVideos, paymentChoices, useSettings, type PackageDef, type PaymentChoice } from '../lib/settings';
+import { useStore } from '../lib/store';
+import { videoSupport } from '../lib/video/encode';
 import { CodeKeyboard, PinPad, Steps, toast } from '../ui/components';
 import { AutoQris } from './AutoQris';
 
@@ -31,6 +34,8 @@ const METHODS: Record<PaymentChoice, { icon: string; title: string; hint: string
 /** Step 2: the guest sees the price and picks how to pay — QRIS, cash or a voucher code. */
 export function Payment({ frame, onPaid, onBack }: Props) {
   const settings = useSettings();
+  // Videos reach the guest through the download page, and only a tablet that can make them offers them.
+  const videosOffered = useStore(videoSupport) === true && settings.share.enabled && cloudConfigured;
   const packages = settings.packages.filter((p) => p.active);
   const choices = paymentChoices(settings.payment);
   const previews = useFramePreviews([frame], settings);
@@ -116,6 +121,7 @@ export function Payment({ frame, onPaid, onBack }: Props) {
               </div>
             )}
             <p class="note">{pkg.description}</p>
+            {videosOffered && includesVideos(pkg) && <p class="note">+ Boomerang & video slideshow untuk diunduh</p>}
             <div class="amount">{pkg.price > 0 ? formatRupiah(pkg.price) : 'GRATIS'}</div>
           </div>
         </section>

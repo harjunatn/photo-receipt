@@ -64,6 +64,11 @@ export function readShareEnv(get: (name: string) => string | undefined): ShareEn
 
 const text = (value: unknown) => (typeof value === 'string' ? value : '');
 const isKind = (value: unknown): value is ShareKind => typeof value === 'string' && value in KINDS;
+/** The files a tablet makes after the photo; the download page waits for those it was told to expect. */
+const LATER = ['live', 'slideshow'] as const;
+type LaterKind = (typeof LATER)[number];
+const expectedFrom = (value: unknown): LaterKind[] =>
+  Array.isArray(value) ? LATER.filter((kind) => value.includes(kind)) : [];
 const objectKey = (code: string, kind: ShareKind) => `s/${code}/${kind}.${KINDS[kind].ext}`;
 
 function sign(env: ShareEnv, method: 'GET' | 'PUT' | 'HEAD', key: string, expiresIn: number, now: Date, query?: Record<string, string>) {
@@ -150,11 +155,12 @@ export async function handleShareUpload(input: Record<string, unknown>, env: Sha
     const size = Number(head.headers.get('content-length') ?? 0);
     // The upload address does not limit the size, so a file larger than allowed is simply never offered to anyone.
     if (size > KINDS[kind].max) return { status: 200, body: { error: 'too-large' } };
+    const expects = kind === 'photo' ? expectedFrom(input.expects) : [];
     const recorded = await rpc<{ ok?: boolean; error?: string }>(env, fetchFn, 'share_add_file', {
       p_token: token,
       p_code: code,
       p_kind: kind,
-      p_file: { key, size, type: KINDS[kind].type, at: now().toISOString() },
+      p_file: { key, size, type: KINDS[kind].type, at: now().toISOString(), ...(expects.length ? { expects } : {}) },
     });
     return { status: 200, body: recorded.ok ? { ok: true } : { error: recorded.error ?? 'refused' } };
   }
@@ -166,7 +172,7 @@ interface ShareRow {
   /** Name and colour of the franchise whose booth took the photo. */
   brand?: { title?: unknown; accent?: unknown } | null;
   code: string;
-  files: Partial<Record<ShareKind, { key: string; size: number; type: string }>>;
+  files: Partial<Record<ShareKind, { key: string; size: number; type: string; expects?: unknown }>>;
   created_at: string;
   expires_at: string;
   device_name: string;
@@ -216,7 +222,9 @@ export async function handleShareGet(input: Record<string, unknown>, env: ShareE
           type: file.type,
         };
       }
-      return { code, status: files.photo ? 'ready' : 'pending', created_at: row.created_at, expires_at: row.expires_at, brand: own, files };
+      // Videos the tablet said would follow the photo and that have not arrived yet.
+      const coming = expectedFrom(row.files.photo?.expects).filter((kind) => !files[kind]);
+      return { code, status: files.photo ? 'ready' : 'pending', created_at: row.created_at, expires_at: row.expires_at, brand: own, files, coming };
     }),
   );
   return { status: 200, body: { brand, platform, shares } };

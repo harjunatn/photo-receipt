@@ -1,7 +1,7 @@
 import { useEffect, useState } from 'preact/hooks';
 import { Check, ImageField, NumberField, Segmented, TextField } from '../admin/fields';
 import { completeOutlet, outletFromSettings, SHARE_DAYS, type OutletConfig } from '../lib/cloud/shared';
-import { DEFAULT_SETTINGS, formatRupiah } from '../lib/settings';
+import { DEFAULT_SETTINGS, formatRupiah, includesVideos } from '../lib/settings';
 import { toast } from '../ui/components';
 import type { PageProps } from './Dashboard';
 import { DokuSetup } from './DokuSetup';
@@ -183,7 +183,7 @@ export function OutletSettings({ api }: PageProps) {
               class="btn small"
               onClick={() =>
                 edit((d) => {
-                  d.packages.push({ id: crypto.randomUUID(), name: 'Pilihan baru', description: 'Satu sesi foto, dicetak 1 lembar', price: 15000, prints: 1, active: false });
+                  d.packages.push({ id: crypto.randomUUID(), name: 'Pilihan baru', description: 'Satu sesi foto, dicetak 1 lembar', price: 15000, prints: 1, active: false, videos: true });
                 })
               }
             >
@@ -210,6 +210,16 @@ export function OutletSettings({ api }: PageProps) {
                   value={pkg.prints}
                   options={[1, 2, 3, 4].map((value) => ({ value, label: `${value}x` }))}
                   onChange={(v) => edit((d) => void (d.packages[index].prints = v))}
+                />
+                <Check
+                  label="Termasuk boomerang & video slideshow"
+                  hint={
+                    draft.share.enabled
+                      ? 'Setelah foto terakhir, tamu merekam boomerang 1,5 detik. Kedua video diunduh lewat kode QR, bersama fotonya.'
+                      : 'Hanya berlaku kalau Unduh foto lewat QR menyala, karena videonya diunduh lewat kode QR.'
+                  }
+                  checked={includesVideos(pkg)}
+                  onChange={(v) => edit((d) => void (d.packages[index].videos = v))}
                 />
                 <Check label="Aktif (ditawarkan ke tamu)" checked={pkg.active} onChange={(v) => edit((d) => void (d.packages[index].active = v))} />
                 {draft.packages.length > 1 && (

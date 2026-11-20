@@ -6,6 +6,7 @@ import type { Shot } from '../lib/session';
 import { useSettings } from '../lib/settings';
 import { sound } from '../lib/sound';
 import { sleep } from '../lib/util';
+import { makeBoomerang, recordBurst } from '../lib/video/boomerang';
 import { Overlay, Steps } from '../ui/components';
 
 interface Props {
@@ -16,17 +17,30 @@ interface Props {
   targets: number[];
   /** True when the guest came back from the edit step to redo photos. */
   retake: boolean;
-  onDone: (shots: (Shot | null)[]) => void;
+  /**
+   * Set when this session gets a boomerang: it is recorded right after the last photo, with this
+   * small line at its bottom. Retakes do not record it again.
+   */
+  boomerang: { caption: string } | null;
+  /** `clip` is the boomerang being made, when one was recorded. */
+  onDone: (shots: (Shot | null)[], clip?: Promise<Blob | null>) => void;
   onCancel: () => void;
 }
 
 type Phase = 'loading' | 'error' | 'ready' | 'shooting';
+/** The boomerang after the photos: its announcement, its countdown, then the recording itself. */
+type Boom = 'intro' | 'count' | 'rec';
+
+/** Seconds the boomerang is announced before its countdown starts. */
+const BOOMERANG_INTRO_MS = 1800;
+/** Its countdown is short: the guests are already in front of the camera. */
+const BOOMERANG_COUNT = 3;
 
 /** The last seconds before an untouched camera starts by itself are counted down on screen. */
 const WARN_SECONDS = 15;
 
 /** Step 3: live preview and a countdown before every photo. */
-export function Capture({ frame, shots: initialShots, targets, retake, onDone, onCancel }: Props) {
+export function Capture({ frame, shots: initialShots, targets, retake, boomerang, onDone, onCancel }: Props) {
   const { session } = useSettings();
   const video = useRef<HTMLVideoElement>(null);
   const unmounted = useRef(false);
@@ -40,7 +54,10 @@ export function Capture({ frame, shots: initialShots, targets, retake, onDone, o
   const [flash, setFlash] = useState(0);
   const [confirmCancel, setConfirmCancel] = useState(false);
   const [autoIn, setAutoIn] = useState<number | null>(null);
+  const [boom, setBoom] = useState<Boom | null>(null);
+  const [recorded, setRecorded] = useState(0);
   const ratio = frame.slots[current] ?? 4 / 3;
+  const withBoomerang = boomerang !== null && !retake;
 
   useEffect(() => {
     unmounted.current = false;
@@ -112,7 +129,41 @@ export function Capture({ frame, shots: initialShots, targets, retake, onDone, o
       if (unmounted.current) return;
       setFrozen(null);
     }
-    onDone(result);
+    const made = withBoomerang ? await shootBoomerang() : undefined;
+    if (unmounted.current) return;
+    onDone(result, made?.clip);
+  };
+
+  /**
+   * Announces the boomerang, counts down, keeps a burst of the camera and starts making the video
+   * from it, without waiting for it (wrapped, so that awaiting this does not wait for the video).
+   * A failure only costs the boomerang: the photos are already taken.
+   */
+  const shootBoomerang = async (): Promise<{ clip: Promise<Blob | null> } | undefined> => {
+    setBoom('intro');
+    pokeIdle();
+    await sleep(BOOMERANG_INTRO_MS);
+    if (unmounted.current) return undefined;
+    setBoom('count');
+    for (let n = BOOMERANG_COUNT; n >= 1; n--) {
+      setCount(n);
+      sound.tick();
+      pokeIdle();
+      await sleep(1000);
+      if (unmounted.current) return undefined;
+    }
+    setCount(null);
+    setRecorded(0);
+    setBoom('rec');
+    try {
+      const pictures = await recordBurst(video.current!, setRecorded);
+      sound.shutter();
+      return { clip: makeBoomerang(pictures, session.mirrorPhoto, boomerang?.caption ?? '').catch(() => null) };
+    } catch {
+      return undefined;
+    } finally {
+      setBoom(null);
+    }
   };
 
   // This session is already paid for, so it must never be thrown away for lack of a touch. A guest
@@ -159,12 +210,26 @@ export function Capture({ frame, shots: initialShots, targets, retake, onDone, o
 
       <div class="capture">
         <div class="viewfinder-wrap">
-          <div class="viewfinder" style={{ '--ratio': String(ratio) }}>
+          <div class={`viewfinder ${boom === 'rec' ? 'recording' : ''}`} style={{ '--ratio': String(ratio) }}>
             <video ref={video} class={session.mirrorPreview ? 'mirrored' : ''} autoplay playsinline muted />
             {frozen && <img src={frozen} class={flipStill ? 'mirrored' : ''} alt="" />}
-            <span class="pill shot-label">
-              Foto {current + 1} dari {frame.slots.length}
-            </span>
+            <span class="pill shot-label">{boom ? 'Boomerang' : `Foto ${current + 1} dari ${frame.slots.length}`}</span>
+            {boom === 'intro' && (
+              <div class="boomerang-title">
+                <b>Boomerang!</b>
+                <span>Gerak bebas: lambaikan tangan, lompat, kibas rambut.</span>
+              </div>
+            )}
+            {boom === 'count' && <span class="boomerang-bar">Siap-siap bergerak!</span>}
+            {boom === 'rec' && (
+              <span class="boomerang-bar">
+                <i class="rec-dot" />
+                Merekam
+                <span class="progress">
+                  <i style={{ width: `${Math.round(recorded * 100)}%` }} />
+                </span>
+              </span>
+            )}
             {count !== null && (
               <div class="countdown" key={`${current}-${count}`}>
                 {count}
@@ -204,10 +269,11 @@ export function Capture({ frame, shots: initialShots, targets, retake, onDone, o
                   : one
                   ? `Hitung mundur ${session.countdownSec} detik, lalu jepret.`
                   : `Kamera memotret ${targets.length} kali. Ada hitung mundur ${session.countdownSec} detik sebelum tiap foto.`}
+                {withBoomerang && ' Setelah itu ada satu boomerang: bergeraklah selama 1,5 detik.'}
               </p>
             </>
           )}
-          {phase === 'shooting' && <p class="lead">Lihat ke kamera, senyum.</p>}
+          {phase === 'shooting' && <p class="lead">{boom ? 'Bergerak bebas, jangan diam!' : 'Lihat ke kamera, senyum.'}</p>}
         </div>
       </div>
 

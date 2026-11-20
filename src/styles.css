@@ -939,6 +939,78 @@ textarea {
   }
 }
 
+/* The boomerang after the photos: its announcement, then a bar while it records. */
+.boomerang-title {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 14px;
+  padding: 24px;
+  color: #fff;
+  text-align: center;
+  text-shadow: 0 4px 30px rgb(0 0 0 / 0.5);
+  animation: pop 1.8s ease-out;
+  pointer-events: none;
+}
+
+.boomerang-title b {
+  font-family: var(--display);
+  font-style: italic;
+  font-weight: 400;
+  font-size: min(18vmin, 150px);
+  line-height: 1;
+}
+
+.boomerang-title span {
+  max-width: 28ch;
+  font-size: 22px;
+  font-weight: 600;
+}
+
+.boomerang-bar {
+  position: absolute;
+  left: 50%;
+  bottom: 16px;
+  z-index: 2;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  min-width: 240px;
+  padding: 8px 16px;
+  border-radius: 999px;
+  background: var(--page);
+  color: var(--ink);
+  font-weight: 600;
+  transform: translateX(-50%);
+}
+
+.boomerang-bar .progress {
+  flex: 1;
+}
+
+.rec-dot {
+  flex: none;
+  width: 10px;
+  height: 10px;
+  border-radius: 50%;
+  background: #d1332b;
+  animation: blink 0.8s steps(2, jump-none) infinite;
+}
+
+@keyframes blink {
+  to {
+    opacity: 0.2;
+  }
+}
+
+.viewfinder.recording {
+  outline: 4px solid #d1332b;
+  outline-offset: -4px;
+}
+
 .flash {
   position: absolute;
   inset: 0;

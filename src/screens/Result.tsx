@@ -1,14 +1,14 @@
 import { useEffect, useMemo, useRef, useState } from 'preact/hooks';
 import { canvasToBlob } from '../lib/camera';
-import { queueTransaction } from '../lib/cloud/device';
-import { SHARE_DAYS, shareUrl } from '../lib/cloud/shared';
+import { pairingStore, queueTransaction } from '../lib/cloud/device';
+import { boothTitle, SHARE_DAYS, shareUrl } from '../lib/cloud/shared';
 import { qrShape } from '../lib/qr';
 import { saveSession } from '../lib/db';
 import type { BitImage } from '../lib/image/types';
 import { pokeIdle } from '../lib/kiosk';
 import { addLogEntry, nextSessionNumber } from '../lib/log';
 import { printer, usePrinter } from '../lib/printer/manager';
-import { renderDigital, renderDraft, type Draft } from '../lib/session';
+import { renderDigital, renderDraft, renderSlideshow, type Draft } from '../lib/session';
 import { settingsStore } from '../lib/settings';
 import { sound } from '../lib/sound';
 import { PinPad, ReceiptPaper, Steps } from '../ui/components';
@@ -92,18 +92,7 @@ export function Result({ draft, onFinish }: Props) {
         if (draft.shareCode) {
           const code = draft.shareCode;
           // Made a moment later, so that building the colour copy never holds up the print.
-          setTimeout(() => {
-            void renderDigital(draft, sessionNo, settings)
-              .then(({ photo, thumb }) =>
-                import('../lib/cloud/upload').then(({ queueShareFiles }) =>
-                  queueShareFiles(code, [
-                    { kind: 'thumb', blob: thumb },
-                    { kind: 'photo', blob: photo },
-                  ]),
-                ),
-              )
-              .catch(() => undefined);
-          }, 1500);
+          setTimeout(() => void sendDigital(draft, code, sessionNo), 1500);
         }
         if (settings.storage.keepPhotos) {
           // Saved in the background: a full disk must not stop the guest's print.
@@ -188,7 +177,7 @@ export function Result({ draft, onFinish }: Props) {
               </div>
               <p class="lead">Tunggu sampai kertas berhenti keluar, ya.</p>
               {/* Guests can already scan while the receipt prints. */}
-              {draft.shareCode && <ShareCode code={draft.shareCode} />}
+              {draft.shareCode && <ShareCode code={draft.shareCode} videos={draft.videos} />}
             </>
           )}
 
@@ -196,7 +185,7 @@ export function Result({ draft, onFinish }: Props) {
             <>
               <span class="tag ok">Selesai</span>
               <h1 class="heading">Ambil strukmu di bawah</h1>
-              {draft.shareCode ? <ShareCode code={draft.shareCode} /> : <p class="lead">Terima kasih sudah berfoto. Sampai jumpa lagi!</p>}
+              {draft.shareCode ? <ShareCode code={draft.shareCode} videos={draft.videos} /> : <p class="lead">Terima kasih sudah berfoto. Sampai jumpa lagi!</p>}
               <button class="btn primary huge" onClick={onFinish}>
                 Selesai ({Math.max(0, secondsLeft)})
               </button>
@@ -210,7 +199,7 @@ export function Result({ draft, onFinish }: Props) {
               <p class="lead">
                 {phase === 'error' ? message : 'Printer belum terhubung.'} Fotomu aman tersimpan dan bisa dicetak ulang.
               </p>
-              {draft.shareCode && <ShareCode code={draft.shareCode} />}
+              {draft.shareCode && <ShareCode code={draft.shareCode} videos={draft.videos} />}
               {staff ? (
                 <div class="row">
                   <button class="btn primary" onClick={() => void connectAndPrint()}>
@@ -248,8 +237,34 @@ export function Result({ draft, onFinish }: Props) {
   );
 }
 
+/**
+ * Makes the guest's digital copies and queues them for upload: the colour photo first, so the
+ * download page opens quickly, then the boomerang and the slideshow as each is ready. A video
+ * that cannot be made is left out; the photo is never held up by one.
+ */
+async function sendDigital(draft: Draft, code: string, sessionNo: number): Promise<void> {
+  const settings = settingsStore.get();
+  const { queueShareFiles } = await import('../lib/cloud/upload');
+  try {
+    const { photo, thumb } = await renderDigital(draft, sessionNo, settings);
+    await queueShareFiles(code, [
+      { kind: 'thumb', blob: thumb },
+      { kind: 'photo', blob: photo, expects: draft.videos ? ['live', 'slideshow'] : undefined },
+    ]);
+  } catch {
+    return;
+  }
+  if (!draft.videos) return;
+  const clip = await (draft.boomerang ?? Promise.resolve(null)).catch(() => null);
+  if (clip) await queueShareFiles(code, [{ kind: 'live', blob: clip }]).catch(() => undefined);
+  const pairing = pairingStore.get();
+  const title = boothTitle(settings, pairing ? (pairing.franchise ?? '') : null);
+  const slideshow = await renderSlideshow(draft, sessionNo, settings, title).catch(() => null);
+  if (slideshow) await queueShareFiles(code, [{ kind: 'slideshow', blob: slideshow }]).catch(() => undefined);
+}
+
 /** The download QR code on screen, for guests who reach for their phone before their receipt. */
-function ShareCode({ code }: { code: string }) {
+function ShareCode({ code, videos }: { code: string; videos: boolean }) {
   const shape = useMemo(() => qrShape(shareUrl(code)), [code]);
   if (!shape) return null;
   return (
@@ -260,7 +275,10 @@ function ShareCode({ code }: { code: string }) {
       </svg>
       <div>
         <b>Scan untuk unduh fotomu</b>
-        <span class="note">Foto berwarna dengan frame, tersedia {SHARE_DAYS} hari. Kode yang sama juga tercetak di struk.</span>
+        <span class="note">
+          {videos ? 'Foto berwarna, boomerang, dan video slideshow' : 'Foto berwarna dengan frame'}, tersedia {SHARE_DAYS} hari. Kode yang sama
+          juga tercetak di struk.
+        </span>
       </div>
     </div>
   );

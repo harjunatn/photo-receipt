@@ -5,6 +5,7 @@ import { composeReceipt, loadImage, loadReceiptFonts, receiptToBits } from './re
 import { cropWindow, type Crop } from './receipt/crop';
 import type { FrameDef } from './receipt/frames';
 import { SHARE_DAYS, shareUrl } from './cloud/shared';
+import { makeSlideshow } from './video/slideshow';
 import type { PackageDef, Settings } from './settings';
 
 /** One captured photo: the full camera frame plus a small image URL for showing it on screen. */
@@ -27,6 +28,10 @@ export interface Draft {
   staffConfirmed: boolean;
   /** Code of the digital copies the guest downloads; set when that is switched on. */
   shareCode?: string;
+  /** true when this session also gets a boomerang and a slideshow video with its download. */
+  videos: boolean;
+  /** The boomerang as it is being made, from the burst taken after the last photo; null if it failed. */
+  boomerang?: Promise<Blob | null>;
   /** One entry per slot of the frame; null until that photo is taken. */
   shots: (Shot | null)[];
   style: PhotoStyle;
@@ -156,4 +161,28 @@ export async function renderDigital(draft: Draft, sessionNo: number, settings: S
   const composed = await composeColour(draft, sessionNo, settings, DIGITAL_WIDTH);
   const full = composed.canvas;
   return { photo: await toJpeg(full, 0.9), thumb: await toJpeg(thumbnail(draft, full), 0.82) };
+}
+
+/** Width of the colour receipt at the end of the slideshow: it shows 500 pixels wide. */
+const SLIDESHOW_RECEIPT_WIDTH = 600;
+
+/**
+ * The slideshow video of a session: each photo in colour, framed the way the
+ * guest chose in its slot, then the colour receipt. `title` heads every picture.
+ */
+export async function renderSlideshow(draft: Draft, sessionNo: number, settings: Settings, title: string): Promise<Blob> {
+  const photos = draft.shots.flatMap((shot, i) =>
+    shot ? [{ source: shot.canvas, window: cropWindow(shot.canvas.width, shot.canvas.height, draft.frame.slots[i] ?? 4 / 3, shot.crop) }] : [],
+  );
+  const receipt = await composeColour(draft, sessionNo, settings, SLIDESHOW_RECEIPT_WIDTH)
+    .then((composed) => composed.canvas)
+    .catch(() => null);
+  return makeSlideshow({
+    photos,
+    receipt,
+    title,
+    accent: settings.brand.accent,
+    when: draft.when,
+    footer: settings.platform.receiptLine,
+  });
 }

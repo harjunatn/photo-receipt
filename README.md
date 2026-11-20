@@ -9,7 +9,8 @@ tambahan dan tanpa server.
 1. **Pilih frame** — desain cetakan: Klasik, Kolase, Rol Film, Polaroid, Nota Belanja, Pesta, Potret, atau frame
    buatan franchise sendiri.
 2. **Pilih pembayaran** — QRIS, tunai, atau voucher.
-3. **Sesi foto** — hitung mundur sebelum tiap jepretan.
+3. **Sesi foto** — hitung mundur sebelum tiap jepretan. Kalau harganya termasuk video, setelah foto terakhir ada satu
+   **boomerang**: hitung mundur 3 detik, lalu kamera merekam 1,5 detik selagi tamu bergerak bebas.
 4. **Edit & foto ulang** — tamu melihat struk persis seperti yang akan tercetak, lalu bisa mengganti gaya foto (Normal,
    Cerah, Kontras, Komik, Sketsa, Garis), mengganti frame, atau mengulang foto satu per satu.
 5. **Cetak**.
@@ -265,7 +266,22 @@ libur panjang, bangunkan proyeknya dari dashboard Supabase (transaksi yang menun
 
 Kalau dinyalakan, struk mencetak kode QR. Tamu men-scan-nya dan membuka halaman berisi **foto berwarna dengan frame**
 (tata letak sama dengan struk, resolusi 1080 piksel), bisa diunduh selama **3 hari**. Setelah itu berkasnya dihapus
-otomatis. Tahap berikutnya: Live Foto (boomerang) dan video slideshow, keduanya MP4.
+otomatis.
+
+Untuk harga yang dicentang **Termasuk boomerang & video slideshow** (dashboard → Pengaturan → Harga; bawaannya
+tercentang), halaman itu juga berisi dua video MP4 yang bisa diputar di iPhone maupun Android:
+
+| Video | Isinya |
+| --- | --- |
+| **Boomerang** | 1,5 detik rekaman setelah foto terakhir, diputar maju-mundur 3 kali (±4,5 detik), dengan nama outlet dan baris platform kecil di bawah |
+| **Video Slideshow** | Foto-foto sesi berwarna satu per satu (sesuai potongan tamu), lalu struk berwarna bergulir. Tegak 9:16, pas untuk Story Instagram/TikTok. Tanpa musik |
+
+- Video dibuat di tablet sendiri dengan encoder bawaan Chrome, jadi tidak ada server atau biaya tambahan. Ukurannya
+  sekitar 1 MB (boomerang) dan 2 MB (slideshow) per sesi.
+- Foto tetap dikirim lebih dulu. Halaman unduh menampilkan "sedang dibuat" untuk video yang belum sampai dan memeriksa
+  lagi sendiri.
+- Tablet yang browsernya tidak bisa membuat video MP4 tidak menawarkan boomerang (tab **Sambungan** memberi tahu); foto
+  tetap berjalan seperti biasa.
 
 Cara kerjanya:
 
@@ -484,7 +500,6 @@ Yang perlu diketahui:
 ## Yang belum ada
 
 - Pengembalian uang QRIS dari dashboard — saat ini dilakukan di DOKU Back Office.
-- Live Foto (boomerang) dan video slideshow untuk diunduh tamu — tahap berikutnya dari *Unduh foto lewat QR*.
 - Tagihan langganan otomatis — saat ini pembayaran langganan franchise dicatat manual oleh superadmin.
 - Harga berbeda per tablet dalam satu franchise — saat ini satu set harga untuk semua tablet sebuah franchise.
 - Stiker dan tulisan dari tamu di langkah edit — saat ini tamu bisa mengganti gaya foto, mengganti frame, dan foto ulang.
@@ -501,8 +516,8 @@ Foto mentah tamu hanya disimpan di tablet (untuk cetak ulang); jumlah sesi yang 
 bisa dimatikan sepenuhnya di tab **Riwayat**. Ke Supabase yang dikirim hanya catatan transaksi (waktu, frame, harga,
 cara bayar, kode voucher) dan status tablet.
 
-Selama *Unduh foto lewat QR* menyala (bawaannya menyala), hasil foto berframe dan satu foto kecil untuk daftar transaksi
-dikirim ke Cloudflare R2 dan dihapus otomatis setelah 3 hari. Selama itu fotonya bisa dibuka oleh tamu pemegang kode
+Selama *Unduh foto lewat QR* menyala (bawaannya menyala), hasil foto berframe, satu foto kecil untuk daftar transaksi,
+dan (kalau harganya termasuk video) boomerang serta video slideshow dikirim ke Cloudflare R2 dan dihapus otomatis setelah 3 hari. Selama itu fotonya bisa dibuka oleh tamu pemegang kode
 QR-nya, admin franchise itu, dan superadmin. Mematikannya di dashboard → Pengaturan menghentikan pengiriman foto.
 
 ## Untuk pengembangan

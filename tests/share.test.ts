@@ -229,6 +229,30 @@ describe('share-get', () => {
     expect(expired[0].files).toBeUndefined();
   });
 
+  it('tells the download page which videos are still on their way, until each arrives', async () => {
+    const w = world();
+    const send = async (kind: string, extra: Record<string, unknown> = {}) => {
+      await handleShareUpload({ action: 'sign', token: 'tablet-a', code: 'abc234defg56', kind, size: 10 }, env(), w.fetchFn, now);
+      w.stored.set(`s/abc234defg56/${kind}.${kind === 'photo' ? 'jpg' : 'mp4'}`, 10);
+      await handleShareUpload({ action: 'done', token: 'tablet-a', code: 'abc234defg56', kind, ...extra }, env(), w.fetchFn, now);
+    };
+    const get = async () => ((await handleShareGet({ code: 'abc234defg56' }, env(), w.fetchFn, now)).body.shares as { coming: string[]; files: Record<string, { download: string }> }[])[0];
+    // Only the known videos count, whatever else a tablet sends.
+    await send('photo', { expects: ['live', 'slideshow', 'virus'] });
+    expect((await get()).coming).toEqual(['live', 'slideshow']);
+    await send('live');
+    const now1 = await get();
+    expect(now1.coming).toEqual(['slideshow']);
+    expect(new URL(now1.files.live.download).searchParams.get('response-content-disposition')).toBe('attachment; filename="hello-snaply-abc234defg56-live.mp4"');
+    await send('slideshow');
+    expect((await get()).coming).toEqual([]);
+  });
+
+  it('expects no videos from a tablet that does not announce any', async () => {
+    const { fetchFn } = await uploaded(['photo']);
+    expect(((await handleShareGet({ code: 'abc234defg56' }, env(), fetchFn, now)).body.shares as { coming: string[] }[])[0].coming).toEqual([]);
+  });
+
   it('answers many codes at once for the dashboard, ignoring malformed ones', async () => {
     const { calls, fetchFn } = await uploaded(['photo']);
     const reply = await handleShareGet({ codes: ['abc234defg56', 'bukan kode', 'zzzzzzzzzzzz', 'abc234defg56'] }, env(), fetchFn, now);
