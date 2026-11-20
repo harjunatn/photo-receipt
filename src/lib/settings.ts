@@ -108,9 +108,13 @@ export interface Settings {
     usbShowAll: boolean;
     raster: RasterSettings;
   };
-  /** Digital copies guests download by scanning a QR code on their receipt. */
+  /**
+   * Digital copies guests download through a QR code. Every session gets one (shown at the end of
+   * the session and in the history); this only decides whether the code is also printed.
+   */
   share: {
-    enabled: boolean;
+    /** Print the download QR code on the receipt; off makes the receipt shorter. */
+    printQr: boolean;
   };
   storage: {
     /** Keep session photos on this device so they can be reprinted. */
@@ -219,9 +223,8 @@ export const DEFAULT_SETTINGS: Settings = {
       dither: 'atkinson',
     },
   },
-  // On unless a franchise turns it off: without it no photo reaches the dashboard, and guests get no download.
   share: {
-    enabled: true,
+    printQr: true,
   },
   storage: {
     keepPhotos: true,

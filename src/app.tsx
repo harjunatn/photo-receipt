@@ -79,7 +79,8 @@ export function App() {
   );
 
   const begin = (chosen: FrameDef, pkg: PackageDef, method: PayMethod, voucherCode?: string, paymentId?: string, staffConfirmed = true) => {
-    const shareCode = settings.share.enabled && cloudConfigured ? newShareCode() : undefined;
+    // Every session gets its download, whether or not its QR code is printed on the receipt.
+    const shareCode = cloudConfigured ? newShareCode() : undefined;
     setDraft({
       frame: chosen,
       pkg,

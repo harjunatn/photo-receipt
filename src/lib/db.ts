@@ -16,6 +16,8 @@ export interface SessionRecord {
   photos: Blob[];
   /** How the guest zoomed each photo, in the same order; missing in sessions saved before zooming existed. */
   crops?: (Crop | null)[];
+  /** Code of the session's download page; missing in sessions saved before it was kept here. */
+  shareCode?: string;
 }
 
 const DB_NAME = 'booth';

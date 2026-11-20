@@ -256,17 +256,21 @@ Sesudah terpasang:
   internet**; QRIS dan tunai tidak. Voucher hanya berlaku di tablet franchise yang membuatnya.
 - Satu kode perangkat untuk satu tablet. Memasangkan tablet lain dengan kode yang sama melepas tablet sebelumnya, dan
   tablet baru itu memakai pengaturan tablet sebelumnya (lihat di atas).
-- Hasil foto berframe dikirim ke Cloudflare R2 selama *Unduh foto lewat QR* menyala (bawaannya menyala) dan dihapus
-  otomatis setelah 3 hari. Kalau dimatikan, hanya catatan transaksinya yang dikirim.
+- Hasil foto berframe setiap sesi dikirim ke Cloudflare R2 dan dihapus otomatis setelah 3 hari (lihat *Unduh foto
+  lewat QR*).
 
 Paket gratis Supabase menjeda proyek yang tidak dipakai sekitar seminggu. Booth yang dipakai rutin tidak kena; setelah
 libur panjang, bangunkan proyeknya dari dashboard Supabase (transaksi yang menunggu di tablet akan terkirim sesudahnya).
 
 ## Unduh foto lewat QR (Cloudflare R2)
 
-Kalau dinyalakan, struk mencetak kode QR. Tamu men-scan-nya dan membuka halaman berisi **foto berwarna dengan frame**
+Setiap sesi selalu mendapat kode QR unduhan. Tamu men-scan-nya dan membuka halaman berisi **foto berwarna dengan frame**
 (tata letak sama dengan struk, resolusi 1080 piksel), bisa diunduh selama **3 hari**. Setelah itu berkasnya dihapus
 otomatis.
+
+Kode QR-nya selalu muncul di layar akhir sesi, di tab **Riwayat** dan **Transaksi** tablet, dan di dashboard →
+**Transaksi**. Dashboard → **Pengaturan → Unduh foto lewat QR → Cetak kode QR di struk** (bawaannya menyala) hanya
+menentukan apakah kodenya juga dicetak. Mematikannya membuat struk lebih pendek; tamu lalu men-scan kode dari layar.
 
 Untuk harga yang dicentang **Termasuk boomerang & video slideshow** (dashboard → Pengaturan → Harga; bawaannya
 tercentang), halaman itu juga berisi dua video MP4 yang bisa diputar di iPhone maupun Android:
@@ -316,8 +320,8 @@ Letak menu di bawah ini ditulis dari ingatan dan bisa sedikit berbeda di dashboa
 5. R2 → **Manage R2 API Tokens → Create API token**: izin *Object Read & Write*, batasi ke bucket tadi. Catat
    **Access Key ID** dan **Secret Access Key** (hanya ditampilkan sekali). **Account ID** ada di halaman R2.
 6. Supabase → Edge Functions → Secrets: isi `R2_ACCOUNT_ID`, `R2_ACCESS_KEY_ID`, `R2_SECRET_ACCESS_KEY`, `R2_BUCKET`.
-7. Dashboard → **Pengaturan → Unduh foto lewat QR**: bawaannya sudah menyala. Pastikan centangnya menyala; kalau mati,
-   halaman itu menampilkan peringatan merah.
+7. Selesai: setiap sesi langsung mendapat kode QR unduhan. Di dashboard → **Pengaturan → Unduh foto lewat QR** bisa
+   dipilih apakah kodenya juga dicetak di struk.
 
 Masa simpan 3 hari tertulis di tiga tempat yang harus sama: aturan hapus di bucket R2, `SHARE_DAYS` di
 [`src/lib/cloud/shared.ts`](src/lib/cloud/shared.ts), dan `interval '3 days'` di fungsi `share_claim` pada
@@ -516,9 +520,9 @@ Foto mentah tamu hanya disimpan di tablet (untuk cetak ulang); jumlah sesi yang 
 bisa dimatikan sepenuhnya di tab **Riwayat**. Ke Supabase yang dikirim hanya catatan transaksi (waktu, frame, harga,
 cara bayar, kode voucher) dan status tablet.
 
-Selama *Unduh foto lewat QR* menyala (bawaannya menyala), hasil foto berframe, satu foto kecil untuk daftar transaksi,
-dan (kalau harganya termasuk video) boomerang serta video slideshow dikirim ke Cloudflare R2 dan dihapus otomatis setelah 3 hari. Selama itu fotonya bisa dibuka oleh tamu pemegang kode
-QR-nya, admin franchise itu, dan superadmin. Mematikannya di dashboard → Pengaturan menghentikan pengiriman foto.
+Hasil foto berframe setiap sesi, satu foto kecil untuk daftar transaksi, dan (kalau harganya termasuk video) boomerang
+serta video slideshow dikirim ke Cloudflare R2 dan dihapus otomatis setelah 3 hari. Selama itu fotonya bisa dibuka oleh
+tamu pemegang kode QR-nya, admin franchise itu, dan superadmin.
 
 ## Untuk pengembangan
 

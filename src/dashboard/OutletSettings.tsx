@@ -154,19 +154,18 @@ export function OutletSettings({ api }: PageProps) {
 
         <section class="panel">
           <h2>Unduh foto lewat QR</h2>
+          <p class="hint">
+            Setiap sesi selalu mendapat kode QR unduhan: foto berwarna dengan frame (dan videonya, kalau harganya termasuk video), bisa
+            diunduh selama {SHARE_DAYS} hari lalu dihapus otomatis. Kodenya selalu muncul di layar akhir sesi, di Riwayat dan Transaksi
+            tablet, dan di menu Transaksi dashboard.
+          </p>
           <Check
-            label="Tamu bisa mengunduh hasil fotonya"
-            hint={`Struk mencetak kode QR. Tamu membuka halaman berisi foto berwarna dengan frame, bisa diunduh selama ${SHARE_DAYS} hari, lalu dihapus otomatis.`}
-            checked={draft.share.enabled}
-            onChange={(v) => edit((d) => void (d.share.enabled = v))}
+            label="Cetak kode QR di struk"
+            hint="Kalau dimatikan, struk lebih pendek dan tamu men-scan kodenya dari layar di akhir sesi."
+            checked={draft.share.printQr}
+            onChange={(v) => edit((d) => void (d.share.printQr = v))}
           />
-          {!draft.share.enabled && (
-            <p class="banner err">
-              Sedang mati: struk tidak mencetak QR unduhan, foto tamu tidak dikirim, dan kolom Hasil foto di menu Transaksi kosong. Sesi
-              yang sudah lewat tidak bisa disusulkan. Centang lagi lalu Simpan untuk menyalakannya.
-            </p>
-          )}
-          {draft.share.enabled && api.superadmin && (
+          {api.superadmin && (
             <p class="hint">
               Fotonya disimpan di Cloudflare R2 milik platform (disetel sekali di Supabase, lihat README). Kalau R2 belum siap, tablet tetap
               mencetak QR dan fotonya menunggu di tablet.
@@ -213,11 +212,7 @@ export function OutletSettings({ api }: PageProps) {
                 />
                 <Check
                   label="Termasuk boomerang & video slideshow"
-                  hint={
-                    draft.share.enabled
-                      ? 'Setelah foto terakhir, tamu merekam boomerang 1,5 detik. Kedua video diunduh lewat kode QR, bersama fotonya.'
-                      : 'Hanya berlaku kalau Unduh foto lewat QR menyala, karena videonya diunduh lewat kode QR.'
-                  }
+                  hint="Setelah foto terakhir, tamu merekam boomerang 1,5 detik. Kedua video diunduh lewat kode QR, bersama fotonya."
                   checked={includesVideos(pkg)}
                   onChange={(v) => edit((d) => void (d.packages[index].videos = v))}
                 />

@@ -127,7 +127,7 @@ describe('pairing a tablet', () => {
         receipt: { logo: 'data:image/png;base64,AAAA' },
         packages: [{ id: 'a', name: 'Paket Senja', description: '', price: 99000, prints: 1, active: true }],
         payment: { cashConfirm: false },
-        share: { enabled: false },
+        share: { printQr: false },
       },
       ['film'],
     );
@@ -177,17 +177,23 @@ describe('guest downloads', () => {
     expect(shareUrl('abc234defg56', { origin: 'https://booth.vercel.app', pathname: '/' })).toBe('https://booth.vercel.app/#s/abc234defg56');
   });
 
-  it('are on unless the franchise turned them off in the dashboard', () => {
-    expect(DEFAULT_SETTINGS.share.enabled).toBe(true);
+  it('print their QR code on the receipt unless the franchise turned that off in the dashboard', () => {
+    expect(DEFAULT_SETTINGS.share.printQr).toBe(true);
     // A franchise that never saved its settings, or whose saved settings lack the switch, keeps it on.
-    expect(applyRemote(DEFAULT_SETTINGS, {}, null).share.enabled).toBe(true);
-    expect(applyRemote(DEFAULT_SETTINGS, { brand: { title: 'Booth Budi' } }, null).share.enabled).toBe(true);
-    expect(completeOutlet({ brand: { title: 'Booth Budi' } }, outletFromSettings(DEFAULT_SETTINGS)).share.enabled).toBe(true);
+    expect(applyRemote(DEFAULT_SETTINGS, {}, null).share.printQr).toBe(true);
+    expect(applyRemote(DEFAULT_SETTINGS, { brand: { title: 'Booth Budi' } }, null).share.printQr).toBe(true);
+    expect(completeOutlet({ brand: { title: 'Booth Budi' } }, outletFromSettings(DEFAULT_SETTINGS)).share.printQr).toBe(true);
     // Only an explicit choice turns it off, and a damaged value does not.
-    expect(applyRemote(DEFAULT_SETTINGS, { share: { enabled: false } }, null).share.enabled).toBe(false);
-    expect(applyRemote(DEFAULT_SETTINGS, { share: { enabled: 'tidak' } }, null).share.enabled).toBe(true);
-    const off = applyRemote(DEFAULT_SETTINGS, { share: { enabled: false } }, null);
-    expect(applyRemote(off, { share: { enabled: true } }, null).share.enabled).toBe(true);
+    expect(applyRemote(DEFAULT_SETTINGS, { share: { printQr: false } }, null).share.printQr).toBe(false);
+    expect(applyRemote(DEFAULT_SETTINGS, { share: { printQr: 'tidak' } }, null).share.printQr).toBe(true);
+    const off = applyRemote(DEFAULT_SETTINGS, { share: { printQr: false } }, null);
+    expect(applyRemote(off, { share: { printQr: true } }, null).share.printQr).toBe(true);
+  });
+
+  it('are always made: the old switch that turned them off entirely no longer does anything', () => {
+    // Saved before the switch only decided the printing; such a franchise still prints the QR code.
+    const old = applyRemote(DEFAULT_SETTINGS, { share: { enabled: false } }, null);
+    expect(old.share).toEqual({ printQr: true });
   });
 });
 

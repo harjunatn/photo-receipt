@@ -113,6 +113,7 @@ export function Result({ draft, onFinish }: Props) {
                   quote: draft.quote,
                   photos,
                   crops,
+                  shareCode: draft.shareCode,
                 },
                 settings.storage.maxSessions,
               ),
@@ -266,6 +267,7 @@ async function sendDigital(draft: Draft, code: string, sessionNo: number): Promi
 /** The download QR code on screen, for guests who reach for their phone before their receipt. */
 function ShareCode({ code, videos }: { code: string; videos: boolean }) {
   const shape = useMemo(() => qrShape(shareUrl(code)), [code]);
+  const printed = settingsStore.get().share.printQr;
   if (!shape) return null;
   return (
     <div class="result-share">
@@ -276,8 +278,8 @@ function ShareCode({ code, videos }: { code: string; videos: boolean }) {
       <div>
         <b>Scan untuk unduh fotomu</b>
         <span class="note">
-          {videos ? 'Foto berwarna, boomerang, dan video slideshow' : 'Foto berwarna dengan frame'}, tersedia {SHARE_DAYS} hari. Kode yang sama
-          juga tercetak di struk.
+          {videos ? 'Foto berwarna, boomerang, dan video slideshow' : 'Foto berwarna dengan frame'}, tersedia {SHARE_DAYS} hari.{' '}
+          {printed ? 'Kode yang sama juga tercetak di struk.' : 'Scan sekarang: kode ini tidak ikut tercetak di struk.'}
         </span>
       </div>
     </div>

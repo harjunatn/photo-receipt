@@ -35,7 +35,7 @@ const METHODS: Record<PaymentChoice, { icon: string; title: string; hint: string
 export function Payment({ frame, onPaid, onBack }: Props) {
   const settings = useSettings();
   // Videos reach the guest through the download page, and only a tablet that can make them offers them.
-  const videosOffered = useStore(videoSupport) === true && settings.share.enabled && cloudConfigured;
+  const videosOffered = useStore(videoSupport) === true && cloudConfigured;
   const packages = settings.packages.filter((p) => p.active);
   const choices = paymentChoices(settings.payment);
   const previews = useFramePreviews([frame], settings);

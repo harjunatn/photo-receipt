@@ -64,7 +64,7 @@ async function composePrint(draft: Draft, sessionNo: number, settings: Settings)
     when: draft.when,
     sessionNo,
     logo: await loadLogo(settings.receipt.logo),
-    share: draft.shareCode ? { url: shareUrl(draft.shareCode), days: SHARE_DAYS } : undefined,
+    share: draft.shareCode && settings.share.printQr ? { url: shareUrl(draft.shareCode), days: SHARE_DAYS } : undefined,
     platformLine: settings.platform.receiptLine,
   });
 }

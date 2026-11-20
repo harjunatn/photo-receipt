@@ -1,4 +1,5 @@
 import { useEffect, useState } from 'preact/hooks';
+import { SHARE_DAYS, shareUrl } from '../lib/cloud/shared';
 import { clearSessions, deleteSession, listSessions, type SessionRecord } from '../lib/db';
 import { download } from '../lib/kiosk';
 import { PAY_METHOD_LABEL } from '../lib/log';
@@ -6,6 +7,7 @@ import { composeReceipt, formatDateTime, loadImage, loadReceiptFonts, receiptToB
 import { frameById } from '../lib/receipt/frames';
 import { settingsStore, useSettings } from '../lib/settings';
 import { toast } from '../ui/components';
+import { shareExpiry, ShareQrDialog } from '../ui/ShareQr';
 import { edit, printWithFeedback } from './actions';
 import { Check, NumberField } from './fields';
 
@@ -25,6 +27,11 @@ async function recompose(record: SessionRecord): Promise<ComposedReceipt> {
     when: new Date(record.createdAt),
     sessionNo: record.no,
     logo,
+    // A reprint carries the download QR code too, as long as the files are still there.
+    share:
+      record.shareCode && settings.share.printQr && shareExpiry(record.createdAt).getTime() > Date.now()
+        ? { url: shareUrl(record.shareCode), days: SHARE_DAYS }
+        : undefined,
     platformLine: settings.platform.receiptLine,
   });
 }
@@ -46,6 +53,7 @@ export function HistoryTab() {
   const [sessions, setSessions] = useState<SessionRecord[] | null>(null);
   const [busy, setBusy] = useState('');
   const [confirmClear, setConfirmClear] = useState(false);
+  const [qrFor, setQrFor] = useState<SessionRecord | null>(null);
 
   const refresh = () =>
     listSessions()
@@ -134,6 +142,11 @@ export function HistoryTab() {
                   {formatDateTime(new Date(record.createdAt))} · {record.photos.length} foto · {(PAY_METHOD_LABEL[record.method] ?? record.method).toLowerCase()}
                 </div>
               </div>
+              {record.shareCode && (
+                <button class="btn small" onClick={() => setQrFor(record)}>
+                  QR
+                </button>
+              )}
               <button class="btn small dark" disabled={busy !== ''} onClick={() => void reprint(record)}>
                 {busy === record.id ? '…' : 'Cetak ulang'}
               </button>
@@ -154,6 +167,7 @@ export function HistoryTab() {
           ))}
         </div>
       </section>
+      {qrFor?.shareCode && <ShareQrDialog code={qrFor.shareCode} sessionAt={qrFor.createdAt} onClose={() => setQrFor(null)} />}
     </div>
   );
 }
