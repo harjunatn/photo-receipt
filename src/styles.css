@@ -1032,6 +1032,8 @@ textarea {
   flex-direction: column;
   justify-content: center;
   gap: 14px;
+  /* Lines up with the column of photos above it. */
+  text-align: center;
 }
 
 /* One column in shooting order, top to bottom; each shrinks so that even six fit beside the viewfinder. */
