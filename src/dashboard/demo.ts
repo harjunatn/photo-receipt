@@ -399,6 +399,12 @@ function createDemoApi(
     async deleteVoucher(code) {
       vouchers = vouchers.filter((v) => v.code !== code);
     },
+    async recentVoucherUses(after) {
+      const used = vouchers
+        .filter((v): v is VoucherRow & { used_at: string } => v.used_at !== null && (after === null || v.used_at > after))
+        .sort((a, b) => b.used_at.localeCompare(a.used_at));
+      return used.slice(0, after ? 50 : 1).map(({ code, used_at, used_by_name }) => ({ code, used_at, used_by_name }));
+    },
     async getOutlet() {
       return structuredClone(outlet);
     },

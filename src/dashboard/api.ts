@@ -84,6 +84,13 @@ export interface TxFilter {
   deviceId: string;
 }
 
+/** A voucher being redeemed, as the page that lists them hears of it. */
+export interface VoucherUse {
+  code: string;
+  used_at: string;
+  used_by_name: string | null;
+}
+
 export interface VoucherFilter {
   status: VoucherStatus | 'all';
   search: string;
@@ -229,6 +236,11 @@ export interface OwnerApi {
   listVouchers(filter: VoucherFilter, offset: number, limit: number): Promise<Page<VoucherRow>>;
   createVouchers(rows: { code: string; label: string | null; expires_at: string | null }[]): Promise<void>;
   deleteVoucher(code: string): Promise<void>;
+  /**
+   * Vouchers used after `after` (a time the server gave earlier), newest first. With null, only
+   * the most recent use, if any, as the point to watch from.
+   */
+  recentVoucherUses(after: string | null): Promise<VoucherUse[]>;
   getOutlet(): Promise<unknown>;
   saveOutlet(config: OutletConfig): Promise<void>;
 }
@@ -469,6 +481,11 @@ export function createSupabaseApi(db: SupabaseClient, account: Account, franchis
     },
     async createVouchers(rows) {
       unwrap(await db.from('vouchers').insert(rows.map((row) => ({ ...row, franchise_id: fid }))).select('code'));
+    },
+    async recentVoucherUses(after) {
+      let query = db.from('vouchers').select('code,used_at,used_by_name').eq('franchise_id', fid).not('used_at', 'is', null);
+      if (after) query = query.gt('used_at', after);
+      return unwrap(await query.order('used_at', { ascending: false }).limit(after ? 50 : 1)) as VoucherUse[];
     },
     async deleteVoucher(code) {
       unwrap(await db.from('vouchers').delete().eq('franchise_id', fid).eq('code', code).select('code'));

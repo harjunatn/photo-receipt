@@ -168,7 +168,7 @@ franchise sebelumnya. Yang diatur di tablet itu sendiri (printer, sesi, teks str
 | Perangkat | Daftar tablet, kode perangkat + PIN, online/offline, status printer, kapan pengaturan tablet terakhir tersimpan |
 | Transaksi | Semua sesi dari semua tablet, saring tanggal / cara bayar / perangkat, lihat hasil foto, unduh Excel / PDF / CSV |
 | Pembayaran QRIS | Setiap kode QR otomatis: lunas, tidak dibayar, dan "lunas tanpa sesi" yang perlu diperiksa |
-| Voucher | Buat massal, status aktif / terpakai / kedaluwarsa; berlaku di semua tablet, sekali pakai |
+| Voucher | Buat massal, status aktif / terpakai / kedaluwarsa; berlaku di semua tablet, sekali pakai. Tombol salin di samping tiap kode (kode yang pernah disalin ditandai "disalin"); voucher yang dipakai di booth langsung muncul tanpa memuat ulang halaman |
 | Koleksi Frame | Frame buatan sendiri (tambah, edit, hapus) dan frame yang ditawarkan per perangkat |
 | Pengaturan | Nama outlet, warna, logo, harga, cara bayar + gambar QRIS, akun DOKU, password |
 

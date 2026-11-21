@@ -684,3 +684,43 @@ html.dash-page body {
   border: 1px solid var(--line);
   border-radius: 6px;
 }
+
+/* A voucher code with its copy button right beside it. */
+.code-cell {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.copy-btn {
+  display: inline-grid;
+  place-items: center;
+  width: 30px;
+  height: 30px;
+  padding: 0;
+  border: 0;
+  border-radius: 8px;
+  background: transparent;
+  color: var(--ink-2);
+  cursor: pointer;
+}
+
+.copy-btn:hover {
+  background: var(--soft);
+  color: var(--ink);
+}
+
+.copy-btn.done {
+  color: var(--ok);
+}
+
+.copied-mark {
+  font-family: var(--ui);
+  font-size: 12px;
+  color: var(--ink-2);
+}
+
+/* Used while the page was open. */
+.table tr.just-used td {
+  background: var(--warn-soft);
+}

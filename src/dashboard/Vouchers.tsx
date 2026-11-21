@@ -1,9 +1,10 @@
-import { useState } from 'preact/hooks';
+import { useEffect, useRef, useState } from 'preact/hooks';
 import { download } from '../lib/kiosk';
 import { toCsv } from '../lib/log';
 import { generateVouchers, voucherStatus, type VoucherStatus } from '../lib/vouchers';
 import { toast } from '../ui/components';
-import type { VoucherRow } from './api';
+import { CheckIcon, CopyIcon } from '../ui/icons';
+import type { VoucherRow, VoucherUse } from './api';
 import type { PageProps } from './Dashboard';
 import { LoadState, PageHead, Pager, dateOnly, dateTime, describe, useLoad } from './ui';
 
@@ -11,6 +12,43 @@ const PAGE_SIZE = 50;
 const STATUS_LABEL: Record<VoucherStatus, string> = { active: 'Aktif', used: 'Terpakai', expired: 'Kedaluwarsa' };
 const STATUS_TAG: Record<VoucherStatus, string> = { active: 'ok', used: '', expired: 'warn' };
 const FILTERS: (VoucherStatus | 'all')[] = ['active', 'used', 'expired', 'all'];
+/** How often the page asks whether a voucher was used meanwhile, while it is open on screen. */
+const WATCH_MS = 10_000;
+/** Codes copied from this browser are remembered, up to this many per franchise. */
+const MAX_COPIED = 5000;
+
+/** The codes copied from this browser, so it is clear which ones were already handed out. */
+function useCopied(franchiseId: string) {
+  const key = `dashboard.voucher.copied.${franchiseId}`;
+  const [copied, setCopied] = useState<Set<string>>(() => {
+    try {
+      return new Set(JSON.parse(localStorage.getItem(key) ?? '[]') as string[]);
+    } catch {
+      return new Set();
+    }
+  });
+  const mark = (codes: string[]) =>
+    setCopied((previous) => {
+      const next = new Set([...previous, ...codes]);
+      try {
+        localStorage.setItem(key, JSON.stringify([...next].slice(-MAX_COPIED)));
+      } catch {
+        // Private browsing or a full storage: the mark lasts until the page is closed.
+      }
+      return next;
+    });
+  return { copied, mark };
+}
+
+/** What a toast says when vouchers were used while the page was open. */
+function usedMessage(uses: VoucherUse[]): string {
+  if (uses.length === 1) {
+    const [use] = uses;
+    return `Voucher ${use.code} baru saja dipakai${use.used_by_name ? ` di ${use.used_by_name}` : ''}.`;
+  }
+  const shown = uses.slice(0, 3).map((use) => use.code);
+  return `${uses.length} voucher baru saja dipakai: ${shown.join(', ')}${uses.length > shown.length ? ', …' : ''}.`;
+}
 
 function statusOf(row: VoucherRow, now: number): VoucherStatus {
   return voucherStatus(
@@ -31,6 +69,11 @@ export function Vouchers({ api }: PageProps) {
   const [busy, setBusy] = useState(false);
   const [fresh, setFresh] = useState<string[]>([]);
   const [confirmDelete, setConfirmDelete] = useState('');
+  const { copied, mark } = useCopied(api.franchise.id);
+  // The code whose copy button shows a tick for a moment.
+  const [justCopied, setJustCopied] = useState('');
+  // Used while this page was open, to point them out in the list.
+  const [justUsed, setJustUsed] = useState<Set<string>>(new Set());
 
   const counts = useLoad(() => api.voucherCounts(), [api]);
   const load = useLoad(() => api.listVouchers({ status, search }, offset, PAGE_SIZE), [api, status, search, offset]);
@@ -42,6 +85,42 @@ export function Vouchers({ api }: PageProps) {
     counts.reload();
     load.reload();
   };
+
+  // While the page is open on screen, a voucher used at a booth shows up here by itself.
+  const since = useRef<string | null>(null);
+  useEffect(() => {
+    since.current = null;
+    let stopped = false;
+    const check = async () => {
+      if (document.visibilityState !== 'visible') return;
+      try {
+        const uses = await api.recentVoucherUses(since.current);
+        if (stopped) return;
+        if (since.current === null) {
+          // The first look only finds where to watch from.
+          since.current = uses[0]?.used_at ?? '1970-01-01T00:00:00Z';
+          return;
+        }
+        if (uses.length === 0) return;
+        since.current = uses[0].used_at;
+        setJustUsed((previous) => new Set([...previous, ...uses.map((use) => use.code)]));
+        toast(usedMessage(uses));
+        counts.refresh();
+        load.refresh();
+      } catch {
+        // Offline for a moment: the next look tries again.
+      }
+    };
+    void check();
+    const timer = setInterval(() => void check(), WATCH_MS);
+    const onShow = () => void check();
+    document.addEventListener('visibilitychange', onShow);
+    return () => {
+      stopped = true;
+      clearInterval(timer);
+      document.removeEventListener('visibilitychange', onShow);
+    };
+  }, [api]);
 
   const create = async (event: Event) => {
     event.preventDefault();
@@ -80,7 +159,9 @@ export function Vouchers({ api }: PageProps) {
   const copyOne = async (code: string) => {
     try {
       await navigator.clipboard.writeText(code);
-      toast(`Kode ${code} disalin.`);
+      mark([code]);
+      setJustCopied(code);
+      setTimeout(() => setJustCopied((current) => (current === code ? '' : current)), 1500);
     } catch {
       toast('Browser tidak mengizinkan menyalin.');
     }
@@ -89,6 +170,7 @@ export function Vouchers({ api }: PageProps) {
   const copyFresh = async () => {
     try {
       await navigator.clipboard.writeText(fresh.join('\n'));
+      mark(fresh);
       toast('Kode disalin.');
     } catch {
       toast('Browser tidak mengizinkan menyalin. Unduh CSV saja.');
@@ -201,8 +283,21 @@ export function Vouchers({ api }: PageProps) {
                 {load.data.rows.map((row) => {
                   const state = statusOf(row, now);
                   return (
-                    <tr key={row.code}>
-                      <td class="mono">{row.code}</td>
+                    <tr key={row.code} class={justUsed.has(row.code) ? 'just-used' : ''}>
+                      <td class="mono">
+                        <span class="code-cell">
+                          {row.code}
+                          <button
+                            class={`copy-btn ${justCopied === row.code ? 'done' : ''}`}
+                            title="Salin kode"
+                            aria-label={`Salin kode ${row.code}`}
+                            onClick={() => void copyOne(row.code)}
+                          >
+                            {justCopied === row.code ? <CheckIcon /> : <CopyIcon />}
+                          </button>
+                          {copied.has(row.code) && state === 'active' && <small class="copied-mark">disalin</small>}
+                        </span>
+                      </td>
                       <td>
                         <span class={`tag ${STATUS_TAG[state]}`}>{STATUS_LABEL[state]}</span>
                       </td>
@@ -210,9 +305,6 @@ export function Vouchers({ api }: PageProps) {
                       <td>{row.expires_at ? dateOnly(row.expires_at) : 'Selamanya'}</td>
                       <td>{row.used_at ? `${dateTime(row.used_at)}${row.used_by_name ? ` · ${row.used_by_name}` : ''}` : '—'}</td>
                       <td class="num" style={{ whiteSpace: 'nowrap' }}>
-                        <button class="link" onClick={() => void copyOne(row.code)}>
-                          Salin
-                        </button>{' '}
                         {confirmDelete === row.code ? (
                           <button class="link danger" onClick={() => void remove(row.code)}>
                             Yakin hapus?
@@ -231,6 +323,9 @@ export function Vouchers({ api }: PageProps) {
           </div>
         )}
         {load.data && <Pager offset={offset} limit={PAGE_SIZE} total={load.data.total} onChange={setOffset} />}
+        <p class="hint">
+          Daftar ini diperbarui sendiri saat voucher dipakai di booth. "disalin" menandai kode aktif yang pernah kamu salin dari browser ini.
+        </p>
       </section>
     </>
   );

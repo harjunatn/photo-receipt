@@ -6,6 +6,8 @@ export interface Loaded<T> {
   error: string;
   loading: boolean;
   reload: () => void;
+  /** Asks again without showing it is loading, for updates in the background. */
+  refresh: () => void;
 }
 
 /** Runs a query when the page opens and whenever its inputs change; the previous result stays visible meanwhile. */
@@ -13,10 +15,13 @@ export function useLoad<T>(query: () => Promise<T>, inputs: unknown[]): Loaded<T
   const [state, setState] = useState<{ data: T | null; error: string; loading: boolean }>({ data: null, error: '', loading: true });
   const [turn, setTurn] = useState(0);
   const latest = useRef(0);
+  const quiet = useRef(false);
 
   useEffect(() => {
     const mine = ++latest.current;
-    setState((previous) => ({ ...previous, loading: true }));
+    // A refresh in the background keeps what is on screen until the new answer is there.
+    if (!quiet.current) setState((previous) => ({ ...previous, loading: true }));
+    quiet.current = false;
     query()
       .then((data) => {
         // A slower, older request must not overwrite a newer answer.
@@ -28,7 +33,11 @@ export function useLoad<T>(query: () => Promise<T>, inputs: unknown[]): Loaded<T
   }, [...inputs, turn]);
 
   const reload = useCallback(() => setTurn((n) => n + 1), []);
-  return { ...state, reload };
+  const refresh = useCallback(() => {
+    quiet.current = true;
+    setTurn((n) => n + 1);
+  }, []);
+  return { ...state, reload, refresh };
 }
 
 export function describe(cause: unknown): string {
