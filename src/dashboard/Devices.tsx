@@ -3,7 +3,7 @@ import { toast } from '../ui/components';
 import { newDevicePin, type Device, type DevicePatch } from './api';
 import type { PageProps } from './Dashboard';
 import { deviceState } from './stats';
-import { LoadState, PageHead, ago, describe, useLoad } from './ui';
+import { CopyButton, LoadState, PageHead, ago, describe, useLoad } from './ui';
 
 const PRINTER_LABEL: Record<string, string> = {
   connected: 'terhubung',
@@ -108,11 +108,21 @@ function DeviceCard({ device, now, busy, onPatch, onDelete }: CardProps) {
       <dl class="facts">
         <div>
           <dt>Kode perangkat</dt>
-          <dd class="mono">{device.code}</dd>
+          <dd class="mono">
+            <span class="code-cell">
+              {device.code}
+              <CopyButton text={device.code} label="Salin kode perangkat" />
+            </span>
+          </dd>
         </div>
         <div>
           <dt>PIN</dt>
-          <dd class="mono">{device.pin}</dd>
+          <dd class="mono">
+            <span class="code-cell">
+              {device.pin}
+              <CopyButton text={device.pin} label="Salin PIN" />
+            </span>
+          </dd>
         </div>
         <div>
           <dt>Terakhir aktif</dt>

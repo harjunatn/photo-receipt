@@ -692,6 +692,11 @@ html.dash-page body {
   gap: 6px;
 }
 
+/* The copy button beside a device code or PIN does not make the card taller. */
+.facts .code-cell .copy-btn {
+  margin: -6px 0;
+}
+
 .copy-btn {
   display: inline-grid;
   place-items: center;

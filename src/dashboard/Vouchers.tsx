@@ -3,10 +3,9 @@ import { download } from '../lib/kiosk';
 import { toCsv } from '../lib/log';
 import { generateVouchers, voucherStatus, type VoucherStatus } from '../lib/vouchers';
 import { toast } from '../ui/components';
-import { CheckIcon, CopyIcon } from '../ui/icons';
 import type { VoucherRow, VoucherUse } from './api';
 import type { PageProps } from './Dashboard';
-import { LoadState, PageHead, Pager, dateOnly, dateTime, describe, useLoad } from './ui';
+import { CopyButton, LoadState, PageHead, Pager, dateOnly, dateTime, describe, useLoad } from './ui';
 
 const PAGE_SIZE = 50;
 const STATUS_LABEL: Record<VoucherStatus, string> = { active: 'Aktif', used: 'Terpakai', expired: 'Kedaluwarsa' };
@@ -70,7 +69,6 @@ export function Vouchers({ api }: PageProps) {
   const [confirmDelete, setConfirmDelete] = useState('');
   const { copied, mark } = useCopied(api.franchise.id);
   // The code whose copy button shows a tick for a moment.
-  const [justCopied, setJustCopied] = useState('');
   // Used while this page was open, to point them out in the list.
   const [justUsed, setJustUsed] = useState<Set<string>>(new Set());
 
@@ -172,17 +170,6 @@ export function Vouchers({ api }: PageProps) {
       refresh();
     } catch (cause) {
       toast(describe(cause));
-    }
-  };
-
-  const copyOne = async (code: string) => {
-    try {
-      await navigator.clipboard.writeText(code);
-      mark([code]);
-      setJustCopied(code);
-      setTimeout(() => setJustCopied((current) => (current === code ? '' : current)), 1500);
-    } catch {
-      toast('Browser tidak mengizinkan menyalin.');
     }
   };
 
@@ -306,14 +293,7 @@ export function Vouchers({ api }: PageProps) {
                       <td class="mono">
                         <span class="code-cell">
                           {row.code}
-                          <button
-                            class={`copy-btn ${justCopied === row.code ? 'done' : ''}`}
-                            title="Salin kode"
-                            aria-label={`Salin kode ${row.code}`}
-                            onClick={() => void copyOne(row.code)}
-                          >
-                            {justCopied === row.code ? <CheckIcon /> : <CopyIcon />}
-                          </button>
+                          <CopyButton text={row.code} label="Salin kode" onCopied={() => mark([row.code])} />
                           {copied.has(row.code) && state === 'active' && <small class="copied-mark">disalin</small>}
                         </span>
                       </td>

@@ -1,5 +1,7 @@
 import type { ComponentChildren } from 'preact';
 import { useCallback, useEffect, useRef, useState } from 'preact/hooks';
+import { toast } from '../ui/components';
+import { CheckIcon, CopyIcon } from '../ui/icons';
 
 export interface Loaded<T> {
   data: T | null;
@@ -109,4 +111,31 @@ export function ago(iso: string | null, now: number): string {
   if (minutes < 60) return `${minutes} menit lalu`;
   if (minutes < 60 * 24) return `${Math.floor(minutes / 60)} jam lalu`;
   return `${Math.floor(minutes / (60 * 24))} hari lalu`;
+}
+
+/** A small button beside a code that copies it, showing a tick for a moment afterwards. */
+export function CopyButton({ text, label, onCopied }: { text: string; label: string; onCopied?: () => void }) {
+  const [done, setDone] = useState(false);
+
+  useEffect(() => {
+    if (!done) return;
+    const timer = setTimeout(() => setDone(false), 1500);
+    return () => clearTimeout(timer);
+  }, [done]);
+
+  const copy = async () => {
+    try {
+      await navigator.clipboard.writeText(text);
+      setDone(true);
+      onCopied?.();
+    } catch {
+      toast('Browser tidak mengizinkan menyalin.');
+    }
+  };
+
+  return (
+    <button type="button" class={`copy-btn ${done ? 'done' : ''}`} title={label} aria-label={`${label} ${text}`} onClick={() => void copy()}>
+      {done ? <CheckIcon /> : <CopyIcon />}
+    </button>
+  );
 }

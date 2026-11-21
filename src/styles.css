@@ -1244,6 +1244,11 @@ textarea {
   gap: 8px;
 }
 
+/* Changing the frame on the edit screen is hidden for now; delete this rule to offer it again. */
+.edit-tools .tool.frame-choice {
+  display: none;
+}
+
 .tool h3 {
   color: var(--ink-2);
   font-size: 12px;

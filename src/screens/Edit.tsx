@@ -112,7 +112,7 @@ export function Edit({ draft, onStyle, onFrame, onRetake, onCrop, onPrint, onCan
           )}
 
           {alternatives.length > 1 && (
-            <section class="tool">
+            <section class="tool frame-choice">
               <h3>Frame</h3>
               <div class="chips">
                 {alternatives.map((frame) => (

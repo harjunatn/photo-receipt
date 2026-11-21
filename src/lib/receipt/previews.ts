@@ -1,17 +1,17 @@
 import { useEffect, useState } from 'preact/hooks';
 import { samplePhoto } from '../demoScene';
 import type { Settings } from '../settings';
-import { composeReceipt, loadReceiptFonts, paintBits, receiptToBits } from './compose';
+import { composeReceipt, loadReceiptFonts } from './compose';
 import type { FrameDef } from './frames';
 
 /** Finished pictures by frame and by the settings that change how they look. */
 const cache = new Map<string, string>();
 
 function cacheKey(frame: FrameDef, settings: Settings): string {
-  return [frame.id, frame.version ?? '', settings.printer.dots, settings.receipt.title, JSON.stringify(settings.printer.raster)].join('|');
+  return [frame.id, frame.version ?? '', settings.printer.dots, settings.receipt.title].join('|');
 }
 
-/** A small picture of a frame filled with sample photos, drawn with the same dots the printer would use. */
+/** A small picture of a frame filled with sample photos, in colour like the copy the guest downloads. */
 async function framePreview(frame: FrameDef, settings: Settings): Promise<string> {
   const key = cacheKey(frame, settings);
   const cached = cache.get(key);
@@ -29,9 +29,7 @@ async function framePreview(frame: FrameDef, settings: Settings): Promise<string
     logo: null,
     compact: true,
   });
-  const canvas = document.createElement('canvas');
-  paintBits(canvas, receiptToBits(composed, settings.printer.raster));
-  const url = canvas.toDataURL('image/png');
+  const url = composed.canvas.toDataURL('image/jpeg', 0.88);
   cache.set(key, url);
   return url;
 }
@@ -64,7 +62,7 @@ export function useFramePreviews(frames: FrameDef[], settings: Settings): Record
     return () => {
       cancelled = true;
     };
-  }, [ids, settings.printer.dots, settings.receipt.title, settings.printer.raster]);
+  }, [ids, settings.printer.dots, settings.receipt.title]);
 
   return urls;
 }

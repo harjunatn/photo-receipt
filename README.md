@@ -7,12 +7,13 @@ tambahan dan tanpa server.
 ## Alur tamu
 
 1. **Pilih frame** — desain cetakan: Klasik, Kolase, Rol Film, Polaroid, Nota Belanja, Pesta, Potret, atau frame
-   buatan franchise sendiri.
+   buatan franchise sendiri. Gambar tiap frame ditampilkan berwarna, seperti salinan digital yang diunduh tamu.
 2. **Pilih pembayaran** — QRIS, tunai, atau voucher.
 3. **Sesi foto** — hitung mundur sebelum tiap jepretan. Kalau harganya termasuk video, setelah foto terakhir ada satu
    **boomerang**: hitung mundur 3 detik, lalu kamera merekam 1,5 detik selagi tamu bergerak bebas.
 4. **Edit & foto ulang** — tamu melihat struk persis seperti yang akan tercetak, lalu bisa mengganti gaya foto (Normal,
-   Cerah, Kontras, Komik, Sketsa, Garis), mengganti frame, atau mengulang foto satu per satu.
+   Cerah, Kontras, Komik, Sketsa, Garis) atau mengulang foto satu per satu. (Pilihan ganti frame di langkah ini sedang
+   disembunyikan; kodenya tetap ada, cukup hapus aturan `.frame-choice` di `src/styles.css` untuk menampilkannya lagi.)
 5. **Cetak**.
 
 Frame mana yang ditawarkan, harga, dan cara bayar diatur di dashboard franchise; printer, kamera dan teks struk diatur
@@ -165,7 +166,7 @@ franchise sebelumnya. Yang diatur di tablet itu sendiri (printer, sesi, teks str
 | Menu tiap franchise | Isi |
 | --- | --- |
 | Dashboard | Omzet hari ini, 7 hari, bulan ini; grafik per hari; cara bayar; per perangkat; transaksi terbaru |
-| Perangkat | Daftar tablet, kode perangkat + PIN, online/offline, status printer, kapan pengaturan tablet terakhir tersimpan |
+| Perangkat | Daftar tablet, kode perangkat + PIN (masing-masing dengan tombol salin), online/offline, status printer, kapan pengaturan tablet terakhir tersimpan |
 | Transaksi | Semua sesi dari semua tablet, saring tanggal / cara bayar / perangkat, lihat hasil foto, unduh Excel / PDF / CSV |
 | Pembayaran QRIS | Setiap kode QR otomatis: lunas, tidak dibayar, dan "lunas tanpa sesi" yang perlu diperiksa |
 | Voucher | Buat massal, status aktif / terpakai / kedaluwarsa; berlaku di semua tablet, sekali pakai. Tombol salin di samping tiap kode (kode yang pernah disalin ditandai "disalin"); voucher yang dipakai di booth langsung muncul saat itu juga tanpa memuat ulang (Supabase Realtime) |
@@ -512,7 +513,7 @@ Yang perlu diketahui:
 - Pengembalian uang QRIS dari dashboard — saat ini dilakukan di DOKU Back Office.
 - Tagihan langganan otomatis — saat ini pembayaran langganan franchise dicatat manual oleh superadmin.
 - Harga berbeda per tablet dalam satu franchise — saat ini satu set harga untuk semua tablet sebuah franchise.
-- Stiker dan tulisan dari tamu di langkah edit — saat ini tamu bisa mengganti gaya foto, mengganti frame, dan foto ulang.
+- Stiker dan tulisan dari tamu di langkah edit — saat ini tamu bisa mengganti gaya foto dan foto ulang.
 - Deteksi kertas habis — printer tidak dilaporkan statusnya; siapkan kertas cadangan dan cek berkala.
 - Mencetak slip voucher di printer struk — saat ini kodenya disalin atau diunduh sebagai CSV dari dashboard.
 - Voucher saat tablet sedang tanpa internet.
