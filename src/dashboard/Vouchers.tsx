@@ -12,8 +12,7 @@ const PAGE_SIZE = 50;
 const STATUS_LABEL: Record<VoucherStatus, string> = { active: 'Aktif', used: 'Terpakai', expired: 'Kedaluwarsa' };
 const STATUS_TAG: Record<VoucherStatus, string> = { active: 'ok', used: '', expired: 'warn' };
 const FILTERS: (VoucherStatus | 'all')[] = ['active', 'used', 'expired', 'all'];
-/** How often the page asks whether a voucher was used meanwhile, while it is open on screen. */
-const WATCH_MS = 10_000;
+const EPOCH = '1970-01-01T00:00:00Z';
 /** Codes copied from this browser are remembered, up to this many per franchise. */
 const MAX_COPIED = 5000;
 
@@ -86,38 +85,58 @@ export function Vouchers({ api }: PageProps) {
     load.reload();
   };
 
-  // While the page is open on screen, a voucher used at a booth shows up here by itself.
+  // A voucher used at a booth shows up here by itself, as it happens (Supabase Realtime). Whatever was
+  // missed while the connection was down, or while the page was not on screen, is asked for on return.
   const since = useRef<string | null>(null);
+  const reported = useRef(new Set<string>());
+  const [live, setLive] = useState(false);
+
   useEffect(() => {
     since.current = null;
+    reported.current.clear();
     let stopped = false;
-    const check = async () => {
-      if (document.visibilityState !== 'visible') return;
+
+    const report = (uses: VoucherUse[]) => {
+      const fresh = uses.filter((use) => !reported.current.has(use.code));
+      if (stopped || fresh.length === 0) return;
+      for (const use of fresh) reported.current.add(use.code);
+      setJustUsed((previous) => new Set([...previous, ...fresh.map((use) => use.code)]));
+      toast(usedMessage(fresh));
+      counts.refresh();
+      load.refresh();
+    };
+
+    const catchUp = async () => {
       try {
-        const uses = await api.recentVoucherUses(since.current);
-        if (stopped) return;
         if (since.current === null) {
           // The first look only finds where to watch from.
-          since.current = uses[0]?.used_at ?? '1970-01-01T00:00:00Z';
+          since.current = (await api.recentVoucherUses(null))[0]?.used_at ?? EPOCH;
           return;
         }
-        if (uses.length === 0) return;
-        since.current = uses[0].used_at;
-        setJustUsed((previous) => new Set([...previous, ...uses.map((use) => use.code)]));
-        toast(usedMessage(uses));
-        counts.refresh();
-        load.refresh();
+        const uses = await api.recentVoucherUses(since.current);
+        if (uses.length > 0) since.current = uses[0].used_at;
+        report(uses);
       } catch {
-        // Offline for a moment: the next look tries again.
+        // Offline for a moment: the next reconnect or return to the page tries again.
       }
     };
-    void check();
-    const timer = setInterval(() => void check(), WATCH_MS);
-    const onShow = () => void check();
+
+    void catchUp();
+    let wasLive = false;
+    const stop = api.watchVoucherUses(
+      (use) => report([use]),
+      (up) => {
+        if (stopped) return;
+        setLive(up);
+        if (up && wasLive === false && since.current !== null) void catchUp();
+        wasLive = up;
+      },
+    );
+    const onShow = () => document.visibilityState === 'visible' && void catchUp();
     document.addEventListener('visibilitychange', onShow);
     return () => {
       stopped = true;
-      clearInterval(timer);
+      stop();
       document.removeEventListener('visibilitychange', onShow);
     };
   }, [api]);
@@ -323,9 +342,23 @@ export function Vouchers({ api }: PageProps) {
           </div>
         )}
         {load.data && <Pager offset={offset} limit={PAGE_SIZE} total={load.data.total} onChange={setOffset} />}
-        <p class="hint">
-          Daftar ini diperbarui sendiri saat voucher dipakai di booth. "disalin" menandai kode aktif yang pernah kamu salin dari browser ini.
-        </p>
+        <div class="row">
+          <p class="hint grow">
+            {live ? (
+              <>
+                <i class="live-dot" /> Tersambung langsung: voucher yang dipakai di booth muncul di sini saat itu juga.
+              </>
+            ) : (
+              <>
+                <i class="live-dot off" /> Menyambung ke pembaruan langsung… Sementara itu tekan Perbarui untuk data terbaru.
+              </>
+            )}{' '}
+            "disalin" menandai kode aktif yang pernah kamu salin dari browser ini.
+          </p>
+          <button class="btn small" onClick={refresh}>
+            Perbarui
+          </button>
+        </div>
       </section>
     </>
   );

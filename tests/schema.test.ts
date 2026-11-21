@@ -116,6 +116,17 @@ describe('schema', () => {
     await db.exec(`update platform set config = '{"name":"jepretin","watermark":"didukung oleh jepretin","receiptLine":"@jepretin","graceDays":7}'`);
   });
 
+  it('lets the dashboard hear of used vouchers live, and adds the table to Realtime only once', async () => {
+    const fresh = new PGlite();
+    await fresh.exec(SUPABASE);
+    await fresh.exec('create publication supabase_realtime');
+    await fresh.exec(SCHEMA);
+    await fresh.exec(SCHEMA);
+    const published = await fresh.query<{ tablename: string }>(`select tablename from pg_publication_tables where pubname = 'supabase_realtime'`);
+    expect(published.rows.map((row) => row.tablename)).toEqual(['vouchers']);
+    await fresh.close();
+  });
+
   it('starts with the same platform settings the app shows by default', async () => {
     const fresh = new PGlite();
     await fresh.exec(SUPABASE);

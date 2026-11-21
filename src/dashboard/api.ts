@@ -241,6 +241,11 @@ export interface OwnerApi {
    * the most recent use, if any, as the point to watch from.
    */
   recentVoucherUses(after: string | null): Promise<VoucherUse[]>;
+  /**
+   * Hears of vouchers being used as it happens (Supabase Realtime). `onLive` says whether the
+   * connection is up; it turns true again after a dropped connection is back. Returns the stop.
+   */
+  watchVoucherUses(onUse: (use: VoucherUse) => void, onLive: (live: boolean) => void): () => void;
   getOutlet(): Promise<unknown>;
   saveOutlet(config: OutletConfig): Promise<void>;
 }
@@ -486,6 +491,20 @@ export function createSupabaseApi(db: SupabaseClient, account: Account, franchis
       let query = db.from('vouchers').select('code,used_at,used_by_name').eq('franchise_id', fid).not('used_at', 'is', null);
       if (after) query = query.gt('used_at', after);
       return unwrap(await query.order('used_at', { ascending: false }).limit(after ? 50 : 1)) as VoucherUse[];
+    },
+    watchVoucherUses(onUse, onLive) {
+      // Only UPDATE: a voucher is updated when, and only when, a booth redeems it. DELETE news is not
+      // filtered by the access rules, so it is never asked for.
+      const channel = db
+        .channel(`vouchers:${fid}:${crypto.randomUUID()}`)
+        .on('postgres_changes', { event: 'UPDATE', schema: 'public', table: 'vouchers', filter: `franchise_id=eq.${fid}` }, (payload) => {
+          const row = payload.new as Partial<VoucherRow>;
+          if (typeof row.code === 'string' && typeof row.used_at === 'string') {
+            onUse({ code: row.code, used_at: row.used_at, used_by_name: row.used_by_name ?? null });
+          }
+        })
+        .subscribe((status) => onLive(status === 'SUBSCRIBED'));
+      return () => void db.removeChannel(channel);
     },
     async deleteVoucher(code) {
       unwrap(await db.from('vouchers').delete().eq('franchise_id', fid).eq('code', code).select('code'));

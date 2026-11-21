@@ -724,3 +724,26 @@ html.dash-page body {
 .table tr.just-used td {
   background: var(--warn-soft);
 }
+
+/* Whether the voucher list hears of used vouchers live. */
+.live-dot {
+  display: inline-block;
+  width: 8px;
+  height: 8px;
+  margin-right: 4px;
+  border-radius: 50%;
+  background: var(--ok);
+  vertical-align: middle;
+  animation: live-pulse 1.6s ease-in-out infinite;
+}
+
+@keyframes live-pulse {
+  50% {
+    opacity: 0.3;
+  }
+}
+
+.live-dot.off {
+  background: var(--ink-2);
+  animation: none;
+}

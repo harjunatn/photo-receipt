@@ -449,6 +449,20 @@ create policy tenant_all on public.vouchers for all to authenticated
 grant select, delete on public.vouchers to authenticated;
 grant insert (franchise_id, code, label, expires_at) on public.vouchers to authenticated;
 
+-- Dashboard mendapat kabar langsung saat voucher dipakai di booth (Supabase Realtime). Aturan akses di
+-- atas tetap berlaku: setiap akun hanya menerima perubahan voucher franchise-nya sendiri. Dashboard hanya
+-- mendengarkan UPDATE, karena kabar DELETE tidak disaring oleh aturan akses.
+do $$
+begin
+  if exists (select 1 from pg_publication where pubname = 'supabase_realtime')
+     and not exists (
+       select 1 from pg_publication_tables
+       where pubname = 'supabase_realtime' and schemaname = 'public' and tablename = 'vouchers'
+     ) then
+    alter publication supabase_realtime add table public.vouchers;
+  end if;
+end $$;
+
 drop policy if exists tenant_all on public.frames;
 create policy tenant_all on public.frames for all to authenticated
   using ((select public.is_superadmin()) or franchise_id = (select public.my_franchise()))

@@ -399,6 +399,11 @@ function createDemoApi(
     async deleteVoucher(code) {
       vouchers = vouchers.filter((v) => v.code !== code);
     },
+    watchVoucherUses(_onUse, onLive) {
+      // The sample data never changes by itself.
+      onLive(true);
+      return () => undefined;
+    },
     async recentVoucherUses(after) {
       const used = vouchers
         .filter((v): v is VoucherRow & { used_at: string } => v.used_at !== null && (after === null || v.used_at > after))
