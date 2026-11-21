@@ -3,6 +3,7 @@ import { Check, Segmented, TextField } from '../admin/fields';
 import { samplePhoto } from '../lib/demoScene';
 import type { Rect } from '../lib/image/types';
 import { composeReceipt, loadImage, loadReceiptFonts, receiptToBits, type ComposedReceipt } from '../lib/receipt/compose';
+import { cutKeyedFrame, findKeyColour, hasTransparency, toHex, TOLERANCE, type Rgb, type Sensitivity } from '../lib/receipt/chroma';
 import { toFrameDef, type FrameLayout } from '../lib/receipt/custom';
 import { detectFrame, hasSideBySide } from '../lib/receipt/detect';
 import { DEFAULT_SETTINGS } from '../lib/settings';
@@ -20,19 +21,30 @@ interface Loaded {
   url: string;
   image: HTMLImageElement;
   layout: FrameLayout;
+  /** For a picture without transparency: the colour that marked its photo areas. */
+  key: { rgb: Rgb; sensitivity: Sensitivity } | null;
 }
 
-/** Shrinks an uploaded picture to a size the tablets can hold, and finds the photo holes in it. */
-async function readFrameFile(file: File): Promise<Loaded> {
+/** A picture without transparent holes in which no colour marking the photo areas was found (or the one given found none). */
+class NeedsColour extends Error {}
+
+/**
+ * Shrinks an uploaded picture to a size the tablets can hold, and finds the photo holes in it:
+ * transparent areas, or, in a picture without transparency (a JPG), areas of one solid colour,
+ * which are cut out. `keying.rgb` names that colour; null finds it.
+ */
+async function readFrameFile(file: File, keying: { rgb: Rgb | null; sensitivity: Sensitivity }): Promise<Loaded> {
   let bitmap: ImageBitmap;
   try {
     bitmap = await createImageBitmap(file);
   } catch {
-    throw new Error('Berkas itu bukan gambar yang bisa dibaca. Pakai PNG dengan latar transparan.');
+    throw new Error('Berkas itu bukan gambar yang bisa dibaca. Pakai PNG, WebP atau JPG.');
   }
   const canvas = document.createElement('canvas');
   const ctx = canvas.getContext('2d', { willReadFrequently: true })!;
   let url = '';
+  let key: Rgb | null = keying.rgb;
+  let transparent: boolean | null = null;
   for (const limit of WIDTHS) {
     const width = Math.min(bitmap.width, limit);
     canvas.width = width;
@@ -40,6 +52,21 @@ async function readFrameFile(file: File): Promise<Loaded> {
     ctx.clearRect(0, 0, canvas.width, canvas.height);
     ctx.imageSmoothingQuality = 'high';
     ctx.drawImage(bitmap, 0, 0, canvas.width, canvas.height);
+    const pixels = ctx.getImageData(0, 0, canvas.width, canvas.height);
+    transparent ??= hasTransparency(pixels.data);
+    if (!transparent) {
+      key ??= findKeyColour(pixels.data, canvas.width, canvas.height);
+      if (!key) {
+        throw new NeedsColour(
+          'Tidak ada lubang transparan atau area warna solid (hijau, magenta atau biru) di gambar ini. Ketuk area foto pada gambar asli di bawah untuk memilih warnanya.',
+        );
+      }
+      const cut = cutKeyedFrame(pixels.data, canvas.width, canvas.height, key, TOLERANCE[keying.sensitivity]);
+      if (cut.found.slots.length === 0) {
+        throw new NeedsColour(`Warna ${toHex(key)} tidak membentuk area foto. Ketuk tepat di area foto pada gambar asli di bawah.`);
+      }
+      ctx.putImageData(new ImageData(cut.rgba, canvas.width, canvas.height), 0, 0);
+    }
     // WebP keeps transparency at a fraction of PNG's size; browsers that cannot write it fall back to PNG.
     url = canvas.toDataURL('image/webp', 0.92);
     if (!url.startsWith('data:image/webp')) url = canvas.toDataURL('image/png');
@@ -50,9 +77,30 @@ async function readFrameFile(file: File): Promise<Loaded> {
 
   const found = detectFrame(ctx.getImageData(0, 0, canvas.width, canvas.height).data, canvas.width, canvas.height);
   if (found.slots.length === 0) {
-    throw new Error('Tidak ada lubang foto yang ditemukan. Area foto harus benar-benar transparan (bukan putih), dan gambarnya disimpan sebagai PNG.');
+    throw new Error('Tidak ada lubang foto yang ditemukan. Area foto harus benar-benar transparan (bukan putih), atau diisi satu warna solid.');
   }
-  return { url, image: await loadImage(url), layout: { width: canvas.width, height: canvas.height, slots: found.slots, print: found.print } };
+  return {
+    url,
+    image: await loadImage(url),
+    layout: { width: canvas.width, height: canvas.height, slots: found.slots, print: found.print },
+    key: key && !transparent ? { rgb: key, sensitivity: keying.sensitivity } : null,
+  };
+}
+
+/** The average colour of a small square of the picture around (x, y), in the picture's own pixels. */
+function colourAt(image: HTMLImageElement, x: number, y: number): Rgb {
+  const canvas = document.createElement('canvas');
+  canvas.width = image.naturalWidth;
+  canvas.height = image.naturalHeight;
+  const ctx = canvas.getContext('2d', { willReadFrequently: true })!;
+  ctx.drawImage(image, 0, 0);
+  const left = Math.max(0, Math.min(canvas.width - 5, Math.round(x) - 2));
+  const top = Math.max(0, Math.min(canvas.height - 5, Math.round(y) - 2));
+  const data = ctx.getImageData(left, top, 5, 5).data;
+  const sum = [0, 0, 0];
+  for (let at = 0; at < data.length; at += 4) for (let c = 0; c < 3; c++) sum[c] += data[at + c];
+  const n = data.length / 4;
+  return [Math.round(sum[0] / n), Math.round(sum[1] / n), Math.round(sum[2] / n)];
 }
 
 interface Preview {
@@ -101,7 +149,7 @@ interface Props {
   onSaved: () => void;
 }
 
-/** Adds or changes one of the franchise's own frames: a picture with transparent holes where the photos go. */
+/** Adds or changes one of the franchise's own frames: a picture with transparent holes, or solid-colour areas, where the photos go. */
 export function FrameEditor({ api, frame, onClose, onSaved }: Props) {
   const [loaded, setLoaded] = useState<{ image: HTMLImageElement; layout: FrameLayout } | null>(null);
   // Set only when a new picture was chosen, so an unchanged one is not uploaded again.
@@ -114,6 +162,14 @@ export function FrameEditor({ api, frame, onClose, onSaved }: Props) {
   const [error, setError] = useState('');
   const picker = useRef<HTMLInputElement>(null);
   const colour = useRef<HTMLCanvasElement>(null);
+  // The picture as chosen, while it is one marked with a colour: tapping it picks that colour.
+  const [source, setSource] = useState<{ file: File; url: string } | null>(null);
+  const [key, setKey] = useState<Loaded['key']>(null);
+  const [needsColour, setNeedsColour] = useState(false);
+  const [sensitivity, setSensitivity] = useState<Sensitivity>('medium');
+  const original = useRef<HTMLImageElement>(null);
+
+  useEffect(() => () => void (source && URL.revokeObjectURL(source.url)), [source]);
 
   // Editing: fetch the stored picture once.
   useEffect(() => {
@@ -153,19 +209,41 @@ export function FrameEditor({ api, frame, onClose, onSaved }: Props) {
     target.getContext('2d')!.drawImage(preview.colour, 0, 0);
   }, [preview]);
 
-  const choose = async (file: File | undefined) => {
-    if (!file) return;
+  const read = async (file: File, keying: { rgb: Rgb | null; sensitivity: Sensitivity }) => {
     setBusy('read');
     setError('');
     try {
-      const read = await readFrameFile(file);
-      setLoaded({ image: read.image, layout: read.layout });
-      setNewUrl(read.url);
-      if (!name.trim()) setName(file.name.replace(/\.[^.]+$/, '').slice(0, 40));
+      const made = await readFrameFile(file, keying);
+      setLoaded({ image: made.image, layout: made.layout });
+      setNewUrl(made.url);
+      setKey(made.key);
+      setNeedsColour(false);
+      return true;
     } catch (cause) {
+      setNeedsColour(cause instanceof NeedsColour);
       setError(describe(cause));
+      return false;
+    } finally {
+      setBusy('');
     }
-    setBusy('');
+  };
+
+  const choose = async (file: File | undefined) => {
+    if (!file) return;
+    setSource({ file, url: URL.createObjectURL(file) });
+    setLoaded(null);
+    setKey(null);
+    if ((await read(file, { rgb: null, sensitivity })) && !name.trim()) setName(file.name.replace(/\.[^.]+$/, '').slice(0, 40));
+  };
+
+  /** A tap on the original picture: its colour there marks the photo areas. */
+  const pick = (event: MouseEvent) => {
+    const image = original.current;
+    if (!source || !image || busy) return;
+    const box = image.getBoundingClientRect();
+    const x = ((event.clientX - box.left) / box.width) * image.naturalWidth;
+    const y = ((event.clientY - box.top) / box.height) * image.naturalHeight;
+    void read(source.file, { rgb: colourAt(image, x, y), sensitivity });
   };
 
   const setLayout = (change: Partial<FrameLayout>) => loaded && setLoaded({ ...loaded, layout: { ...loaded.layout, ...change } });
@@ -214,12 +292,22 @@ export function FrameEditor({ api, frame, onClose, onSaved }: Props) {
         </button>
       </div>
       <p class="hint">
-        Frame adalah gambar dengan <b>lubang transparan</b> tempat foto tamu. Buat di Canva, Figma atau Photoshop, lalu unduh sebagai{' '}
-        <b>PNG dengan latar transparan</b>. Lebar yang pas 1080 px; kertas struk dicetak hitam-putih, jadi desain garis hitam di atas putih
-        paling tajam. Lubangnya dikenali sendiri, urut dari atas ke bawah. <b>Susun satu foto per baris</b>, selebar mungkin: kertas struk
-        sempit, jadi foto yang berdampingan hasilnya kecil.
+        Frame adalah gambar desain dengan tempat foto tamu. Buat di Canva, Figma atau Photoshop, lalu unduh dengan salah satu cara: <b>PNG
+        dengan lubang transparan</b> di tempat foto, atau <b>JPG (atau PNG) dengan tempat foto diisi satu warna solid</b>, misalnya hijau
+        #00FF00 atau magenta #FF00FF, yang tidak dipakai di bagian lain desain. Lebar yang pas 1080 px; kertas struk dicetak hitam-putih,
+        jadi desain garis hitam di atas putih paling tajam. Tempat fotonya dikenali sendiri, urut dari atas ke bawah.{' '}
+        <b>Susun satu foto per baris</b>, selebar mungkin: kertas struk sempit, jadi foto yang berdampingan hasilnya kecil.
       </p>
-      <input ref={picker} type="file" accept="image/png,image/webp" hidden onChange={(event) => void choose(event.currentTarget.files?.[0])} />
+      <input
+        ref={picker}
+        type="file"
+        accept="image/png,image/webp,image/jpeg"
+        hidden
+        onChange={(event) => {
+          void choose(event.currentTarget.files?.[0]);
+          event.currentTarget.value = '';
+        }}
+      />
       <div class="row">
         <button class="btn small primary" disabled={busy !== ''} onClick={() => picker.current?.click()}>
           {busy === 'read' ? 'Membaca gambar…' : loaded ? 'Ganti gambar' : 'Pilih gambar frame'}
@@ -227,6 +315,41 @@ export function FrameEditor({ api, frame, onClose, onSaved }: Props) {
       </div>
       {error && <p class="banner err">{error}</p>}
       {busy === 'load' && <div class="spinner" />}
+      {source && (key || needsColour) && (
+        <div class="key-panel">
+          <figure class="key-source">
+            <img ref={original} src={source.url} alt="Gambar frame asli" onClick={pick} />
+            <figcaption class="hint">Ketuk area foto pada gambar ini untuk memilih warnanya.</figcaption>
+          </figure>
+          <div class="key-info">
+            <div class="field">
+              <span>Warna tempat foto</span>
+              {key ? (
+                <div class="row">
+                  <i class="key-swatch" style={{ background: toHex(key.rgb) }} />
+                  <b class="mono">{toHex(key.rgb).toUpperCase()}</b>
+                </div>
+              ) : (
+                <small class="hint">Belum dipilih.</small>
+              )}
+            </div>
+            <Segmented
+              label="Kepekaan warna"
+              value={sensitivity}
+              options={[
+                { value: 'low', label: 'Rendah' },
+                { value: 'medium', label: 'Sedang' },
+                { value: 'high', label: 'Tinggi' },
+              ]}
+              hint="Naikkan kalau di tepi foto masih ada garis berwarna; turunkan kalau bagian desain yang warnanya mirip ikut terpotong."
+              onChange={(next) => {
+                setSensitivity(next);
+                if (key) void read(source.file, { rgb: key.rgb, sensitivity: next });
+              }}
+            />
+          </div>
+        </div>
+      )}
       {loaded && hasSideBySide(loaded.layout.slots) && (
         <p class="banner">
           Di frame ini ada foto yang berdampingan. Di kertas struk, terutama 58 mm, foto seperti itu tercetak kecil. Lebih baik satu foto

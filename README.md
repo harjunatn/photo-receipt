@@ -22,12 +22,18 @@ petugas di tablet (ikon ⚙ di layar awal).
 
 Di dashboard → **Koleksi Frame** → **+ Tambah frame**, franchise bisa mengunggah desainnya sendiri:
 
-- Frame adalah **gambar PNG dengan lubang transparan** tempat foto tamu (buat di Canva, Figma atau Photoshop, unduh
-  dengan latar transparan). Lebar yang pas 1080 px; tingginya bebas sampai 6 kali lebarnya.
+- Frame adalah gambar desain dengan tempat foto tamu (buat di Canva, Figma atau Photoshop). Lebar yang pas 1080 px;
+  tingginya bebas sampai 6 kali lebarnya. Ada dua cara menandai tempat fotonya:
+  - **PNG dengan lubang transparan** di tempat foto.
+  - **JPG (atau PNG tanpa transparansi) dengan tempat foto diisi satu warna solid**, seperti *green screen*. Hijau
+    #00FF00, magenta #FF00FF atau biru #0000FF dikenali sendiri; warna lain dipilih dengan mengetuk tempat foto pada
+    gambar aslinya. Pakai warna yang tidak ada di bagian lain desain. Area warna itu dipotong jadi lubang, termasuk
+    tepinya yang berbayang karena kompresi JPG; bintik kecil berwarna sama tidak ikut terpotong. **Kepekaan warna**
+    bisa dinaikkan kalau tepi foto masih bergaris warna, atau diturunkan kalau bagian desain yang mirip ikut terpotong.
 - **Satu foto per baris, turun ke bawah.** Kertas struk sempit, jadi foto yang berdampingan tercetak kecil; editor
   memberi peringatan kalau ada. Semua frame bawaan juga satu foto per baris.
-- Lubang foto dikenali sendiri (1 sampai 6 foto), urut dari atas ke bawah lalu kiri ke kanan; urutannya bisa diubah
-  dan area transparan yang bukan untuk foto bisa dibuang. Lubang boleh berbentuk bulat atau bersudut tumpul.
+- Tempat foto dikenali sendiri (1 sampai 6 foto), urut dari atas ke bawah lalu kiri ke kanan; urutannya bisa diubah
+  dan area yang bukan untuk foto bisa dibuang. Bentuknya boleh bulat atau bersudut tumpul.
 - Struk dicetak hitam-putih. Pilih **Tegas** untuk desain garis dan tulisan, **Halus** untuk desain berwarna atau
   bergradasi; pratinjau menunjukkan versi berwarna (untuk diunduh tamu) dan hasil cetaknya.
 - Setelah disimpan, centang **Ditawarkan ke tamu** untuk tiap perangkat yang memakainya. Frame buatan sendiri hanya
