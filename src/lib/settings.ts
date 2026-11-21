@@ -22,6 +22,13 @@ export interface PackageDef {
   videos?: boolean;
 }
 
+export type BoomerangMode = 'frame' | 'end';
+
+/** The boomerang's mode; anything unknown (an older or damaged setting) is the default, in the frame. */
+export function boomerangMode(settings: Pick<Settings, 'share'>): BoomerangMode {
+  return settings.share.boomerang === 'end' ? 'end' : 'frame';
+}
+
 /** Whether a price includes the boomerang and the slideshow video. */
 export function includesVideos(pkg: PackageDef): boolean {
   return pkg.videos !== false;
@@ -115,6 +122,12 @@ export interface Settings {
   share: {
     /** Print the download QR code on the receipt; off makes the receipt shorter. */
     printQr: boolean;
+    /**
+     * How a session's boomerang is made, when its price includes videos. 'frame': a short burst is
+     * kept, unannounced, around every photo, and the boomerang is the guest's frame with each photo
+     * moving. 'end': one full-screen boomerang recorded in its own step after the last photo.
+     */
+    boomerang: BoomerangMode;
   };
   storage: {
     /** Keep session photos on this device so they can be reprinted. */
@@ -225,6 +238,7 @@ export const DEFAULT_SETTINGS: Settings = {
   },
   share: {
     printQr: true,
+    boomerang: 'frame',
   },
   storage: {
     keepPhotos: true,

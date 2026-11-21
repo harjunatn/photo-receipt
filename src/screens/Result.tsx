@@ -8,7 +8,7 @@ import type { BitImage } from '../lib/image/types';
 import { pokeIdle } from '../lib/kiosk';
 import { addLogEntry, nextSessionNumber } from '../lib/log';
 import { printer, usePrinter } from '../lib/printer/manager';
-import { renderDigital, renderDraft, renderSlideshow, type Draft } from '../lib/session';
+import { renderDigital, renderDraft, renderFrameBoomerang, renderSlideshow, type Draft } from '../lib/session';
 import { settingsStore } from '../lib/settings';
 import { sound } from '../lib/sound';
 import { PinPad, ReceiptPaper, Steps } from '../ui/components';
@@ -256,7 +256,10 @@ async function sendDigital(draft: Draft, code: string, sessionNo: number): Promi
     return;
   }
   if (!draft.videos) return;
-  const clip = await (draft.boomerang ?? Promise.resolve(null)).catch(() => null);
+  // A boomerang recorded in its own step after the photos, or else the one inside the frame, made now.
+  const clip = draft.boomerang
+    ? await draft.boomerang.catch(() => null)
+    : await renderFrameBoomerang(draft, sessionNo, settings).catch(() => null);
   if (clip) await queueShareFiles(code, [{ kind: 'live', blob: clip }]).catch(() => undefined);
   const pairing = pairingStore.get();
   const title = boothTitle(settings, pairing ? (pairing.franchise ?? '') : null);

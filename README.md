@@ -9,8 +9,9 @@ tambahan dan tanpa server.
 1. **Pilih frame** — desain cetakan: Klasik, Kolase, Rol Film, Polaroid, Nota Belanja, Pesta, Potret, atau frame
    buatan franchise sendiri. Gambar tiap frame ditampilkan berwarna, seperti salinan digital yang diunduh tamu.
 2. **Pilih pembayaran** — QRIS, tunai, atau voucher.
-3. **Sesi foto** — hitung mundur sebelum tiap jepretan. Kalau harganya termasuk video, setelah foto terakhir ada satu
-   **boomerang**: hitung mundur 3 detik, lalu kamera merekam 1,5 detik selagi tamu bergerak bebas.
+3. **Sesi foto** — hitung mundur sebelum tiap jepretan. Kalau harganya termasuk video, kamera diam-diam juga merekam
+   1,5 detik di sekitar tiap jepretan untuk **boomerang** di dalam frame (tanpa tambahan waktu). Dashboard bisa
+   menggantinya dengan satu langkah boomerang terpisah setelah foto terakhir.
 4. **Edit & foto ulang** — tamu melihat struk persis seperti yang akan tercetak, lalu bisa mengganti gaya foto (Normal,
    Cerah, Kontras, Komik, Sketsa, Garis) atau mengulang foto satu per satu. (Pilihan ganti frame di langkah ini sedang
    disembunyikan; kodenya tetap ada, cukup hapus aturan `.frame-choice` di `src/styles.css` untuk menampilkannya lagi.)
@@ -284,11 +285,12 @@ tercentang), halaman itu juga berisi dua video MP4 yang bisa diputar di iPhone m
 
 | Video | Isinya |
 | --- | --- |
-| **Boomerang** | 1,5 detik rekaman setelah foto terakhir, diputar maju-mundur 3 kali (±4,5 detik), dengan nama outlet dan baris platform kecil di bawah |
+| **Boomerang** | Bawaannya **di dalam frame**: struk berwarna pilihan tamu, tapi tiap fotonya bergerak maju-mundur 3 kali (±4,5 detik). Rekamannya diambil diam-diam dari 0,5 detik sebelum sampai 1 detik sesudah tiap jepretan (foto ulang ikut merekam ulang), dan mengikuti potongan foto yang diatur tamu. Stiker atau desain frame yang menimpa foto tetap di atasnya. Kalau dashboard → Pengaturan → Unduh foto lewat QR → Boomerang diubah ke **Sesi terpisah di akhir**: satu rekaman 1,5 detik layar penuh setelah foto terakhir, dengan nama outlet dan baris platform kecil di bawah |
 | **Video Slideshow** | Foto-foto sesi berwarna satu per satu (sesuai potongan tamu), lalu struk berwarna bergulir. Tegak 9:16, pas untuk Story Instagram/TikTok. Tanpa musik |
 
 - Video dibuat di tablet sendiri dengan encoder bawaan Chrome, jadi tidak ada server atau biaya tambahan. Ukurannya
-  sekitar 1 MB (boomerang) dan 2 MB (slideshow) per sesi.
+  sekitar 1 MB (boomerang) dan 2 MB (slideshow) per sesi. Boomerang di dalam frame selebar 720 piksel, atau lebih
+  sempit untuk struk yang panjang (paling tinggi 1920 piksel, dan lebih kecil lagi kalau encoder tablet menolak).
 - Foto tetap dikirim lebih dulu. Halaman unduh menampilkan "sedang dibuat" untuk video yang belum sampai dan memeriksa
   lagi sendiri.
 - Tablet yang browsernya tidak bisa membuat video MP4 tidak menawarkan boomerang (tab **Sambungan** memberi tahu); foto

@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { applyRemote, boothTitle, completeOutlet, forNewPairing, newShareCode, outletFromSettings, shareUrl } from '../src/lib/cloud/shared';
-import { DEFAULT_SETTINGS } from '../src/lib/settings';
+import { boomerangMode, DEFAULT_SETTINGS } from '../src/lib/settings';
 import {
   compactRupiah,
   dayKey,
@@ -193,7 +193,18 @@ describe('guest downloads', () => {
   it('are always made: the old switch that turned them off entirely no longer does anything', () => {
     // Saved before the switch only decided the printing; such a franchise still prints the QR code.
     const old = applyRemote(DEFAULT_SETTINGS, { share: { enabled: false } }, null);
-    expect(old.share).toEqual({ printQr: true });
+    expect(old.share).toEqual({ printQr: true, boomerang: 'frame' });
+  });
+
+  it('put the boomerang inside the frame unless the franchise chose a separate step at the end', () => {
+    expect(boomerangMode(DEFAULT_SETTINGS)).toBe('frame');
+    expect(boomerangMode(applyRemote(DEFAULT_SETTINGS, {}, null))).toBe('frame');
+    expect(boomerangMode(applyRemote(DEFAULT_SETTINGS, { share: { boomerang: 'end' } }, null))).toBe('end');
+    // A value this version does not know falls back to the frame.
+    expect(boomerangMode(applyRemote(DEFAULT_SETTINGS, { share: { boomerang: 'layar penuh' } }, null))).toBe('frame');
+    expect(boomerangMode(applyRemote(DEFAULT_SETTINGS, { share: { boomerang: 7 } }, null))).toBe('frame');
+    const end = applyRemote(DEFAULT_SETTINGS, { share: { boomerang: 'end' } }, null);
+    expect(boomerangMode(applyRemote(end, { share: { boomerang: 'frame' } }, null))).toBe('frame');
   });
 });
 

@@ -1,6 +1,8 @@
 import { describe, expect, it } from 'vitest';
 import { includesVideos } from '../src/lib/settings';
-import { boomerangOrder, boomerangSize, BOOMERANG } from '../src/lib/video/boomerang';
+import { boomerangOrder, boomerangSize, BOOMERANG, PHOTO_BURST } from '../src/lib/video/boomerang';
+import { codecFor } from '../src/lib/video/encode';
+import { blocksUp, FRAME_BOOMERANG, frameBoomerangBitrate, frameBoomerangWidths, photoOverlay } from '../src/lib/video/frameBoomerang';
 import { writeMp4, type Mp4Sample } from '../src/lib/video/mp4';
 import { slidePlan, slidesAt, SLIDESHOW } from '../src/lib/video/slideshow';
 
@@ -161,5 +163,70 @@ describe('prices', () => {
     expect(includesVideos(base)).toBe(true);
     expect(includesVideos({ ...base, videos: true })).toBe(true);
     expect(includesVideos({ ...base, videos: false })).toBe(false);
+  });
+});
+
+describe('the boomerang inside the frame', () => {
+  /** One RGBA pixel of the receipt drawn with black photos, and the same pixel with white photos. */
+  const overlayOf = (black: number[], white: number[]) => [...photoOverlay(black, white)];
+
+  it('keeps the frame where it covers the photos and lets the photos show where it does not', () => {
+    // Frame artwork (a red sticker over the photo): the same in both drawings.
+    expect(overlayOf([200, 30, 40, 255], [200, 30, 40, 255])).toEqual([200, 30, 40, 255]);
+    // The photo itself: black in one drawing, white in the other.
+    expect(overlayOf([0, 0, 0, 255], [255, 255, 255, 255])[3]).toBe(0);
+  });
+
+  it('lays a half see-through design over the photo with its own colour', () => {
+    // A blue design at half strength over the photo: 0,0,128 over black, 128,128,255 over white.
+    const [r, g, b, a] = overlayOf([0, 0, 128, 255], [128, 128, 255, 255]);
+    expect(a).toBeGreaterThan(120);
+    expect(a).toBeLessThan(135);
+    // Drawn over a black photo it gives back the first drawing, over a white one the second.
+    const over = (photo: number) => [r, g, b].map((c) => Math.round((c * a) / 255 + (photo * (255 - a)) / 255));
+    over(0).forEach((c, i) => expect(Math.abs(c - [0, 0, 128][i])).toBeLessThanOrEqual(2));
+    over(255).forEach((c, i) => expect(Math.abs(c - [128, 128, 255][i])).toBeLessThanOrEqual(2));
+  });
+
+  it('picks a width that keeps a tall receipt within the tallest video, in whole blocks', () => {
+    // A receipt 1400 pixels tall at 720 wide fits as it is.
+    expect(frameBoomerangWidths(720, 1400)[0]).toBe(720);
+    // One 2880 tall would be 1920 tall at 480 wide.
+    expect(frameBoomerangWidths(720, 2880)[0]).toBe(480);
+    for (const width of frameBoomerangWidths(720, 2000)) {
+      expect(width % 16).toBe(0);
+      expect((width * 2000) / 720).toBeLessThanOrEqual(FRAME_BOOMERANG.maxHeight);
+      expect(width).toBeGreaterThanOrEqual(FRAME_BOOMERANG.minWidth);
+    }
+    // Narrower and narrower, for tablets whose encoder refuses the first size.
+    const widths = frameBoomerangWidths(720, 1400);
+    expect(widths.length).toBeGreaterThan(2);
+    widths.slice(1).forEach((width, i) => expect(width).toBeLessThan(widths[i]));
+  });
+
+  it('pads the height to whole blocks and gives larger videos more bits, within limits', () => {
+    expect(blocksUp(1383)).toBe(1392);
+    expect(blocksUp(1392)).toBe(1392);
+    expect(frameBoomerangBitrate(720, 1392)).toBeGreaterThan(frameBoomerangBitrate(480, 1200));
+    expect(frameBoomerangBitrate(16, 16)).toBe(1_500_000);
+    expect(frameBoomerangBitrate(4000, 4000)).toBe(6_000_000);
+  });
+
+  it('keeps each photo burst short enough to end while the photo is still on screen', () => {
+    // The photo stays on screen 1.3 seconds after the shutter.
+    expect(PHOTO_BURST.frames * PHOTO_BURST.intervalMs - PHOTO_BURST.leadMs).toBeLessThan(1300);
+    expect(PHOTO_BURST.leadMs).toBeLessThan(1000);
+  });
+});
+
+describe('the H.264 level', () => {
+  it('stays as chosen for pictures it covers, and is raised for a tall receipt', () => {
+    expect(codecFor('avc1.42e01f', 720, 1280, 25)).toBe('avc1.42e01f');
+    expect(codecFor('avc1.42e01f', 960, 720, 25)).toBe('avc1.42e01f');
+    // 720 × 1392 is 3915 blocks, beyond level 3.1's 3600.
+    expect(codecFor('avc1.42e01f', 720, 1392, 20)).toBe('avc1.42e020');
+    expect(codecFor('avc1.4d401f', 720, 1920, 20)).toBe('avc1.4d4028');
+    // A level already high enough is kept.
+    expect(codecFor('avc1.640028', 720, 1392, 20)).toBe('avc1.640028');
   });
 });

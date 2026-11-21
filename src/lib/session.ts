@@ -5,6 +5,8 @@ import { composeReceipt, loadImage, loadReceiptFonts, receiptToBits } from './re
 import { cropWindow, type Crop } from './receipt/crop';
 import type { FrameDef } from './receipt/frames';
 import { SHARE_DAYS, shareUrl } from './cloud/shared';
+import { canEncode } from './video/encode';
+import { blocksUp, FRAME_BOOMERANG, frameBoomerangBitrate, frameBoomerangWidths, makeFrameBoomerang } from './video/frameBoomerang';
 import { makeSlideshow } from './video/slideshow';
 import type { PackageDef, Settings } from './settings';
 
@@ -14,6 +16,11 @@ export interface Shot {
   url: string;
   /** How the guest zoomed and moved it in its slot; taking the photo again starts without. */
   crop?: Crop;
+  /**
+   * The camera around the moment this photo was taken, for the boomerang inside the frame: a burst
+   * of small pictures, not mirrored (the photo itself may be). null when it failed.
+   */
+  burst?: Promise<ImageBitmap[] | null>;
 }
 
 /** A guest's session while it is in progress. */
@@ -75,13 +82,16 @@ export async function renderDraft(draft: Draft, sessionNo: number, settings: Set
   return receiptToBits(composed, settings.printer.raster, draft.style);
 }
 
-/** The colour copy, as it can be downloaded: same frame and texts, without the download QR code. */
-async function composeColour(draft: Draft, sessionNo: number, settings: Settings, width: number) {
+/**
+ * The colour copy, as it can be downloaded: same frame and texts, without the download QR code.
+ * `photos` stands in for the guest's photos when given.
+ */
+async function composeColour(draft: Draft, sessionNo: number, settings: Settings, width: number, photos = photosOf(draft)) {
   await loadReceiptFonts();
   return composeReceipt({
     width,
     frame: draft.frame,
-    ...photosOf(draft),
+    ...photos,
     texts: settings.receipt,
     quote: draft.quote,
     when: draft.when,
@@ -185,4 +195,46 @@ export async function renderSlideshow(draft: Draft, sessionNo: number, settings:
     when: draft.when,
     footer: settings.platform.receiptLine,
   });
+}
+
+/**
+ * The boomerang inside the frame: the colour receipt with every photo moving,
+ * from the bursts kept while the photos were taken. null when there are no
+ * bursts, or when this tablet cannot encode a video of any useful size. The
+ * bursts are released afterwards either way.
+ */
+export async function renderFrameBoomerang(draft: Draft, sessionNo: number, settings: Settings): Promise<Blob | null> {
+  const bursts = await Promise.all(draft.shots.map((shot) => shot?.burst ?? Promise.resolve(null)));
+  try {
+    if (!bursts.some((burst) => burst && burst.length > 0)) return null;
+    // Solid stand-ins for the photos, one canvas each: the page tells the photos apart by which canvas they are.
+    const solid = (colour: string) => {
+      const photos = draft.shots.map((shot) => {
+        const canvas = document.createElement('canvas');
+        canvas.width = shot?.canvas.width ?? 4;
+        canvas.height = shot?.canvas.height ?? 3;
+        const ctx = canvas.getContext('2d')!;
+        ctx.fillStyle = colour;
+        ctx.fillRect(0, 0, canvas.width, canvas.height);
+        return canvas;
+      });
+      return { photos, crops: draft.shots.map((shot) => shot?.crop) };
+    };
+    const black = solid('#000');
+    const first = await composeColour(draft, sessionNo, settings, FRAME_BOOMERANG.width, black);
+    for (const width of frameBoomerangWidths(FRAME_BOOMERANG.width, first.canvas.height)) {
+      const dark = width === FRAME_BOOMERANG.width ? first : await composeColour(draft, sessionNo, settings, width, black);
+      const height = blocksUp(dark.canvas.height);
+      if (!(await canEncode(width, height, FRAME_BOOMERANG.fps, frameBoomerangBitrate(width, height)))) continue;
+      const light = await composeColour(draft, sessionNo, settings, width, solid('#fff'));
+      const slots = draft.shots.flatMap((shot, i) => {
+        const rect = dark.slotRects[i];
+        return shot && rect ? [{ rect, pictures: bursts[i], still: shot.canvas, crop: shot.crop }] : [];
+      });
+      return await makeFrameBoomerang({ black: dark.canvas, white: light.canvas, slots, mirror: settings.session.mirrorPhoto });
+    }
+    return null;
+  } finally {
+    bursts.forEach((burst) => burst?.forEach((picture) => picture.close()));
+  }
 }

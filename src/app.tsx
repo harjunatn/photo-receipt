@@ -6,11 +6,12 @@ import { useIdle } from './lib/kiosk';
 import type { PayMethod } from './lib/log';
 import { activeFrames, customFramesStore, type FrameDef } from './lib/receipt/frames';
 import type { Draft, Shot } from './lib/session';
-import { includesVideos, useSettings, type PackageDef } from './lib/settings';
+import { boomerangMode, includesVideos, useSettings, type PackageDef } from './lib/settings';
 import { sound } from './lib/sound';
 import { useStore } from './lib/store';
 import { applyUpdate, updateReady } from './lib/update';
 import { pick } from './lib/util';
+import { releaseBurst } from './lib/video/boomerang';
 import { checkVideoSupport, videoSupport } from './lib/video/encode';
 import { Attract } from './screens/Attract';
 import { Capture } from './screens/Capture';
@@ -65,6 +66,12 @@ export function App() {
     setFrame(null);
     setDraft(null);
     setScreen('attract');
+  };
+
+  /** Ends a session that will not be printed, freeing the boomerang bursts it holds. */
+  const discard = () => {
+    draft?.shots.forEach((shot) => releaseBurst(shot?.burst));
+    reset();
   };
 
   // A guest who walks away mid-edit has already paid and posed: print what
@@ -135,8 +142,11 @@ export function App() {
           shots={draft.shots}
           targets={targets}
           retake={allTaken}
-          boomerang={draft.videos ? { caption: [title, settings.platform.receiptLine.trim()].filter(Boolean).join(' · ') } : null}
-          onCancel={() => (allTaken ? setScreen('edit') : reset())}
+          boomerang={
+            draft.videos && boomerangMode(settings) === 'end' ? { caption: [title, settings.platform.receiptLine.trim()].filter(Boolean).join(' · ') } : null
+          }
+          bursts={draft.videos && boomerangMode(settings) === 'frame'}
+          onCancel={() => (allTaken ? setScreen('edit') : discard())}
           onDone={(shots: (Shot | null)[], clip?: Promise<Blob | null>) => {
             setDraft({ ...draft, shots, boomerang: clip ?? draft.boomerang });
             setScreen('edit');
@@ -154,7 +164,7 @@ export function App() {
             setScreen('capture');
           }}
           onPrint={() => setScreen('result')}
-          onCancel={reset}
+          onCancel={discard}
         />
       )}
       {screen === 'result' && draft && <Result draft={draft} onFinish={reset} />}

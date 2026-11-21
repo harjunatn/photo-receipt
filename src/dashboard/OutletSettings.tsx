@@ -1,7 +1,7 @@
 import { useEffect, useState } from 'preact/hooks';
 import { Check, ImageField, NumberField, Segmented, TextField } from '../admin/fields';
 import { completeOutlet, outletFromSettings, SHARE_DAYS, type OutletConfig } from '../lib/cloud/shared';
-import { DEFAULT_SETTINGS, formatRupiah, includesVideos } from '../lib/settings';
+import { boomerangMode, DEFAULT_SETTINGS, formatRupiah, includesVideos } from '../lib/settings';
 import { toast } from '../ui/components';
 import type { PageProps } from './Dashboard';
 import { DokuSetup } from './DokuSetup';
@@ -165,6 +165,20 @@ export function OutletSettings({ api }: PageProps) {
             checked={draft.share.printQr}
             onChange={(v) => edit((d) => void (d.share.printQr = v))}
           />
+          <Segmented
+            label="Boomerang"
+            value={boomerangMode(draft)}
+            options={[
+              { value: 'frame', label: 'Di dalam frame' },
+              { value: 'end', label: 'Sesi terpisah di akhir' },
+            ]}
+            hint={
+              boomerangMode(draft) === 'frame'
+                ? 'Tanpa langkah tambahan: kamera diam-diam merekam sebentar di sekitar setiap jepretan, lalu boomerang-nya diputar di dalam frame pilihan tamu, seperti struknya tapi fotonya bergerak.'
+                : 'Setelah foto terakhir ada satu langkah boomerang: hitung mundur, lalu kamera merekam 1,5 detik layar penuh selagi tamu bergerak.'
+            }
+            onChange={(v) => edit((d) => void (d.share.boomerang = v))}
+          />
           {api.superadmin && (
             <p class="hint">
               Fotonya disimpan di Cloudflare R2 milik platform (disetel sekali di Supabase, lihat README). Kalau R2 belum siap, tablet tetap
@@ -212,7 +226,7 @@ export function OutletSettings({ api }: PageProps) {
                 />
                 <Check
                   label="Termasuk boomerang & video slideshow"
-                  hint="Setelah foto terakhir, tamu merekam boomerang 1,5 detik. Kedua video diunduh lewat kode QR, bersama fotonya."
+                  hint="Kedua video diunduh lewat kode QR, bersama fotonya. Cara boomerang dibuat dipilih di bagian Unduh foto lewat QR."
                   checked={includesVideos(pkg)}
                   onChange={(v) => edit((d) => void (d.packages[index].videos = v))}
                 />

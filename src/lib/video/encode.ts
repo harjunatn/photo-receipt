@@ -16,6 +16,27 @@ const LARGEST = { width: 720, height: 1280, framerate: 25 };
 /** Units per second of the frame durations in the file. */
 const TIMESCALE = 90_000;
 
+/** H.264 levels by the largest picture (in 16×16 blocks) and the blocks per second each allows. */
+const LEVELS = [
+  { level: 0x1f, frame: 3600, rate: 108_000 }, // 3.1
+  { level: 0x20, frame: 5120, rate: 216_000 }, // 3.2
+  { level: 0x28, frame: 8192, rate: 245_760 }, // 4.0
+  { level: 0x32, frame: 22_080, rate: 589_824 }, // 5.0
+];
+
+/**
+ * The codec string with its level raised as far as a picture of this size
+ * needs: a tall receipt is more than level 3.1 allows. A level already high
+ * enough is kept.
+ */
+export function codecFor(codec: string, width: number, height: number, fps: number): string {
+  const blocks = Math.ceil(width / 16) * Math.ceil(height / 16);
+  const need = LEVELS.find((l) => blocks <= l.frame && blocks * fps <= l.rate)?.level ?? 0x33;
+  const current = parseInt(codec.slice(-2), 16);
+  if (!Number.isNaN(current) && current >= need) return codec;
+  return codec.slice(0, -2) + need.toString(16).padStart(2, '0');
+}
+
 /** null until checked; then whether this tablet can make videos at all. */
 export const videoSupport = createStore<boolean | null>(null);
 
@@ -43,6 +64,18 @@ export async function checkVideoSupport(): Promise<boolean> {
   const ok = (await codec().catch(() => null)) !== null;
   videoSupport.set(ok);
   return ok;
+}
+
+/** Whether this tablet can encode a video of this size; some encoders refuse very tall pictures. */
+export async function canEncode(width: number, height: number, fps: number, bitrate: number): Promise<boolean> {
+  const use = await codec().catch(() => null);
+  if (!use) return false;
+  try {
+    const { supported } = await VideoEncoder.isConfigSupported({ codec: codecFor(use, width, height, fps), width, height, framerate: fps, bitrate, avc: { format: 'avc' } });
+    return supported === true;
+  } catch {
+    return false;
+  }
 }
 
 export interface VideoJob {
@@ -85,7 +118,7 @@ export async function encodeVideo(job: VideoJob): Promise<Blob> {
     },
   });
   try {
-    encoder.configure({ codec: use, width: job.width, height: job.height, framerate: job.fps, bitrate: job.bitrate, avc: { format: 'avc' } });
+    encoder.configure({ codec: codecFor(use, job.width, job.height, job.fps), width: job.width, height: job.height, framerate: job.fps, bitrate: job.bitrate, avc: { format: 'avc' } });
     for (let i = 0; i < job.frames; i++) {
       job.draw(ctx, i);
       const frame = new VideoFrame(canvas, { timestamp: i * frameUs, duration: frameUs });

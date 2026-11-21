@@ -33,27 +33,61 @@ export function boomerangSize(width: number, height: number, longSide = BOOMERAN
 }
 
 /**
+ * The burst kept around every photo for the boomerang inside the frame: it starts
+ * `leadMs` before the shutter and runs on while the photo is shown, so it catches
+ * the guests holding their pose and then letting go. Smaller than the separate
+ * boomerang, since several are held at once and each fills only a slot.
+ */
+export const PHOTO_BURST = {
+  frames: 16,
+  /** 1.5 seconds in all, ending while the photo just taken is still on screen. */
+  intervalMs: 100,
+  leadMs: 500,
+  longSide: 640,
+};
+
+export interface BurstOptions {
+  frames: number;
+  intervalMs: number;
+  longSide: number;
+}
+
+/**
  * Keeps `frames` pictures from the live camera, `intervalMs` apart, already
  * scaled down. `onProgress` gets 0…1 as the burst goes.
  */
-export async function recordBurst(video: HTMLVideoElement, onProgress?: (done: number) => void): Promise<ImageBitmap[]> {
+export async function recordBurst(
+  video: HTMLVideoElement,
+  onProgress?: (done: number) => void,
+  options: BurstOptions = BOOMERANG,
+): Promise<ImageBitmap[]> {
   if (!video.videoWidth || !video.videoHeight) throw new Error('Kamera belum siap.');
-  const size = boomerangSize(video.videoWidth, video.videoHeight);
+  const size = boomerangSize(video.videoWidth, video.videoHeight, options.longSide);
   const pictures: ImageBitmap[] = [];
   const started = performance.now();
   try {
-    for (let i = 0; i < BOOMERANG.frames; i++) {
-      const due = started + i * BOOMERANG.intervalMs;
+    for (let i = 0; i < options.frames; i++) {
+      const due = started + i * options.intervalMs;
       const wait = due - performance.now();
       if (wait > 0) await new Promise((resolve) => setTimeout(resolve, wait));
       pictures.push(await createImageBitmap(video, { resizeWidth: size.width, resizeHeight: size.height, resizeQuality: 'medium' }));
-      onProgress?.((i + 1) / BOOMERANG.frames);
+      onProgress?.((i + 1) / options.frames);
     }
   } catch (cause) {
     pictures.forEach((picture) => picture.close());
     throw cause;
   }
   return pictures;
+}
+
+/** Starts a photo's burst without waiting for it; a burst that fails is simply missing (null). */
+export function recordPhotoBurst(video: HTMLVideoElement): Promise<ImageBitmap[] | null> {
+  return recordBurst(video, undefined, PHOTO_BURST).catch(() => null);
+}
+
+/** Frees the pictures of a burst that will not be used, once it has finished. */
+export function releaseBurst(burst: Promise<ImageBitmap[] | null> | undefined): void {
+  void burst?.then((pictures) => pictures?.forEach((picture) => picture.close()));
 }
 
 /**

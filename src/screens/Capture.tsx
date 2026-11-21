@@ -6,7 +6,7 @@ import type { Shot } from '../lib/session';
 import { useSettings } from '../lib/settings';
 import { sound } from '../lib/sound';
 import { sleep } from '../lib/util';
-import { makeBoomerang, recordBurst } from '../lib/video/boomerang';
+import { makeBoomerang, PHOTO_BURST, recordBurst, recordPhotoBurst, releaseBurst } from '../lib/video/boomerang';
 import { Overlay, Steps } from '../ui/components';
 
 interface Props {
@@ -22,6 +22,11 @@ interface Props {
    * small line at its bottom. Retakes do not record it again.
    */
   boomerang: { caption: string } | null;
+  /**
+   * True when every photo (retakes too) also keeps a short burst of the camera around it, for the
+   * boomerang inside the frame. Nothing on screen tells the guests: it adds no time.
+   */
+  bursts: boolean;
   /** `clip` is the boomerang being made, when one was recorded. */
   onDone: (shots: (Shot | null)[], clip?: Promise<Blob | null>) => void;
   onCancel: () => void;
@@ -40,7 +45,7 @@ const BOOMERANG_COUNT = 3;
 const WARN_SECONDS = 15;
 
 /** Step 3: live preview and a countdown before every photo. */
-export function Capture({ frame, shots: initialShots, targets, retake, boomerang, onDone, onCancel }: Props) {
+export function Capture({ frame, shots: initialShots, targets, retake, boomerang, bursts, onDone, onCancel }: Props) {
   const { session } = useSettings();
   const video = useRef<HTMLVideoElement>(null);
   const unmounted = useRef(false);
@@ -98,16 +103,28 @@ export function Capture({ frame, shots: initialShots, targets, retake, boomerang
   const shoot = async () => {
     setPhase('shooting');
     const result = shots.slice();
+    // Photos taken again: their bursts are freed once the new ones are handed over.
+    const replaced: Shot[] = [];
     for (const index of targets) {
       setCurrent(index);
+      let burst: Promise<ImageBitmap[] | null> | undefined;
       for (let n = session.countdownSec; n >= 1; n--) {
         setCount(n);
         sound.tick();
         pokeIdle();
-        await sleep(1000);
+        if (n === 1 && bursts && video.current) {
+          // The burst starts a moment before the shutter, while the guests hold their pose.
+          await sleep(1000 - PHOTO_BURST.leadMs);
+          if (unmounted.current) return;
+          burst = recordPhotoBurst(video.current);
+          await sleep(PHOTO_BURST.leadMs);
+        } else {
+          await sleep(1000);
+        }
         if (unmounted.current) return;
       }
       setCount(null);
+      if (bursts && !burst && video.current) burst = recordPhotoBurst(video.current);
 
       let canvas: HTMLCanvasElement;
       try {
@@ -119,7 +136,9 @@ export function Capture({ frame, shots: initialShots, targets, retake, boomerang
       }
       sound.shutter();
       setFlash((n) => n + 1);
-      const shot: Shot = { canvas, url: canvas.toDataURL('image/jpeg', 0.82) };
+      const shot: Shot = { canvas, url: canvas.toDataURL('image/jpeg', 0.82), burst };
+      const before = result[index];
+      if (before) replaced.push(before);
       result[index] = shot;
       setShots(result.slice());
       // Hold the photo on screen for a moment so guests see what was taken.
@@ -131,6 +150,7 @@ export function Capture({ frame, shots: initialShots, targets, retake, boomerang
     }
     const made = withBoomerang ? await shootBoomerang() : undefined;
     if (unmounted.current) return;
+    replaced.forEach((old) => releaseBurst(old.burst));
     onDone(result, made?.clip);
   };
 
