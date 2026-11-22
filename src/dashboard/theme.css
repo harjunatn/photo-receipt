@@ -1,0 +1,968 @@
+/*
+ * The owner's dashboard in "dark green tech": deep green-black surfaces, a teal
+ * accent with a soft glow, Space Grotesk for headlines and numbers, numbered
+ * cards. Only the dashboard gets it (html.dashboard); the booth's own staff
+ * screens and the guest download page, which share dashboard.css, keep their look.
+ */
+
+/* Only the Latin part of each font is bundled, like the booth's own fonts. */
+@font-face {
+  font-family: 'Space Grotesk Variable';
+  font-style: normal;
+  font-display: swap;
+  font-weight: 300 700;
+  src: url('../../node_modules/@fontsource-variable/space-grotesk/files/space-grotesk-latin-wght-normal.woff2') format('woff2-variations');
+}
+
+@font-face {
+  font-family: 'JetBrains Mono Variable';
+  font-style: normal;
+  font-display: swap;
+  font-weight: 100 800;
+  src: url('../../node_modules/@fontsource-variable/jetbrains-mono/files/jetbrains-mono-latin-wght-normal.woff2') format('woff2-variations');
+}
+
+html.dashboard {
+  color-scheme: dark;
+
+  --page: #0c1210;
+  --soft: #16201c;
+  --cream: #0e1513;
+  --strong: #1a2420;
+  --card: #121a17;
+  --ink: #e9f0ec;
+  --body: #a7b4ae;
+  --ink-2: #93a19a;
+  --line: #222d28;
+  --accent: #1ed6c0;
+
+  --ok: #4fead6;
+  --ok-soft: rgb(30 214 192 / 0.14);
+  --warn: #f2c94c;
+  --warn-soft: rgb(242 201 76 / 0.14);
+  --err: #ffa472;
+  --err-soft: rgb(255 138 76 / 0.14);
+
+  --radius: 14px;
+  --radius-md: 14px;
+  --radius-sm: 10px;
+  --display: 'Space Grotesk Variable', 'Inter Variable', system-ui, sans-serif;
+  --mono: 'JetBrains Mono Variable', ui-monospace, Menlo, Consolas, monospace;
+
+  /* Only the dashboard's own. */
+  --d-side: #0e1513;
+  --d-side-line: #1f2a25;
+  --d-control: #101815;
+  --d-control-line: #26332d;
+  --d-button-line: #2c3a34;
+  --d-input: #0d1412;
+  --d-input-line: #2a3631;
+  --d-row-line: #1c2622;
+  --d-row-hover: #141d19;
+  --d-text: #d5ded9;
+  --d-text-2: #b7c3bd;
+  --d-dot: #3a4943;
+  --d-danger: #ff9a7a;
+  --d-ink-on-accent: #04140f;
+  --d-gradient: linear-gradient(90deg, #1ed6c0, #14e08f);
+  --d-ring: 0 0 0 3px rgb(30 214 192 / 0.18);
+}
+
+html.dashboard body {
+  background: var(--page);
+  color: var(--ink);
+}
+
+html.dashboard ::selection {
+  background: rgb(30 214 192 / 0.3);
+}
+
+/* ---------- Shell: sidebar, glow, top bar ---------- */
+
+html.dashboard .dash {
+  grid-template-columns: 260px minmax(0, 1fr);
+  /* The teal glow at the top right of the content. The sidebar is opaque, so it shows only beside it. */
+  background:
+    radial-gradient(900px 380px at 85% -80px, rgb(30 214 192 / 0.16), transparent 70%) no-repeat,
+    var(--page);
+}
+
+html.dashboard .dash-nav {
+  gap: 32px;
+  padding: 32px 20px;
+  border-right: 1px solid var(--d-side-line);
+  background: var(--d-side);
+  overflow-y: auto;
+  scrollbar-width: none;
+}
+
+html.dashboard .dash-brand {
+  gap: 6px;
+}
+
+html.dashboard .dash-brand b {
+  font-family: var(--display);
+  font-size: 30px;
+  font-weight: 600;
+  letter-spacing: -0.03em;
+  color: #fff;
+}
+
+html.dashboard .dash-brand .pill {
+  color: var(--ink-2);
+  font-size: 11px;
+  letter-spacing: 0.26em;
+}
+
+html.dashboard .dash-links {
+  gap: 4px;
+}
+
+html.dashboard .dash-group {
+  margin: 20px 12px 8px;
+  color: var(--ink-2);
+  font-weight: 500;
+  letter-spacing: 0.18em;
+}
+
+html.dashboard .dash-group:first-child {
+  margin-top: 0;
+}
+
+html.dashboard .dash-links button {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  min-height: 44px;
+  padding: 0 12px;
+  border: 1px solid transparent;
+  border-radius: 10px;
+  color: var(--d-text-2);
+  font-weight: 400;
+  transition:
+    background 0.15s,
+    color 0.15s;
+}
+
+/* The dot in front of each page; it lights up on the open one. */
+html.dashboard .dash-links button::before {
+  content: '';
+  flex: none;
+  width: 6px;
+  height: 6px;
+  border-radius: 3px;
+  background: var(--d-dot);
+  transition:
+    background 0.15s,
+    box-shadow 0.15s;
+}
+
+html.dashboard .dash-links button:hover {
+  background: var(--card);
+  color: #fff;
+}
+
+html.dashboard .dash-links button.on {
+  border-color: var(--d-control-line);
+  background: var(--soft);
+  color: #fff;
+}
+
+html.dashboard .dash-links button.on::before {
+  background: var(--accent);
+  box-shadow: 0 0 0 4px rgb(30 214 192 / 0.15);
+}
+
+html.dashboard .dash-main {
+  gap: 20px;
+  max-width: 1240px;
+  padding: 28px clamp(16px, 3.4vw, 44px) 72px;
+}
+
+html.dashboard .dash-top {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+}
+
+/* Where you are: the franchise (or "Platform"), then the page. */
+html.dashboard .dash-crumb {
+  display: inline-flex;
+  min-width: 0;
+  border: 1px solid var(--d-control-line);
+  border-radius: 10px;
+  background: var(--d-control);
+  font-size: 14px;
+}
+
+html.dashboard .dash-crumb span {
+  display: flex;
+  align-items: center;
+  height: 42px;
+  padding: 0 16px;
+  overflow: hidden;
+  color: var(--d-text-2);
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+html.dashboard .dash-crumb span + span {
+  border-left: 1px solid var(--d-control-line);
+  color: #fff;
+}
+
+html.dashboard .dash-account {
+  position: relative;
+  flex: none;
+}
+
+html.dashboard .dash-avatar {
+  display: grid;
+  place-items: center;
+  width: 44px;
+  height: 44px;
+  padding: 0;
+  border: 0;
+  border-radius: 10px;
+  background: var(--accent);
+  color: var(--d-ink-on-accent);
+  font-weight: 600;
+  font-size: 16px;
+}
+
+html.dashboard .dash-avatar:focus-visible {
+  outline: none;
+  box-shadow: var(--d-ring);
+}
+
+html.dashboard .dash-account-menu {
+  position: absolute;
+  top: calc(100% + 8px);
+  right: 0;
+  z-index: 20;
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 4px;
+  width: max-content;
+  max-width: min(320px, 80vw);
+  padding: 16px;
+  border: 1px solid var(--d-control-line);
+  border-radius: 12px;
+  background: var(--card);
+  box-shadow: 0 18px 40px rgb(0 0 0 / 0.45);
+  overflow-wrap: anywhere;
+  animation: fade 0.15s;
+}
+
+html.dashboard .dash-account-menu .btn {
+  margin-top: 10px;
+}
+
+/* ---------- Page heading ---------- */
+
+html.dashboard .dash-head {
+  align-items: flex-end;
+  gap: 24px;
+  margin: 36px 0 16px;
+}
+
+html.dashboard .dash-head > div:first-child {
+  gap: 14px;
+}
+
+html.dashboard .dash-head h1 {
+  font-family: var(--display);
+  font-size: clamp(40px, 5vw, 60px);
+  font-weight: 500;
+  letter-spacing: -0.035em;
+  line-height: 1.05;
+  background: linear-gradient(90deg, #fff 35%, #5cf0c9);
+  -webkit-background-clip: text;
+  background-clip: text;
+  color: transparent;
+}
+
+html.dashboard .dash-head .hint {
+  max-width: 760px;
+  color: var(--body);
+  font-size: 16px;
+  line-height: 1.55;
+}
+
+html.dashboard .dash-head .row {
+  gap: 8px;
+}
+
+html.dashboard .heading {
+  font-family: var(--display);
+  font-weight: 500;
+  letter-spacing: -0.02em;
+}
+
+html.dashboard .dash-sub {
+  margin: 16px 0 -4px;
+  font-family: var(--display);
+  font-size: 26px;
+  font-weight: 500;
+  letter-spacing: -0.02em;
+  color: #fff;
+}
+
+/* ---------- Cards, numbered ---------- */
+
+html.dashboard .dash-main {
+  counter-reset: card;
+}
+
+html.dashboard .panel {
+  gap: 18px;
+  padding: 28px;
+  border: 1px solid var(--line);
+  border-radius: 14px;
+  background: var(--card);
+}
+
+html.dashboard .panel.busy {
+  opacity: 0.6;
+}
+
+/* A card's heading is a small label with the card's number in front: "01 OUTLET". */
+html.dashboard .panel h2 {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  color: var(--body);
+  font-size: 12px;
+  font-weight: 500;
+  letter-spacing: 0.14em;
+  line-height: 1.4;
+  text-transform: uppercase;
+}
+
+html.dashboard .dash-main .panel > h2::before,
+html.dashboard .dash-main .panel > .row:first-child > h2::before {
+  counter-increment: card;
+}
+
+/*
+ * A tile counts on itself: it is a size container (for its number's font size),
+ * and a count made inside one would not reach the cards after it.
+ */
+html.dashboard .dash-main .tile {
+  counter-increment: card;
+}
+
+html.dashboard .dash-main .panel > h2::before,
+html.dashboard .dash-main .panel > .row:first-child > h2::before,
+html.dashboard .dash-main .tile > span:first-child::before {
+  content: counter(card, decimal-leading-zero);
+  flex: none;
+  padding: 3px 6px;
+  border-radius: 4px;
+  background: var(--ink);
+  color: var(--page);
+  font-size: 11px;
+  font-weight: 600;
+  letter-spacing: 0;
+  line-height: 1.3;
+}
+
+/* A box inside a card: flat, darker, with a plain heading and no number. */
+html.dashboard .panel .panel {
+  gap: 14px;
+  padding: 22px;
+  border: 1px solid var(--line);
+  border-radius: 12px;
+  background: var(--cream);
+}
+
+html.dashboard .dash-main .panel .panel > h2::before,
+html.dashboard .dash-main .panel .panel > .row:first-child > h2::before {
+  counter-increment: none;
+  content: none;
+}
+
+html.dashboard .panel .panel h2 {
+  color: var(--d-text);
+  font-size: 15px;
+  letter-spacing: 0;
+  text-transform: none;
+}
+
+/* Cards two to a row on a laptop, like the design; one on a phone. */
+html.dashboard .admin-grid {
+  grid-template-columns: repeat(auto-fit, minmax(min(100%, 420px), 1fr));
+  gap: 20px;
+}
+
+html.dashboard .hint {
+  color: var(--ink-2);
+  line-height: 1.55;
+}
+
+html.dashboard .hint b {
+  color: #fff;
+  font-weight: 500;
+}
+
+html.dashboard .pill {
+  color: var(--ink-2);
+}
+
+/* ---------- Buttons and links ---------- */
+
+html.dashboard .btn,
+html.dashboard .dash .btn.small,
+html.dashboard .dash-gate .btn.small {
+  min-height: 44px;
+  padding: 0 18px;
+  border: 1px solid var(--d-button-line);
+  border-radius: 10px;
+  background: var(--d-control);
+  color: var(--ink);
+  font-weight: 500;
+  font-size: 14px;
+  white-space: nowrap;
+  transition:
+    border-color 0.15s,
+    background 0.15s,
+    transform 0.12s;
+}
+
+html.dashboard .btn:hover:not(:disabled) {
+  border-color: var(--d-dot);
+  background: var(--soft);
+}
+
+html.dashboard .btn:focus-visible,
+html.dashboard .chip:focus-visible,
+html.dashboard .icon-btn:focus-visible,
+html.dashboard .dash-links button:focus-visible {
+  outline: none;
+  box-shadow: var(--d-ring);
+}
+
+html.dashboard .btn.primary,
+html.dashboard .dash .btn.small.primary,
+html.dashboard .dash-gate .btn.small.primary {
+  border-color: transparent;
+  background: var(--d-gradient);
+  color: var(--d-ink-on-accent);
+  font-weight: 600;
+}
+
+html.dashboard .btn.primary:hover:not(:disabled) {
+  border-color: transparent;
+  background: var(--d-gradient);
+  filter: brightness(1.08);
+}
+
+html.dashboard .btn.danger,
+html.dashboard .dash .btn.small.danger {
+  border-color: transparent;
+  background: var(--err-soft);
+  color: var(--d-danger);
+}
+
+html.dashboard .btn.danger:hover:not(:disabled) {
+  border-color: transparent;
+  background: rgb(255 138 76 / 0.22);
+}
+
+html.dashboard .link {
+  color: var(--accent);
+  font-weight: 500;
+  text-decoration: none;
+}
+
+html.dashboard .link:hover {
+  color: #6ff0df;
+  text-decoration: underline;
+}
+
+html.dashboard .dash .link.danger {
+  color: var(--d-danger);
+}
+
+html.dashboard a {
+  color: var(--accent);
+}
+
+html.dashboard a.btn {
+  color: var(--ink);
+}
+
+html.dashboard a.btn.primary {
+  color: var(--d-ink-on-accent);
+}
+
+/* ---------- Filter pills ---------- */
+
+/* Left-aligned on every screen; the booth centres its own pills on an upright tablet. */
+html.dashboard .chips {
+  justify-content: flex-start;
+}
+
+html.dashboard .chip,
+html.dashboard .chips.tight .chip {
+  min-height: 44px;
+  padding: 0 16px;
+  border: 1px solid var(--d-control-line);
+  border-radius: 10px;
+  background: transparent;
+  color: var(--d-text-2);
+  font-size: 14px;
+  font-weight: 500;
+}
+
+html.dashboard .chip:hover {
+  color: #fff;
+}
+
+html.dashboard .chip.on,
+html.dashboard .chips.tight .chip.on {
+  border-color: var(--ink);
+  background: var(--ink);
+  color: var(--page);
+}
+
+/* ---------- Forms ---------- */
+
+html.dashboard .field {
+  gap: 8px;
+}
+
+html.dashboard .field > span {
+  color: var(--d-text);
+  font-weight: 500;
+}
+
+html.dashboard .field input[type='text'],
+html.dashboard .field input[type='number'],
+html.dashboard .field input[type='url'],
+html.dashboard .field select,
+html.dashboard .field textarea,
+html.dashboard .dash .field input[type='email'],
+html.dashboard .dash .field input[type='password'],
+html.dashboard .dash .field input[type='date'],
+html.dashboard .dash .field input[type='search'],
+html.dashboard .dash-gate .field input {
+  min-height: 48px;
+  padding: 10px 16px;
+  border: 1px solid var(--d-input-line);
+  border-radius: 10px;
+  background: var(--d-input);
+  color: var(--ink);
+  font-size: 15px;
+  transition:
+    border-color 0.15s,
+    box-shadow 0.15s;
+}
+
+html.dashboard .field textarea {
+  padding: 12px 16px;
+  font-size: 14px;
+}
+
+html.dashboard .field input::placeholder,
+html.dashboard .field textarea::placeholder {
+  color: #61706a;
+}
+
+html.dashboard .field input:focus,
+html.dashboard .field select:focus,
+html.dashboard .field textarea:focus,
+html.dashboard .dash .field input:focus,
+html.dashboard .dash-gate .field input:focus {
+  border-color: var(--accent);
+  box-shadow: var(--d-ring);
+}
+
+html.dashboard .field input[type='color'] {
+  width: 56px;
+  height: 48px;
+  border: 1px solid var(--d-input-line);
+  border-radius: 10px;
+  background: var(--d-input);
+}
+
+html.dashboard .field input[type='range'],
+html.dashboard .check input {
+  accent-color: var(--accent);
+}
+
+html.dashboard .check {
+  gap: 14px;
+  color: #fff;
+  font-size: 16px;
+  font-weight: 500;
+}
+
+html.dashboard .check input {
+  width: 22px;
+  height: 22px;
+  margin-top: 2px;
+}
+
+html.dashboard .check small {
+  margin-top: 4px;
+  color: var(--ink-2);
+  font-size: 13px;
+  line-height: 1.55;
+}
+
+html.dashboard .seg {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
+  gap: 8px;
+}
+
+html.dashboard .seg button {
+  min-height: 52px;
+  border: 1px solid var(--d-input-line);
+  border-radius: 10px;
+  background: transparent;
+  color: var(--d-text-2);
+  font-size: 14px;
+}
+
+html.dashboard .seg button.on {
+  border-color: var(--accent);
+  background: var(--soft);
+  color: #fff;
+}
+
+/* ---------- Headline numbers ---------- */
+
+html.dashboard .tiles {
+  gap: 20px;
+  border: 0;
+  border-radius: 0;
+  overflow: visible;
+}
+
+html.dashboard .tile {
+  container-type: inline-size;
+  gap: 6px;
+  margin: 0;
+  padding: 24px 26px;
+  border: 1px solid var(--line);
+  border-radius: 14px;
+  background: var(--card);
+}
+
+html.dashboard .tile span {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  color: var(--body);
+  letter-spacing: 0.16em;
+}
+
+html.dashboard .tile b {
+  margin-top: 10px;
+  color: #fff;
+  font-family: var(--display);
+  /* As large as the design's 52px, smaller when the number would not fit the tile on one line. */
+  font-size: min(52px, 100cqi / var(--chars, 4) * 1.8);
+  white-space: nowrap;
+  font-weight: 500;
+  letter-spacing: -0.03em;
+  line-height: 1.1;
+}
+
+html.dashboard .tile small {
+  color: var(--ink-2);
+  font-size: 14px;
+}
+
+/* ---------- Charts ---------- */
+
+html.dashboard .chart-readout b {
+  color: #fff;
+}
+
+html.dashboard .chart-grid span {
+  border-top-color: var(--d-row-line);
+}
+
+html.dashboard .chart-grid span:last-child {
+  border-top-color: var(--d-control-line);
+}
+
+html.dashboard .chart-col {
+  border-radius: 6px 6px 0 0;
+}
+
+html.dashboard .chart-col i {
+  background: linear-gradient(180deg, #1ed6c0, #14a88f);
+  opacity: 0.6;
+  transition: opacity 0.15s;
+}
+
+html.dashboard .chart-col.on {
+  background: var(--soft);
+}
+
+html.dashboard .chart-col.on i {
+  background: var(--d-gradient);
+  opacity: 1;
+}
+
+html.dashboard .share-track {
+  background: var(--soft);
+}
+
+html.dashboard .share-track i {
+  background: var(--d-gradient);
+}
+
+/* ---------- Tables, tags, facts ---------- */
+
+html.dashboard .table th,
+html.dashboard .table td {
+  padding: 16px 12px;
+  border-top: 0;
+  border-bottom: 1px solid var(--d-row-line);
+}
+
+html.dashboard .table th {
+  padding-top: 0;
+  padding-bottom: 14px;
+  border-bottom-color: var(--d-control-line);
+  color: var(--ink-2);
+  font-size: 11px;
+  letter-spacing: 0.14em;
+}
+
+html.dashboard .table td {
+  color: var(--d-text);
+}
+
+html.dashboard .table tbody tr:hover td {
+  background: var(--d-row-hover);
+}
+
+html.dashboard .table tbody tr:last-child td {
+  border-bottom: 0;
+}
+
+html.dashboard .table .num {
+  color: #fff;
+  font-weight: 500;
+}
+
+html.dashboard .table th.num {
+  color: var(--ink-2);
+  font-weight: 500;
+}
+
+html.dashboard .table small,
+html.dashboard .table .mono small {
+  color: var(--ink-2);
+}
+
+html.dashboard .table .mono {
+  font-size: 13px;
+}
+
+html.dashboard .tag {
+  padding: 6px 10px;
+  border: 1px solid var(--d-dot);
+  border-radius: 6px;
+  color: var(--d-text-2);
+  font-weight: 600;
+  letter-spacing: 0.1em;
+}
+
+html.dashboard .tag.ok,
+html.dashboard .tag.warn,
+html.dashboard .tag.err {
+  border-color: transparent;
+}
+
+html.dashboard .facts dd {
+  color: #fff;
+}
+
+html.dashboard .facts dt {
+  color: var(--ink-2);
+}
+
+html.dashboard .member {
+  border-bottom-color: var(--d-row-line);
+}
+
+/* ---------- Messages ---------- */
+
+html.dashboard .banner {
+  padding: 14px 18px;
+  border: 1px solid rgb(242 201 76 / 0.22);
+  border-radius: 12px;
+  line-height: 1.55;
+}
+
+html.dashboard .banner.err {
+  border-color: rgb(255 138 76 / 0.25);
+}
+
+html.dashboard .banner.ok {
+  border-color: rgb(30 214 192 / 0.25);
+}
+
+html.dashboard .banner b {
+  color: inherit;
+}
+
+html.dashboard .banner .link {
+  padding: 0 4px;
+}
+
+html.dashboard .toast {
+  border-radius: 12px;
+  background: var(--ink);
+  color: var(--page);
+  box-shadow: 0 12px 30px rgb(0 0 0 / 0.4);
+}
+
+html.dashboard .spinner {
+  border-color: var(--d-control-line);
+  border-top-color: var(--accent);
+}
+
+/* ---------- Dialogs ---------- */
+
+html.dashboard .overlay {
+  background: rgb(4 10 8 / 0.62);
+}
+
+html.dashboard .dialog,
+html.dashboard .card.dialog {
+  border: 1px solid var(--line);
+  border-radius: 16px;
+  background: var(--card);
+  box-shadow: 0 24px 60px rgb(0 0 0 / 0.5);
+}
+
+/* ---------- Row actions, thumbnails, copy buttons ---------- */
+
+html.dashboard .icon-btn {
+  width: 44px;
+  height: 44px;
+  border: 1px solid var(--d-control-line);
+  border-radius: 10px;
+  background: var(--d-control);
+  color: var(--ink);
+}
+
+html.dashboard .icon-btn:hover {
+  border-color: var(--accent);
+  color: var(--accent);
+}
+
+html.dashboard .actions {
+  gap: 8px;
+}
+
+html.dashboard .share-thumb {
+  height: 64px;
+  border-color: var(--d-control-line);
+  border-radius: 8px;
+}
+
+html.dashboard .copy-btn:hover {
+  background: var(--soft);
+  color: #fff;
+}
+
+html.dashboard .copy-btn.done {
+  color: var(--accent);
+}
+
+html.dashboard .codes {
+  color: #fff;
+}
+
+html.dashboard .frame-thumb img,
+html.dashboard .key-source img,
+html.dashboard .photo-dialog-img {
+  border-color: var(--d-control-line);
+  border-radius: 8px;
+}
+
+html.dashboard .key-swatch {
+  border-color: var(--d-input-line);
+}
+
+/* ---------- Sign-in and other pages without the menu ---------- */
+
+html.dashboard .dash-gate {
+  background:
+    radial-gradient(700px 360px at 50% -60px, rgb(30 214 192 / 0.16), transparent 70%) no-repeat,
+    var(--page);
+}
+
+html.dashboard .dash-gate .heading {
+  color: #fff;
+}
+
+/* ---------- Phones and upright tablets ---------- */
+
+@media (max-width: 880px) {
+  html.dashboard .dash {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  html.dashboard .dash-nav {
+    gap: 6px 14px;
+    padding: 14px 16px 10px;
+    border-right: 0;
+    border-bottom: 1px solid var(--d-side-line);
+    overflow: visible;
+  }
+
+  html.dashboard .dash-brand b {
+    font-size: 24px;
+  }
+
+  html.dashboard .dash-group {
+    margin: 0 4px 0 12px;
+  }
+
+  html.dashboard .dash-links {
+    gap: 6px;
+    padding-bottom: 2px;
+  }
+
+  html.dashboard .dash-links button {
+    min-height: 40px;
+    padding: 0 12px;
+    font-size: 14px;
+  }
+
+  html.dashboard .dash-links button.on {
+    border-color: var(--d-control-line);
+  }
+
+  html.dashboard .dash-main {
+    padding-top: 18px;
+  }
+
+  html.dashboard .dash-head {
+    margin: 18px 0 6px;
+  }
+
+  html.dashboard .panel {
+    padding: 20px;
+  }
+
+  html.dashboard .panel .panel {
+    padding: 16px;
+  }
+
+  html.dashboard .tile {
+    padding: 20px;
+  }
+}

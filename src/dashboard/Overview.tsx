@@ -3,7 +3,7 @@ import { PAY_METHOD_LABEL } from '../lib/log';
 import { formatRupiah } from '../lib/settings';
 import type { PageProps } from './Dashboard';
 import { compactRupiah, dayKey, daysBack, groupTotals, isOnline, niceCeiling, seriesByDay, total, type Totals } from './stats';
-import { LoadState, PageHead, dateTime, useLoad } from './ui';
+import { LoadState, PageHead, Tile, dateTime, useLoad } from './ui';
 
 const LONGEST_RANGE = 30;
 
@@ -115,16 +115,6 @@ export function Overview({ api, go }: PageProps) {
         )}
       </section>
     </>
-  );
-}
-
-export function Tile({ label, value, note }: { label: string; value: string; note: string }) {
-  return (
-    <div class="tile">
-      <span>{label}</span>
-      <b>{value}</b>
-      <small>{note}</small>
-    </div>
   );
 }
 

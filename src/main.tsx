@@ -41,7 +41,8 @@ function startBooth(): void {
 
 if (mode === 'dashboard') {
   // Loaded on demand, so the booth's tablets never run the dashboard's code.
-  document.documentElement.classList.add('dash-page');
+  // "dashboard" switches on the owner's dark theme; the guest download page keeps the booth's look.
+  document.documentElement.classList.add('dash-page', 'dashboard');
   void import('./dashboard/Dashboard').then(({ Dashboard }) => render(<Dashboard />, root));
 } else if (mode === 'share') {
   // A guest's phone: just the download page, nothing of the booth, and no offline copy of the app.

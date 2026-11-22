@@ -5,7 +5,7 @@ import { Overlay, toast } from '../ui/components';
 import { newTempPassword, type AdminApi, type FranchiseRow, type MemberRow, type SubscriptionState } from './api';
 import type { AdminPageProps } from './Dashboard';
 import { addMonths, extendFrom } from './stats';
-import { LoadState, PageHead, ago, dateOnly, dateTime, describe, useLoad } from './ui';
+import { LoadState, PageHead, Tile, ago, dateOnly, dateTime, describe, useLoad } from './ui';
 
 const STATE_LABEL: Record<SubscriptionState, string> = { active: 'Aktif', grace: 'Masa tenggang', expired: 'Langganan berakhir', suspended: 'Dihentikan' };
 const STATE_TAG: Record<SubscriptionState, string> = { active: 'ok', grace: 'warn', expired: 'err', suspended: 'err' };
@@ -67,26 +67,22 @@ export function Franchises({ admin, current, open, changed }: AdminPageProps) {
 
       {load.data && (
         <div class="tiles">
-          <div class="tile">
-            <span>Franchise berjalan</span>
-            <b>{rows.filter((row) => row.state === 'active' || row.state === 'grace').length}</b>
-            <small>dari {rows.length} franchise</small>
-          </div>
-          <div class="tile">
-            <span>Tablet online</span>
-            <b>{rows.reduce((sum, row) => sum + row.devices_online, 0)}</b>
-            <small>dari {rows.reduce((sum, row) => sum + row.devices, 0)} tablet</small>
-          </div>
-          <div class="tile">
-            <span>Sesi 30 hari</span>
-            <b>{rows.reduce((sum, row) => sum + row.sessions_30d, 0).toLocaleString('id-ID')}</b>
-            <small>semua franchise</small>
-          </div>
-          <div class="tile">
-            <span>Uang diterima 30 hari</span>
-            <b>{formatRupiah(rows.reduce((sum, row) => sum + row.revenue_30d, 0))}</b>
-            <small>masuk ke masing-masing franchise</small>
-          </div>
+          <Tile
+            label="Franchise berjalan"
+            value={rows.filter((row) => row.state === 'active' || row.state === 'grace').length}
+            note={`dari ${rows.length} franchise`}
+          />
+          <Tile
+            label="Tablet online"
+            value={rows.reduce((sum, row) => sum + row.devices_online, 0)}
+            note={`dari ${rows.reduce((sum, row) => sum + row.devices, 0)} tablet`}
+          />
+          <Tile label="Sesi 30 hari" value={rows.reduce((sum, row) => sum + row.sessions_30d, 0).toLocaleString('id-ID')} note="semua franchise" />
+          <Tile
+            label="Uang diterima 30 hari"
+            value={formatRupiah(rows.reduce((sum, row) => sum + row.revenue_30d, 0))}
+            note="masuk ke masing-masing franchise"
+          />
         </div>
       )}
 

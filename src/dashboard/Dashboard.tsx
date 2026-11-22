@@ -1,4 +1,5 @@
 import './dashboard.css';
+import './theme.css';
 import { useEffect, useMemo, useRef, useState } from 'preact/hooks';
 import { cloudConfigured, DEFAULT_PLATFORM } from '../lib/cloud/shared';
 import { useStore } from '../lib/store';
@@ -302,15 +303,16 @@ export function Dashboard() {
             </>
           )}
         </div>
-        <div class="dash-user">
-          <span class="hint">{account.email}</span>
-          <button class="link" onClick={signOut}>
-            {demoData ? 'Tutup contoh' : 'Keluar'}
-          </button>
-        </div>
       </nav>
       <main class="dash-main">
-        {demoData && <p class="banner">Ini data contoh. Tidak ada yang tersimpan, dan semuanya kembali seperti semula saat halaman dimuat ulang.</p>}
+        <header class="dash-top">
+          <div class="dash-crumb">
+            <span>{adminPage && admin ? 'Platform' : (franchise?.name ?? 'Platform')}</span>
+            <span>{(adminPage ?? franchisePage ?? FRANCHISE_PAGES[0]).label}</span>
+          </div>
+          <AccountMenu email={account.email} leave={demoData ? 'Tutup contoh' : 'Keluar'} onLeave={signOut} />
+        </header>
+        {demoData &&<p class="banner">Ini data contoh. Tidak ada yang tersimpan, dan semuanya kembali seperti semula saat halaman dimuat ulang.</p>}
         {adminPage && admin ? (
           <adminPage.view
             key={adminPage.id}
@@ -354,6 +356,45 @@ export function Dashboard() {
         )}
       </main>
       <ToastHost />
+    </div>
+  );
+}
+
+/** The signed-in account at the top right: its initial, opening to the email address and the way out. */
+function AccountMenu({ email, leave, onLeave }: { email: string; leave: string; onLeave: () => void }) {
+  const [open, setOpen] = useState(false);
+  const box = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    if (!open) return;
+    const outside = (event: PointerEvent) => {
+      if (!box.current?.contains(event.target as Node)) setOpen(false);
+    };
+    const escape = (event: KeyboardEvent) => {
+      if (event.key === 'Escape') setOpen(false);
+    };
+    document.addEventListener('pointerdown', outside);
+    document.addEventListener('keydown', escape);
+    return () => {
+      document.removeEventListener('pointerdown', outside);
+      document.removeEventListener('keydown', escape);
+    };
+  }, [open]);
+
+  return (
+    <div class="dash-account" ref={box}>
+      <button class="dash-avatar" aria-expanded={open} aria-label={`Akun ${email}`} title={email} onClick={() => setOpen(!open)}>
+        {(email.trim()[0] ?? '?').toUpperCase()}
+      </button>
+      {open && (
+        <div class="dash-account-menu">
+          <span class="hint">Masuk sebagai</span>
+          <b>{email}</b>
+          <button class="btn small" onClick={onLeave}>
+            {leave}
+          </button>
+        </div>
+      )}
     </div>
   );
 }

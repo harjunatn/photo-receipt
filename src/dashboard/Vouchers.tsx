@@ -5,7 +5,7 @@ import { generateVouchers, voucherStatus, type VoucherStatus } from '../lib/vouc
 import { toast } from '../ui/components';
 import type { VoucherRow, VoucherUse } from './api';
 import type { PageProps } from './Dashboard';
-import { CopyButton, LoadState, PageHead, Pager, dateOnly, dateTime, describe, useLoad } from './ui';
+import { CopyButton, LoadState, PageHead, Pager, Tile, dateOnly, dateTime, describe, useLoad } from './ui';
 
 const PAGE_SIZE = 50;
 const STATUS_LABEL: Record<VoucherStatus, string> = { active: 'Aktif', used: 'Terpakai', expired: 'Kedaluwarsa' };
@@ -189,11 +189,7 @@ export function Vouchers({ api }: PageProps) {
 
       <div class="tiles">
         {(['active', 'used', 'expired'] as const).map((key) => (
-          <div class="tile" key={key}>
-            <span>{STATUS_LABEL[key]}</span>
-            <b>{counts.data ? counts.data[key].toLocaleString('id-ID') : '—'}</b>
-            <small>voucher</small>
-          </div>
+          <Tile key={key} label={STATUS_LABEL[key]} value={counts.data ? counts.data[key].toLocaleString('id-ID') : '—'} note="voucher" />
         ))}
       </div>
 

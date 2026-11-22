@@ -61,6 +61,22 @@ export function PageHead({ title, lead, children }: { title: string; lead: strin
   );
 }
 
+/**
+ * A headline number with its label and a note. The dashboard draws the number
+ * as large as the tile allows; it is told how many characters it has, so a long
+ * amount shrinks to fit on one line instead of breaking between digits.
+ */
+export function Tile({ label, value, note }: { label: string; value: string | number; note: string }) {
+  const text = String(value);
+  return (
+    <div class="tile">
+      <span>{label}</span>
+      <b style={{ '--chars': Math.max(1, text.length) }}>{text}</b>
+      <small>{note}</small>
+    </div>
+  );
+}
+
 /** What to show instead of a page's content while it has none. */
 export function LoadState({ load }: { load: Loaded<unknown> }) {
   if (load.error) {

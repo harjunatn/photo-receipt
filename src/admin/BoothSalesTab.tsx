@@ -1,6 +1,7 @@
 import '../dashboard/dashboard.css';
 import { useState } from 'preact/hooks';
-import { DayChart, Shares, Tile } from '../dashboard/Overview';
+import { DayChart, Shares } from '../dashboard/Overview';
+import { Tile } from '../dashboard/ui';
 import { dayKey, daysBack, groupTotals, seriesByDay, total } from '../dashboard/stats';
 import { useLoad } from '../dashboard/ui';
 import { fetchBoothStats, outboxStore, pairingStore } from '../lib/cloud/device';

@@ -40,6 +40,7 @@ export function Payments({ api }: PageProps) {
       </PageHead>
 
       <section class={`panel ${load.loading ? 'busy' : ''}`}>
+        <h2>Riwayat QRIS</h2>
         <div class="chips tight">
           {FILTERS.map((option) => (
             <button

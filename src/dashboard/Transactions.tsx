@@ -12,7 +12,7 @@ import { shareUrl } from '../lib/cloud/shared';
 import type { ShareState, Tx, TxFilter } from './api';
 import type { PageProps } from './Dashboard';
 import { dayKey, total } from './stats';
-import { LoadState, PageHead, Pager, dateTime, describe, useLoad } from './ui';
+import { LoadState, PageHead, Pager, Tile, dateTime, describe, useLoad } from './ui';
 
 const PAGE_SIZES = [20, 50, 100, 200];
 const PAGE_SIZE_KEY = 'dashboard.tx-page-size';
@@ -238,6 +238,7 @@ export function Transactions({ api }: PageProps) {
       </PageHead>
 
       <section class="panel">
+        <h2>Filter</h2>
         <div class="chips tight">
           {PRESETS.map((option) => (
             <button
@@ -336,19 +337,16 @@ export function Transactions({ api }: PageProps) {
       {load.data && (
         <>
           <div class="tiles">
-            <div class="tile">
-              <span>Uang diterima</span>
-              <b>{formatRupiah(load.data.sum.revenue)}</b>
-              <small>QRIS dan tunai</small>
-            </div>
-            <div class="tile">
-              <span>Sesi</span>
-              <b>{load.data.sum.sessions.toLocaleString('id-ID')}</b>
-              <small>{load.data.sum.prints.toLocaleString('id-ID')} lembar dicetak</small>
-            </div>
+            <Tile label="Uang diterima" value={formatRupiah(load.data.sum.revenue)} note="QRIS dan tunai" />
+            <Tile
+              label="Sesi"
+              value={load.data.sum.sessions.toLocaleString('id-ID')}
+              note={`${load.data.sum.prints.toLocaleString('id-ID')} lembar dicetak`}
+            />
           </div>
 
           <section class={`panel ${load.loading ? 'busy' : ''}`}>
+            <h2>Daftar sesi</h2>
             {load.data.rows.length === 0 ? (
               <p class="hint">Tidak ada transaksi untuk pilihan ini.</p>
             ) : (
