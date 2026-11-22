@@ -3,7 +3,7 @@ import './share.css';
 import { useEffect, useState } from 'preact/hooks';
 import { cloudConfigured, SHARE_DAYS, SUPABASE_KEY, SUPABASE_URL } from '../lib/cloud/shared';
 
-type Kind = 'photo' | 'live' | 'slideshow' | 'ai';
+type Kind = 'photo' | 'news' | 'live' | 'slideshow' | 'ai';
 /** The session's photos without their frame, one per shot, to pick from for the AI version. */
 const PLAIN = ['p1', 'p2', 'p3', 'p4', 'p5', 'p6'] as const;
 type PlainKind = (typeof PLAIN)[number];
@@ -44,8 +44,12 @@ const TABS: { kind: Kind; label: string; button: string }[] = [
   { kind: 'photo', label: 'Foto', button: 'Unduh foto' },
   { kind: 'live', label: 'Boomerang', button: 'Unduh boomerang' },
   { kind: 'slideshow', label: 'Video Slideshow', button: 'Unduh video' },
+  { kind: 'news', label: 'Koran', button: 'Unduh koran' },
   { kind: 'ai', label: 'Versi AI', button: 'Unduh versi AI' },
 ];
+
+/** What each picture is, for someone who cannot see it. */
+const ALT: Partial<Record<Kind, string>> = { ai: 'Fotomu digambar ulang oleh AI', news: 'Fotomu sebagai halaman depan koran' };
 
 /** While a version is being drawn, the page looks for it this often. */
 const AI_POLL_MS = 4000;
@@ -191,7 +195,7 @@ export function SharePage() {
                 {file.type.startsWith('video/') ? (
                   <video src={file.view} controls autoplay loop muted playsinline />
                 ) : (
-                  <img src={file.view} alt={current.kind === 'ai' ? 'Fotomu digambar ulang oleh AI' : 'Hasil foto dengan frame'} />
+                  <img src={file.view} alt={ALT[current.kind] ?? 'Hasil foto dengan frame'} />
                 )}
               </figure>
               <a class="btn primary share-download" href={file.download}>

@@ -219,6 +219,14 @@ describe('share-get', () => {
     expect(share.files.thumb).toBeTruthy();
   });
 
+  it('carries the newspaper page with the other files, under a name the guest understands', async () => {
+    const { fetchFn } = await uploaded(['photo', 'news']);
+    const [share] = (await handleShareGet({ code: 'abc234defg56' }, env(), fetchFn, now)).body.shares as { files: Record<string, { view: string; download: string; type: string }> }[];
+    expect(new URL(share.files.news.view).pathname).toBe('/hello-snaply-hasil/s/abc234defg56/news.jpg');
+    expect(share.files.news.type).toBe('image/jpeg');
+    expect(new URL(share.files.news.download).searchParams.get('response-content-disposition')).toBe('attachment; filename="hello-snaply-abc234defg56-koran.jpg"');
+  });
+
   it('answers pending before the photo arrives, and expired once its days are over', async () => {
     const { fetchFn } = await uploaded(['thumb']);
     expect(((await handleShareGet({ code: 'abc234defg56' }, env(), fetchFn, now)).body.shares as { status: string }[])[0].status).toBe('pending');

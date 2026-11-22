@@ -203,7 +203,7 @@ export function applyRemote(settings: Settings, outlet: unknown, frames: unknown
  * texts, photo history and the staff PIN. A copy is kept with the device in the
  * dashboard, so that a replacement tablet paired with the same code works the same way.
  */
-export type DeviceSettings = Pick<Settings, 'session' | 'printer' | 'storage' | 'admin'> & {
+export type DeviceSettings = Pick<Settings, 'session' | 'printer' | 'storage' | 'admin' | 'news'> & {
   /** Without the logo, which comes from the dashboard. */
   receipt: Omit<Settings['receipt'], 'logo'>;
 };
@@ -216,6 +216,7 @@ export function deviceSettingsOf(settings: Settings): DeviceSettings {
     receipt: texts,
     storage: settings.storage,
     admin: settings.admin,
+    news: settings.news,
   });
 }
 
@@ -226,6 +227,7 @@ export function applyDeviceSettings(settings: Settings, saved: unknown): Setting
   if (isObject(saved.session)) next.session = mergeSettings(next.session, saved.session);
   if (isObject(saved.printer)) next.printer = mergeSettings(next.printer, saved.printer);
   if (isObject(saved.storage)) next.storage = mergeSettings(next.storage, saved.storage);
+  if (isObject(saved.news)) next.news = mergeSettings(next.news, saved.news);
   if (isObject(saved.receipt)) {
     const { logo, ...texts } = next.receipt;
     next.receipt = { ...mergeSettings(texts, saved.receipt), logo };

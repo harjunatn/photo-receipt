@@ -23,6 +23,8 @@ const PLAIN = { ext: 'jpg', type: 'image/jpeg', max: 3_000_000 } as const;
 export const KINDS = {
   photo: { ext: 'jpg', type: 'image/jpeg', max: 15_000_000 },
   thumb: { ext: 'jpg', type: 'image/jpeg', max: 1_000_000 },
+  /** The session as a newspaper front page. */
+  news: { ext: 'jpg', type: 'image/jpeg', max: 6_000_000 },
   live: { ext: 'mp4', type: 'video/mp4', max: 40_000_000 },
   slideshow: { ext: 'mp4', type: 'video/mp4', max: 40_000_000 },
   p1: PLAIN,
@@ -201,7 +203,9 @@ export function imageExt(type: string): string {
 /** A file name for downloads: the outlet's name in plain letters, then the code. */
 function fileName(brand: string, code: string, kind: string, ext: string): string {
   const base = brand.toLowerCase().normalize('NFKD').replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '') || 'foto';
-  return `${base}-${code}${kind === 'photo' ? '' : `-${kind}`}.${ext}`;
+  // Guests read these names: the newspaper page is "koran" to them.
+  const label = kind === 'news' ? 'koran' : kind;
+  return `${base}-${code}${kind === 'photo' ? '' : `-${label}`}.${ext}`;
 }
 
 /**

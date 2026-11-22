@@ -1,5 +1,7 @@
 import '@fontsource/space-mono/latin-400.css';
 import '@fontsource/space-mono/latin-700.css';
+// The newspaper page's headline.
+import '@fontsource/anton/latin-400.css';
 import './styles.css';
 import { render } from 'preact';
 import { App } from './app';

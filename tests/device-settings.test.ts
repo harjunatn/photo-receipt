@@ -24,7 +24,7 @@ function setUpBooth(): Settings {
 describe('tablet settings kept with the device', () => {
   it('holds only what is set on the tablet, not what the dashboard decides', () => {
     const saved = deviceSettingsOf(setUpBooth());
-    expect(Object.keys(saved).sort()).toEqual(['admin', 'printer', 'receipt', 'session', 'storage']);
+    expect(Object.keys(saved).sort()).toEqual(['admin', 'news', 'printer', 'receipt', 'session', 'storage']);
     expect(saved.printer.transport).toBe('serial');
     expect(saved.admin.pin).toBe('4321');
     expect(saved.receipt.title).toBe('HELLO VIOREN');

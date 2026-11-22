@@ -8,7 +8,7 @@ import type { BitImage } from '../lib/image/types';
 import { pokeIdle } from '../lib/kiosk';
 import { addLogEntry, EXTRA_COPY_PACKAGE, nextSessionNumber } from '../lib/log';
 import { printer, usePrinter } from '../lib/printer/manager';
-import { renderDigital, renderDraft, renderFrameBoomerang, renderPlainPhotos, renderSlideshow, type Draft } from '../lib/session';
+import { renderDigital, renderDraft, renderFrameBoomerang, renderNewspaper, renderPlainPhotos, renderSlideshow, type Draft } from '../lib/session';
 import { formatRupiah, settingsStore } from '../lib/settings';
 import { sound } from '../lib/sound';
 import { Overlay, PinPad, ReceiptPaper, Steps } from '../ui/components';
@@ -338,6 +338,13 @@ async function sendDigital(draft: Draft, code: string, sessionNo: number): Promi
   } catch {
     return;
   }
+  const pairing = pairingStore.get();
+  const title = boothTitle(settings, pairing ? (pairing.franchise ?? '') : null);
+  // The newspaper front page: quick to draw, so it is there soon after the photo.
+  if (settings.news.enabled) {
+    const page = await renderNewspaper(draft, sessionNo, settings, title).catch(() => null);
+    if (page) await queueShareFiles(code, [{ kind: 'news', blob: page }]).catch(() => undefined);
+  }
   // While this franchise offers an AI version, the photos also go up without their frame, for the guest to pick one.
   if (settings.platform.ai) {
     const plain = await renderPlainPhotos(draft).catch(() => []);
@@ -350,8 +357,6 @@ async function sendDigital(draft: Draft, code: string, sessionNo: number): Promi
     ? await draft.boomerang.catch(() => null)
     : await renderFrameBoomerang(draft, sessionNo, settings).catch(() => null);
   if (clip) await queueShareFiles(code, [{ kind: 'live', blob: clip }]).catch(() => undefined);
-  const pairing = pairingStore.get();
-  const title = boothTitle(settings, pairing ? (pairing.franchise ?? '') : null);
   const slideshow = await renderSlideshow(draft, sessionNo, settings, title).catch(() => null);
   if (slideshow) await queueShareFiles(code, [{ kind: 'slideshow', blob: slideshow }]).catch(() => undefined);
 }

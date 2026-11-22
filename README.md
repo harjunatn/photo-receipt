@@ -342,6 +342,19 @@ Masa simpan 3 hari tertulis di tiga tempat yang harus sama: aturan hapus di buck
 [`src/lib/cloud/shared.ts`](src/lib/cloud/shared.ts), dan `interval '3 days'` di fungsi `share_claim` pada
 [`supabase/schema.sql`](supabase/schema.sql).
 
+## Versi koran di halaman unduh
+
+Setiap sesi juga dibuat sebagai halaman depan koran (tab **Koran** di halaman unduh): nama lokasi sebagai judul besar,
+foto pertama sebagai foto utama, foto lain di bawahnya, dan "berita" jenaka dalam tiga kolom. Tanpa AI dan tanpa biaya:
+tablet menggambarnya sendiri begitu sesi selesai (1240 × 1860 px, perbandingan 2:3 seperti kertas foto 4R) dan
+mengunggahnya bersama berkas lain.
+
+- **Yang bisa diatur hanya judul besarnya:** di tablet, ⚙ → **Struk → Koran → Judul besar (nama lokasi)**, misalnya
+  `CIBINONG`. Kalau kosong, nama booth yang dipakai. Di kotak yang sama ada contoh hasilnya dan centang **Buat versi
+  koran** untuk mematikannya.
+- Fotonya dipakai utuh seperti saat dijepret (tidak dipotong mengikuti lubang frame), supaya semua orang tetap masuk.
+- Desain dan teks beritanya ada di [`src/lib/newspaper.ts`](src/lib/newspaper.ts).
+
 ## Edit foto AI di halaman unduh (Gemini)
 
 Kalau dinyalakan, halaman unduh tamu mendapat tab **Versi AI**: tamu memilih satu foto dari sesinya dan satu gaya

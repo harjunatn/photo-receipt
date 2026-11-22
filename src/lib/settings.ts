@@ -70,6 +70,12 @@ export interface Settings {
     qrCaption: string;
     barcode: boolean;
   };
+  /** The session as a newspaper front page, among the guest's downloads. */
+  news: {
+    enabled: boolean;
+    /** The big word across the page: where this booth stands. Empty uses the booth's name. */
+    headline: string;
+  };
   packages: PackageDef[];
   /** Which ways of paying the guest is offered. */
   payment: {
@@ -189,6 +195,10 @@ export const DEFAULT_SETTINGS: Settings = {
     qrUrl: '',
     qrCaption: 'Scan & follow kami',
     barcode: true,
+  },
+  news: {
+    enabled: true,
+    headline: '',
   },
   // One active price keeps the guest flow to "frame → pay → photo". Turning on
   // a second one adds a choice at the payment step.

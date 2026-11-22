@@ -1,3 +1,4 @@
+import { drawNewspaper, loadNewsFonts } from './newspaper';
 import type { PhotoStyle } from './image/style';
 import type { BitImage, Rect } from './image/types';
 import type { PayMethod } from './log';
@@ -171,6 +172,24 @@ export async function renderDigital(draft: Draft, sessionNo: number, settings: S
   const composed = await composeColour(draft, sessionNo, settings, DIGITAL_WIDTH);
   const full = composed.canvas;
   return { photo: await toJpeg(full, 0.9), thumb: await toJpeg(thumbnail(draft, full), 0.82) };
+}
+
+/**
+ * The session as a newspaper front page, for the guest to download: the place
+ * staff set as the headline, the photos as taken (not cut to the frame's
+ * slots, so everyone stays in the picture), and the booth's name on top.
+ */
+export async function renderNewspaper(draft: Draft, sessionNo: number, settings: Settings, title: string): Promise<Blob> {
+  await loadNewsFonts();
+  const page = drawNewspaper({
+    headline: settings.news.headline.trim() || title,
+    brand: title,
+    when: draft.when,
+    sessionNo,
+    photos: draft.shots.flatMap((shot) => (shot ? [shot.canvas] : [])),
+    footer: settings.platform.receiptLine,
+  });
+  return toJpeg(page, 0.88);
 }
 
 /** Longest side of a photo sent without its frame; enough for the AI service, small enough to upload in a moment. */
