@@ -39,6 +39,8 @@ export interface Tx {
   share_code: string | null;
   /** false: cash or static QRIS accepted without the staff PIN, because the franchise switched confirmation off. */
   staff_confirmed: boolean;
+  /** What the payment provider last said about the automatic QRIS payment behind this session; null when there is none. */
+  payment_status: PaymentStatus | null;
 }
 
 /** What the guest's download page holds for one session, as the dashboard shows it. */
@@ -426,14 +428,21 @@ export function createSupabaseApi(db: SupabaseClient, account: Account, franchis
     async listTransactions(filter, offset, limit) {
       let query = db
         .from('transactions')
-        .select('id,device_id,device_name,at,session_no,frame,package,price,method,voucher_code,prints,share_code,staff_confirmed', { count: 'exact' })
+        .select('id,device_id,device_name,at,session_no,frame,package,price,method,voucher_code,prints,share_code,staff_confirmed,payments(status)', {
+          count: 'exact',
+        })
         .eq('franchise_id', fid)
         .gte('at', filter.from.toISOString())
         .lt('at', filter.to.toISOString());
       if (filter.method) query = query.eq('method', filter.method);
       if (filter.deviceId) query = query.eq('device_id', filter.deviceId);
       const result = await query.order('at', { ascending: false }).range(offset, offset + limit - 1);
-      return { rows: unwrap(result) as Tx[], total: result.count ?? 0 };
+      type Linked = { status: PaymentStatus } | { status: PaymentStatus }[] | null;
+      const rows = unwrap(result) as unknown as (Omit<Tx, 'payment_status'> & { payments: Linked })[];
+      return {
+        rows: rows.map(({ payments, ...row }) => ({ ...row, payment_status: (Array.isArray(payments) ? payments[0]?.status : payments?.status) ?? null })),
+        total: result.count ?? 0,
+      };
     },
     async listPayments(status, offset, limit) {
       // 'orphan': money that arrived for a session that was never recorded.

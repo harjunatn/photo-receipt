@@ -16,15 +16,19 @@ tambahan dan tanpa server.
    Cerah, Kontras, Komik, Sketsa, Garis) atau mengulang foto satu per satu. (Pilihan ganti frame di langkah ini sedang
    disembunyikan; kodenya tetap ada, cukup hapus aturan `.frame-choice` di `src/styles.css` untuk menampilkannya lagi.)
 5. **Cetak**. Di layar akhir ada tombol **Cetak ulang struk ini** untuk petugas (perlu PIN sekali per sesi), misalnya
-   kalau dua tamu dalam satu foto masing-masing mau struknya. Tiap tekan mencetak satu lembar lagi; hitungan mundur ke
-   layar awal berhenti selama PIN diketik.
+   kalau dua tamu dalam satu foto masing-masing mau struknya. Tiap tekan mencetak satu lembar lagi, dan petugas memilih:
+   **Tamu bayar** (harga satu lembar dari pilihan harganya, dicatat sebagai baris **Cetak ulang** tunai di riwayat) atau
+   **Gratis, cetakan tadi rusak** (tidak dicatat). Baris cetak ulang menambah uang dan lembar, tetapi tidak dihitung
+   sebagai sesi baru (di proyek Supabase yang sudah berjalan, jalankan ulang `supabase/schema.sql` sekali supaya
+   hitungan sesi di dashboard mengikutinya). Hitungan mundur ke layar awal berhenti selama PIN diketik dan selama
+   pilihan itu terbuka.
 
 Frame mana yang ditawarkan, harga, dan cara bayar diatur di dashboard franchise; printer, kamera dan teks struk diatur
 petugas di tablet (ikon ⚙ di layar awal).
 
 ### Frame buatan sendiri
 
-Di dashboard → **Koleksi Frame** → **+ Tambah frame**, franchise bisa mengunggah desainnya sendiri:
+Di dashboard → **Galeri Frame** → **+ Tambah frame**, franchise bisa mengunggah desainnya sendiri:
 
 - Frame adalah gambar desain dengan tempat foto tamu (buat di Canva, Figma atau Photoshop). Lebar yang pas 1080 px;
   tingginya bebas sampai 6 kali lebarnya. Ada dua cara menandai tempat fotonya:
@@ -168,12 +172,12 @@ franchise sebelumnya. Yang diatur di tablet itu sendiri (printer, sesi, teks str
 
 | Menu tiap franchise | Isi |
 | --- | --- |
-| Dashboard | Omzet hari ini, 7 hari, bulan ini; grafik per hari; cara bayar; per perangkat; transaksi terbaru |
-| Perangkat | Daftar tablet, kode perangkat + PIN (masing-masing dengan tombol salin), online/offline, status printer, kapan pengaturan tablet terakhir tersimpan |
-| Transaksi | Semua sesi dari semua tablet, saring tanggal / cara bayar / perangkat, lihat hasil foto, unduh Excel / PDF / CSV |
-| Pembayaran QRIS | Setiap kode QR otomatis: lunas, tidak dibayar, dan "lunas tanpa sesi" yang perlu diperiksa |
-| Voucher | Buat massal, status aktif / terpakai / kedaluwarsa; berlaku di semua tablet, sekali pakai. Tombol salin di samping tiap kode (kode yang pernah disalin ditandai "disalin"); voucher yang dipakai di booth langsung muncul saat itu juga tanpa memuat ulang (Supabase Realtime) |
-| Koleksi Frame | Frame buatan sendiri (tambah, edit, hapus) dan frame yang ditawarkan per perangkat |
+| Beranda | Omzet hari ini, 7 hari, bulan ini; grafik per hari; cara bayar; per perangkat; sesi terbaru |
+| Booth Saya | Daftar tablet, kode perangkat + PIN (masing-masing dengan tombol salin), online/offline, status printer, kapan pengaturan tablet terakhir tersimpan |
+| Riwayat Sesi | Jumlah uang dan sesi di atas, lalu saringan tanggal / cara bayar / perangkat, lalu daftar sesi dengan status pembayaran dan hasil foto. Tombol **Unduh** membuka pilihan Excel / PDF / CSV |
+| Kasir QRIS | Setiap kode QR otomatis: lunas, tidak dibayar, dan "lunas tanpa sesi" yang perlu diperiksa |
+| Kode Promo | Voucher: buat massal, status aktif / terpakai / kedaluwarsa; berlaku di semua tablet, sekali pakai. Tombol salin di samping tiap kode (kode yang pernah disalin ditandai "disalin"); voucher yang dipakai di booth langsung muncul saat itu juga tanpa memuat ulang (Supabase Realtime) |
+| Galeri Frame | Satu daftar untuk semua frame: centang **Aktif** dan urutannya per booth; frame buatan sendiri punya **Edit** dan **Hapus** di kartunya, dan **+ Tambah frame** ada di kanan atas |
 | Pengaturan | Nama outlet, warna, logo, harga, cara bayar + gambar QRIS, akun DOKU, password |
 
 ### Franchise dan langganan
@@ -250,7 +254,7 @@ aplikasi** (akun login tidak), jadi tablet perlu dipasangkan ulang; salin dulu d
 
 ### Memasangkan tablet
 
-1. Dashboard franchise → **Perangkat** → tambah perangkat. Muncul **kode perangkat** dan **PIN**. Perangkat itu milik
+1. Dashboard franchise → **Booth Saya** → tambah perangkat. Muncul **kode perangkat** dan **PIN**. Perangkat itu milik
    franchise tersebut; tablet yang dipasangkan dengannya otomatis masuk ke franchise itu.
 2. Di tablet: ⚙ → PIN petugas → tab **Sambungan** → ketik kode dan PIN itu → **Pasangkan**. Tablet yang belum
    tersambung langsung membuka tab ini.
@@ -279,7 +283,7 @@ Setiap sesi selalu mendapat kode QR unduhan. Tamu men-scan-nya dan membuka halam
 otomatis.
 
 Kode QR-nya selalu muncul di layar akhir sesi, di tab **Riwayat** dan **Transaksi** tablet, dan di dashboard →
-**Transaksi**. Dashboard → **Pengaturan → Unduh foto lewat QR → Cetak kode QR di struk** (bawaannya menyala) hanya
+**Riwayat Sesi**. Dashboard → **Pengaturan → Unduh foto lewat QR → Cetak kode QR di struk** (bawaannya menyala) hanya
 menentukan apakah kodenya juga dicetak. Mematikannya membuat struk lebih pendek; tamu lalu men-scan kode dari layar.
 
 Untuk harga yang dicentang **Termasuk boomerang & video slideshow** (dashboard → Pengaturan → Harga; bawaannya
@@ -305,7 +309,7 @@ Cara kerjanya:
   Supabase. Kunci R2 tidak pernah ada di tablet. Kalau internet putus, berkasnya menunggu di tablet (tab
   **Sambungan** menunjukkan jumlahnya) dan terkirim sendiri nanti.
 - Halaman unduh meminta tautan sementara (berlaku 1 jam) ke Supabase setiap kali dibuka. Bucket-nya tetap privat.
-- Dashboard → **Transaksi** menampilkan gambar kecil hasil foto, tombol **QR** (menampilkan kode QR-nya lagi kalau
+- Dashboard → **Riwayat Sesi** menampilkan gambar kecil hasil foto, tombol **QR** (menampilkan kode QR-nya lagi kalau
   struk tamu hilang) dan tombol **mata** (membuka halaman hasilnya). Tab **Transaksi** di tablet juga punya tombol QR.
 
 ### Menyiapkan R2 (sekali saja)
@@ -420,14 +424,14 @@ Cara bayar yang dinyalakan di dashboard (menu **Pengaturan**) muncul sebagai pil
 - **QRIS manual** — gambar QRIS toko kamu ditampilkan di layar. Tamu membayar, lalu petugas mengecek buktinya dan menekan
   *Petugas: konfirmasi bayar* dengan PIN. Pilihan ini baru muncul setelah gambar QRIS diunggah.
 - **Tunai** — tamu membayar ke petugas, lalu petugas mengonfirmasi dengan PIN.
-- **Voucher** — kode sekali pakai yang dibuat di dashboard (menu **Voucher**), berlaku di semua tablet. Tamu mengetik
+- **Voucher** — kode sekali pakai yang dibuat di dashboard (menu **Kode Promo**), berlaku di semua tablet. Tamu mengetik
   kodenya sendiri, jadi booth bisa jalan tanpa penjaga. Butuh internet.
 
 **Konfirmasi petugas.** Untuk tunai dan QRIS manual, tiap franchise bisa mematikan *Perlu konfirmasi petugas (PIN)* di
 dashboard → Pengaturan → Cara bayar (bawaannya menyala, masing-masing sendiri). Tanpa konfirmasi, tamu menekan *Sudah
 bayar · mulai foto* sendiri: lebih cepat untuk booth yang selalu dijaga, tetapi siapa pun bisa memulai sesi tanpa
-membayar dan sesi itu tetap tercatat sebagai uang masuk. Karena itu sesinya ditandai **tanpa konfirmasi** di menu
-Transaksi dan di unduhan Excel/PDF/CSV, supaya bisa dicocokkan dengan uang yang diterima. Booth tanpa penjaga
+membayar dan sesi itu tetap tercatat sebagai uang masuk. Karena itu sesinya ditandai **tanpa PIN** di menu
+Riwayat Sesi dan di unduhan Excel/PDF/CSV, supaya bisa dicocokkan dengan uang yang diterima. Booth tanpa penjaga
 sebaiknya hanya menyalakan QRIS otomatis (dan voucher), yang memeriksa pembayarannya sendiri.
 
 Harga diatur di dashboard (menu **Pengaturan**) dan berlaku untuk semua frame. Dengan satu pilihan harga aktif, tamu langsung melihat harga
@@ -514,7 +518,11 @@ Yang perlu diketahui:
 
 - Tablet butuh internet untuk QRIS otomatis. Tunai dan QRIS manual tetap bisa jadi cadangan.
 - Kalau tamu membayar tetapi sesinya tidak selesai (misalnya tablet mati), pembayarannya muncul di dashboard →
-  **Pembayaran QRIS** sebagai **Lunas tanpa sesi**. Pengembalian uang dilakukan dari DOKU Back Office.
+  **Kasir QRIS** sebagai **Lunas tanpa sesi**. Pengembalian uang dilakukan dari DOKU Back Office.
+- Kolom **Status** di **Riwayat Sesi** membaca status pembayaran yang dilaporkan DOKU (Berhasil, Menunggu, Gagal). Sesi
+  baru dimulai setelah DOKU menyatakan lunas, jadi sesi QRIS di sana biasanya **Berhasil**; kode QR yang masih
+  menunggu, tidak dibayar, atau gagal tidak pernah menjadi sesi dan tercatat di **Kasir QRIS**. Tunai, voucher, dan
+  QRIS manual selalu **Berhasil**.
 - Kalau QR gagal dibuat, pesan dari DOKU tersimpan di kolom `detail` tabel `payments` dan di log fungsi
   (Supabase → Edge Functions → `qris-create` → Logs).
 

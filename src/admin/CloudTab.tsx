@@ -6,6 +6,7 @@ import { formatDateTime } from '../lib/receipt/compose';
 import { useStore } from '../lib/store';
 import { videoSupport } from '../lib/video/encode';
 import { toast } from '../ui/components';
+import { CardFlow } from '../ui/CardFlow';
 
 /** Pairs this tablet with the owner's dashboard and shows whether its sales are getting through. */
 export function CloudTab() {
@@ -52,7 +53,7 @@ export function CloudTab() {
 
   if (!cloudConfigured) {
     return (
-      <div class="admin-grid">
+      <CardFlow>
         <section class="panel span">
           <h2>Dashboard belum disambungkan</h2>
           <p class="hint">
@@ -61,12 +62,12 @@ export function CloudTab() {
             deploy ulang. Langkahnya ada di README.
           </p>
         </section>
-      </div>
+      </CardFlow>
     );
   }
 
   return (
-    <div class="admin-grid">
+    <CardFlow>
       {pairing ? (
         <section class="panel">
           <div class="row">
@@ -161,7 +162,7 @@ export function CloudTab() {
           <h2>Pasangkan tablet ini</h2>
           <p class="hint">
             Tablet harus tersambung ke dashboard sebelum bisa dipakai tamu, supaya setiap sesi tercatat. Buat perangkat
-            baru di dashboard pemilik (menu Perangkat), lalu ketik kode perangkat dan PIN-nya di sini. Satu kode untuk
+            baru di dashboard pemilik (menu Booth Saya), lalu ketik kode perangkat dan PIN-nya di sini. Satu kode untuk
             satu tablet: memasangkan tablet lain dengan kode yang sama melepas tablet sebelumnya, dan tablet ini memakai
             pengaturan printer, sesi & kamera, teks struk, riwayat dan PIN petugas dari tablet itu.
           </p>
@@ -208,6 +209,6 @@ export function CloudTab() {
           {location.origin + location.pathname}#dashboard
         </p>
       </section>
-    </div>
+    </CardFlow>
   );
 }

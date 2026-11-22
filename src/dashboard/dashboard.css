@@ -108,28 +108,6 @@ html.dash-page body {
   font-weight: 600;
 }
 
-/* The franchise's own frames, side by side. */
-.own-frames {
-  display: grid;
-  grid-template-columns: repeat(auto-fill, minmax(230px, 1fr));
-  gap: 14px;
-}
-
-.own-frame {
-  display: flex;
-  gap: 12px;
-  align-items: flex-start;
-}
-
-.own-frame .frame-thumb {
-  flex: none;
-  width: 84px;
-}
-
-.own-frame small {
-  display: block;
-}
-
 /* The number of each photo hole, drawn over the frame preview. */
 .slot-number {
   position: absolute;
@@ -474,6 +452,12 @@ html.dash-page body {
 
 .table small {
   color: var(--ink-2);
+}
+
+/* Names may take two lines, so a table with many columns still fits without scrolling sideways. */
+.table td.wrap {
+  min-width: 110px;
+  white-space: normal;
 }
 
 .facts {

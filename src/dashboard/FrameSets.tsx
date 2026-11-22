@@ -16,10 +16,13 @@ interface Choice {
   name: string;
   blurb: string;
   picture: string | undefined;
-  own: boolean;
+  /** The franchise's own frame behind this choice; null for a built-in one. */
+  own: CustomFrameRow | null;
+  /** Switched off in its editor: kept, but sent to no tablet. */
+  off: boolean;
 }
 
-/** The franchise's own frames, and which frame designs each tablet offers its guests, in what order. */
+/** Every frame, built in or the franchise's own, in one list: which ones each tablet offers its guests, in what order, and the franchise's own to edit. */
 export function FrameSets({ api }: PageProps) {
   const load = useLoad(() => api.listDevices(), [api]);
   const own = useLoad(() => api.listFrames(), [api]);
@@ -70,14 +73,25 @@ export function FrameSets({ api }: PageProps) {
 
   const list = draft;
   const choices: Choice[] = [
-    ...FRAMES.map((frame) => ({ id: frame.id, name: frame.name, blurb: frame.blurb, picture: previews[frame.id], own: false })),
-    ...(own.data ?? [])
-      .filter((frame) => frame.active)
-      .map((frame) => ({ id: customFrameId(frame.id), name: frame.name, blurb: frame.blurb || `${frame.layout.slots.length} foto`, picture: frame.thumb || undefined, own: true })),
+    ...FRAMES.map((frame) => ({ id: frame.id, name: frame.name, blurb: frame.blurb, picture: previews[frame.id], own: null, off: false })),
+    ...(own.data ?? []).map((frame) => ({
+      id: customFrameId(frame.id),
+      name: frame.name,
+      blurb: frame.blurb || `${frame.layout.slots.length} foto`,
+      picture: frame.thumb || undefined,
+      own: frame,
+      off: !frame.active,
+    })),
   ];
-  const ordered = [...list.flatMap((id) => choices.filter((f) => f.id === id)), ...choices.filter((f) => !list.includes(f.id))];
-  // Ids of frames that no longer exist are dropped when the list is saved.
-  const offered = draft.filter((id) => choices.some((choice) => choice.id === id));
+  const usable = choices.filter((choice) => !choice.off);
+  // The booth's own order first, then what it does not offer, then frames that are switched off altogether.
+  const ordered = [
+    ...list.flatMap((id) => usable.filter((f) => f.id === id)),
+    ...usable.filter((f) => !list.includes(f.id)),
+    ...choices.filter((f) => f.off),
+  ];
+  // Ids of frames that no longer exist, or were switched off, are dropped when the list is saved.
+  const offered = draft.filter((id) => usable.some((choice) => choice.id === id));
   const move = (id: string, step: -1 | 1) => {
     const next = list.slice();
     const from = next.indexOf(id);
@@ -87,11 +101,10 @@ export function FrameSets({ api }: PageProps) {
     setDraft(next);
   };
 
-  return (
-    <>
-      <PageHead title="Koleksi Frame" lead="Frame buatan sendiri, dan frame mana yang ditawarkan ke tamu di tiap perangkat." />
-
-      {editing !== undefined ? (
+  if (editing !== undefined) {
+    return (
+      <>
+        <PageHead title="Galeri Frame" lead={editing ? `Mengubah frame ${editing.name}.` : 'Menambah frame buatan sendiri.'} />
         <FrameEditor
           key={editing?.id ?? 'baru'}
           api={api}
@@ -102,111 +115,107 @@ export function FrameSets({ api }: PageProps) {
             own.reload();
           }}
         />
-      ) : (
+      </>
+    );
+  }
+
+  return (
+    <>
+      <PageHead
+        title="Galeri Frame"
+        lead="Frame bawaan dan frame buatanmu sendiri. Centang Aktif untuk frame yang ditawarkan ke tamu di booth yang dipilih; urutannya sama dengan urutan di layar tamu."
+      >
+        <button class="btn small primary" onClick={() => setEditing(null)}>
+          + Tambah frame
+        </button>
+      </PageHead>
+
+      <LoadState load={load} />
+      <LoadState load={own} />
+      {load.data && devices.length === 0 && (
+        <p class="banner">Belum ada booth. Tambahkan dulu di menu Booth Saya, lalu pilih frame mana yang aktif di booth itu.</p>
+      )}
+
+      {device && (
         <section class="panel">
-          <div class="row">
-            <h2 class="grow">Frame buatan sendiri</h2>
-            <button class="btn small primary" onClick={() => setEditing(null)}>
-              + Tambah frame
-            </button>
-          </div>
-          <LoadState load={own} />
-          {own.data?.length === 0 && (
-            <p class="hint">
-              Belum ada. Selain tujuh frame bawaan, kamu bisa mengunggah desain sendiri: gambar PNG dengan lubang transparan tempat foto. Frame
-              buatanmu hanya terlihat oleh franchise ini.
-            </p>
-          )}
-          <div class="own-frames">
-            {own.data?.map((frame) => (
-              <div class="own-frame" key={frame.id}>
-                <div class="frame-thumb">{frame.thumb ? <img src={frame.thumb} alt="" /> : <div class="strip-loading" />}</div>
-                <div class="frame-panel-info">
-                  <b>{frame.name}</b>
-                  <small class="hint">
-                    {frame.layout.slots.length} foto{frame.active ? '' : ' · tidak aktif'}
-                  </small>
-                  <div class="row">
-                    <button class="btn small" disabled={busy} onClick={() => setEditing(frame)}>
-                      Edit
-                    </button>
-                    <button
-                      class="btn small danger"
-                      disabled={busy}
-                      onClick={() => (confirmDelete === frame.id ? void removeFrame(frame) : setConfirmDelete(frame.id))}
-                    >
-                      {confirmDelete === frame.id ? 'Yakin hapus?' : 'Hapus'}
-                    </button>
-                  </div>
-                </div>
-              </div>
+          <div class="chips tight">
+            {devices.map((d) => (
+              <button key={d.id} class={`chip ${d.id === device.id ? 'on' : ''}`} onClick={() => setDeviceId(d.id)}>
+                {d.name}
+              </button>
             ))}
+          </div>
+          {draft.length === 0 && <p class="banner">Tidak ada frame yang aktif, jadi tablet menawarkan semua frame.</p>}
+          <div class="row">
+            <button class="btn small primary" disabled={busy || !dirty} onClick={() => void save([device.id])}>
+              Simpan untuk {device.name}
+            </button>
+            {devices.length > 1 && (
+              <button class="btn small" disabled={busy} onClick={() => void save(devices.map((d) => d.id))}>
+                Terapkan ke semua booth
+              </button>
+            )}
           </div>
         </section>
       )}
 
-      <h2 class="dash-sub">Frame di tiap perangkat</h2>
-      <p class="hint">Urutan di sini sama dengan urutan di layar tamu.</p>
-      <LoadState load={load} />
-      {load.data && devices.length === 0 && <p class="hint">Belum ada perangkat. Tambahkan dulu di menu Perangkat.</p>}
-
-      {device && (
-        <>
-          <section class="panel">
-            <div class="chips tight">
-              {devices.map((d) => (
-                <button key={d.id} class={`chip ${d.id === device.id ? 'on' : ''}`} onClick={() => setDeviceId(d.id)}>
-                  {d.name}
-                </button>
-              ))}
-            </div>
-            {draft.length === 0 && <p class="banner">Tidak ada frame yang dipilih, jadi tablet menawarkan semua frame.</p>}
-            <div class="row">
-              <button class="btn small primary" disabled={busy || !dirty} onClick={() => void save([device.id])}>
-                Simpan untuk {device.name}
-              </button>
-              {devices.length > 1 && (
-                <button class="btn small" disabled={busy} onClick={() => void save(devices.map((d) => d.id))}>
-                  Terapkan ke semua perangkat
-                </button>
-              )}
-            </div>
-          </section>
-
-          <div class="admin-grid">
-            {ordered.map((frame) => {
-              const position = draft.indexOf(frame.id);
-              return (
-                <section class="panel frame-panel" key={frame.id}>
-                  <div class="frame-thumb">{frame.picture ? <img src={frame.picture} alt="" /> : <div class="strip-loading" />}</div>
-                  <div class="frame-panel-info">
-                    <h2>{frame.name}</h2>
+      {load.data && (
+        <div class="admin-grid">
+          {ordered.map((frame) => {
+            const position = frame.off ? -1 : draft.indexOf(frame.id);
+            const mine = frame.own;
+            return (
+              <section class="panel frame-panel" key={frame.id}>
+                <div class="frame-thumb">{frame.picture ? <img src={frame.picture} alt="" /> : <div class="strip-loading" />}</div>
+                <div class="frame-panel-info">
+                  <h2>{frame.name}</h2>
+                  <p class="hint">
+                    {frame.blurb}
+                    {mine ? ' · buatan sendiri' : ''}
+                  </p>
+                  {frame.off ? (
                     <p class="hint">
-                      {frame.blurb}
-                      {frame.own ? ' · buatan sendiri' : ''}
+                      <span class="tag">Nonaktif</span> Dimatikan lewat Edit, jadi tidak dikirim ke tablet mana pun.
                     </p>
-                    <Check
-                      label="Ditawarkan ke tamu"
-                      checked={position >= 0}
-                      onChange={(on) => setDraft(on ? [...draft, frame.id] : draft.filter((id) => id !== frame.id))}
-                    />
-                    {position >= 0 && (
-                      <div class="row">
-                        <button class="btn small" disabled={position === 0} onClick={() => move(frame.id, -1)}>
-                          ↑ Naik
-                        </button>
-                        <button class="btn small" disabled={position === draft.length - 1} onClick={() => move(frame.id, 1)}>
-                          ↓ Turun
-                        </button>
-                        <span class="tag">Urutan {position + 1}</span>
-                      </div>
-                    )}
-                  </div>
-                </section>
-              );
-            })}
-          </div>
-        </>
+                  ) : (
+                    device && (
+                      <Check
+                        label="Aktif"
+                        checked={position >= 0}
+                        onChange={(on) => setDraft(on ? [...draft, frame.id] : draft.filter((id) => id !== frame.id))}
+                      />
+                    )
+                  )}
+                  {position >= 0 && (
+                    <div class="row">
+                      <button class="btn small" disabled={position === 0} onClick={() => move(frame.id, -1)}>
+                        ↑ Naik
+                      </button>
+                      <button class="btn small" disabled={position === draft.length - 1} onClick={() => move(frame.id, 1)}>
+                        ↓ Turun
+                      </button>
+                      <span class="tag">Urutan {position + 1}</span>
+                    </div>
+                  )}
+                  {mine && (
+                    <div class="row">
+                      <button class="btn small" disabled={busy} onClick={() => setEditing(mine)}>
+                        Edit
+                      </button>
+                      <button
+                        class="btn small danger"
+                        disabled={busy}
+                        onClick={() => (confirmDelete === mine.id ? void removeFrame(mine) : setConfirmDelete(mine.id))}
+                      >
+                        {confirmDelete === mine.id ? 'Yakin hapus?' : 'Hapus'}
+                      </button>
+                    </div>
+                  )}
+                </div>
+              </section>
+            );
+          })}
+        </div>
       )}
     </>
   );

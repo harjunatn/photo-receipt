@@ -202,6 +202,9 @@ create table if not exists public.transactions (
 -- false: sesi tunai atau QRIS manual yang dimulai tanpa konfirmasi petugas (pengaturan franchise mematikannya),
 -- supaya uangnya bisa dicocokkan belakangan.
 alter table public.transactions add column if not exists staff_confirmed boolean not null default true;
+-- true: lembar tambahan dari sesi yang sudah ada (cetak ulang yang dibayar lagi). Barisnya menambah uang dan
+-- lembar, tetapi tidak dihitung sebagai sesi baru.
+alter table public.transactions add column if not exists extra boolean not null default false;
 create index if not exists transactions_franchise_at on public.transactions (franchise_id, at desc);
 create index if not exists transactions_device_at on public.transactions (device_id, at desc);
 create index if not exists transactions_share on public.transactions (share_code) where share_code is not null;
@@ -618,11 +621,12 @@ begin
   if jsonb_typeof(p_rows) is distinct from 'array' or jsonb_array_length(p_rows) > 500 then
     return jsonb_build_object('error', 'bad-request');
   end if;
-  insert into transactions (id, franchise_id, device_id, device_name, at, session_no, frame, package, price, method, voucher_code, prints, staff_confirmed, payment_id, share_code)
+  insert into transactions (id, franchise_id, device_id, device_name, at, session_no, frame, package, price, method, voucher_code, prints, staff_confirmed, extra, payment_id, share_code)
   select r.id, d.franchise_id, d.id, d.name, r.at, r.session_no, left(r.frame, 80), left(r.package, 80),
          greatest(coalesce(r.price, 0), 0), r.method, left(r.voucher_code, 40), greatest(coalesce(r.prints, 1), 1),
          -- Tablet versi lama tidak mengirimnya; itu berarti dikonfirmasi, seperti cara kerjanya dulu.
          coalesce(r.staff_confirmed, true),
+         coalesce(r.extra, false),
          -- Hanya pembayaran lunas milik tablet ini, dan yang belum dipakai sesi lain, yang boleh ditautkan.
          (select p.id from payments p
            where p.id = r.payment_id and p.device_id = d.id and p.status = 'paid'
@@ -630,7 +634,7 @@ begin
          case when r.share_code ~ '^[a-z0-9]{12}$' then r.share_code end
   from jsonb_to_recordset(p_rows)
     as r(id uuid, at timestamptz, session_no int, frame text, package text, price int, method text, voucher_code text, prints int,
-         staff_confirmed boolean, payment_id uuid, share_code text)
+         staff_confirmed boolean, extra boolean, payment_id uuid, share_code text)
   where r.id is not null and r.at is not null and r.method in ('free', 'voucher', 'qris', 'cash')
   on conflict (id) do nothing;
   return jsonb_build_object('ok', true);
@@ -858,7 +862,8 @@ returns table (day date, device_id uuid, device_name text, method text, sessions
 language sql stable security invoker set search_path = public
 as $$
   select (t.at at time zone p_tz)::date, t.device_id, t.device_name, t.method,
-         count(*), coalesce(sum(t.prints), 0),
+         -- Cetak ulang berbayar menambah lembar dan uang, bukan sesi.
+         count(*) filter (where not t.extra), coalesce(sum(t.prints), 0),
          coalesce(sum(case when t.method in ('qris', 'cash') then t.price else 0 end), 0)
   from transactions t
   where t.at >= p_from and t.at < p_to and (p_franchise is null or t.franchise_id = p_franchise)
@@ -913,7 +918,7 @@ begin
       'devices_online', (select count(*) from devices d where d.franchise_id = f.id and d.last_seen_at > now() - interval '3 minutes'),
       'last_seen_at', (select max(d.last_seen_at) from devices d where d.franchise_id = f.id),
       'members', (select count(*) from members m where m.franchise_id = f.id),
-      'sessions_30d', (select count(*) from transactions t where t.franchise_id = f.id and t.at > now() - interval '30 days'),
+      'sessions_30d', (select count(*) from transactions t where t.franchise_id = f.id and not t.extra and t.at > now() - interval '30 days'),
       'revenue_30d', (select coalesce(sum(case when t.method in ('qris', 'cash') then t.price else 0 end), 0)
                       from transactions t where t.franchise_id = f.id and t.at > now() - interval '30 days')
     ) order by f.created_at)

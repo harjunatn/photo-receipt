@@ -26,7 +26,7 @@ export function Overview({ api, go }: PageProps) {
   if (!load.data) {
     return (
       <>
-        <PageHead title="Dashboard" lead="Ringkasan semua booth." />
+        <PageHead title="Beranda" lead="Ringkasan semua booth." />
         <LoadState load={load} />
       </>
     );
@@ -46,7 +46,7 @@ export function Overview({ api, go }: PageProps) {
 
   return (
     <>
-      <PageHead title="Dashboard" lead="Ringkasan semua booth. Omzet hanya menghitung QRIS dan tunai.">
+      <PageHead title="Beranda" lead="Ringkasan semua booth. Omzet hanya menghitung QRIS dan tunai.">
         <button class="btn small" onClick={load.reload}>
           {load.loading ? 'Memuat…' : 'Muat ulang'}
         </button>
@@ -87,13 +87,13 @@ export function Overview({ api, go }: PageProps) {
 
       <section class="panel">
         <div class="row">
-          <h2 class="grow">Transaksi terbaru</h2>
+          <h2 class="grow">Sesi terbaru</h2>
           <button class="btn small" onClick={() => go('transaksi')}>
             Lihat semua
           </button>
         </div>
         {recent.length === 0 ? (
-          <p class="hint">Belum ada transaksi. Transaksi muncul di sini setelah tablet yang terpasang menyelesaikan sesi.</p>
+          <p class="hint">Belum ada sesi. Sesi muncul di sini setelah tablet yang terpasang menyelesaikannya.</p>
         ) : (
           <div class="table-wrap">
             <table class="table">

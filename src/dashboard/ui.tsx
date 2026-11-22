@@ -1,7 +1,7 @@
 import type { ComponentChildren } from 'preact';
 import { useCallback, useEffect, useRef, useState } from 'preact/hooks';
 import { toast } from '../ui/components';
-import { CheckIcon, CopyIcon } from '../ui/icons';
+import { CheckIcon, ChevronDownIcon, CopyIcon } from '../ui/icons';
 
 export interface Loaded<T> {
   data: T | null;
@@ -127,6 +127,67 @@ export function ago(iso: string | null, now: number): string {
   if (minutes < 60) return `${minutes} menit lalu`;
   if (minutes < 60 * 24) return `${Math.floor(minutes / 60)} jam lalu`;
   return `${Math.floor(minutes / (60 * 24))} hari lalu`;
+}
+
+/** Closes a menu when the pointer goes down outside it, or Escape is pressed. Returns the ref for the menu's box. */
+export function useDismiss<T extends HTMLElement>(open: boolean, close: () => void) {
+  const box = useRef<T>(null);
+  useEffect(() => {
+    if (!open) return;
+    const outside = (event: PointerEvent) => {
+      if (!box.current?.contains(event.target as Node)) close();
+    };
+    const escape = (event: KeyboardEvent) => {
+      if (event.key === 'Escape') close();
+    };
+    document.addEventListener('pointerdown', outside);
+    document.addEventListener('keydown', escape);
+    return () => {
+      document.removeEventListener('pointerdown', outside);
+      document.removeEventListener('keydown', escape);
+    };
+  }, [open]);
+  return box;
+}
+
+/** A button that opens a short list of things to do, e.g. the formats a report can be downloaded in. */
+export function MenuButton({
+  label,
+  disabled,
+  items,
+}: {
+  label: ComponentChildren;
+  disabled?: boolean;
+  items: { label: string; hint?: string; onPick: () => void }[];
+}) {
+  const [open, setOpen] = useState(false);
+  const box = useDismiss<HTMLDivElement>(open, () => setOpen(false));
+  return (
+    <div class="menu" ref={box}>
+      <button type="button" class="btn small" aria-haspopup="menu" aria-expanded={open} disabled={disabled} onClick={() => setOpen(!open)}>
+        {label}
+        <ChevronDownIcon />
+      </button>
+      {open && (
+        <div class="menu-list" role="menu">
+          {items.map((item) => (
+            <button
+              type="button"
+              role="menuitem"
+              key={item.label}
+              onClick={() => {
+                setOpen(false);
+                item.onPick();
+              }}
+            >
+              <b>{item.label}</b>
+              {item.hint && <small>{item.hint}</small>}
+            </button>
+          ))}
+        </div>
+      )}
+    </div>
+  );
 }
 
 /** A small button beside a code that copies it, showing a tick for a moment afterwards. */

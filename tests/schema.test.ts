@@ -340,6 +340,28 @@ describe('tablets', () => {
     expect((await one(`select device_sync($1) r`, [tokenB])).outlet.brand.title).toBe('Budi Booth');
   });
 
+  it('count a paid extra copy as money and paper, not as another session', async () => {
+    const session = crypto.randomUUID();
+    const copy = crypto.randomUUID();
+    const before = await rows(`select * from stats_daily(now() - interval '1 day', now() + interval '1 day', 'Asia/Jakarta', $1)`, [franchiseA]);
+    const sum = (list: Row[], key: string) => list.reduce((total, row) => total + Number(row[key]), 0);
+    await db.query(`select device_push($1, $2::jsonb)`, [
+      tokenA,
+      JSON.stringify([
+        { id: session, at: new Date().toISOString(), session_no: 7, method: 'voucher', price: 5000, prints: 1 },
+        // The second guest in the photo pays cash for a copy of their own.
+        { id: copy, at: new Date().toISOString(), session_no: 7, package: 'Cetak ulang', method: 'cash', price: 5000, prints: 1, extra: true },
+      ]),
+    ]);
+    expect((await rows('select extra from transactions where id = $1', [copy]))[0].extra).toBe(true);
+    expect((await rows('select extra from transactions where id = $1', [session]))[0].extra).toBe(false);
+    const after = await rows(`select * from stats_daily(now() - interval '1 day', now() + interval '1 day', 'Asia/Jakarta', $1)`, [franchiseA]);
+    expect(sum(after, 'sessions') - sum(before, 'sessions')).toBe(1);
+    expect(sum(after, 'prints') - sum(before, 'prints')).toBe(2);
+    expect(sum(after, 'revenue') - sum(before, 'revenue')).toBe(5000);
+    await db.query('delete from transactions where id = any($1::uuid[])', [[session, copy]]);
+  });
+
   it('record whether staff confirmed a cash or static-QRIS payment, and count an older tablet as confirmed', async () => {
     const at = new Date().toISOString();
     const loose = crypto.randomUUID();

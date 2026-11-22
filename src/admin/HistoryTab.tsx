@@ -10,6 +10,7 @@ import { toast } from '../ui/components';
 import { shareExpiry, ShareQrDialog } from '../ui/ShareQr';
 import { edit, printWithFeedback } from './actions';
 import { Check, NumberField } from './fields';
+import { CardFlow } from '../ui/CardFlow';
 
 /** Rebuilds a past session's receipt from its saved photos, with today's text and print settings. */
 async function recompose(record: SessionRecord): Promise<ComposedReceipt> {
@@ -85,7 +86,7 @@ export function HistoryTab() {
   };
 
   return (
-    <div class="admin-grid">
+    <CardFlow>
       <section class="panel">
         <h2>Penyimpanan foto</h2>
         <Check
@@ -168,6 +169,6 @@ export function HistoryTab() {
         </div>
       </section>
       {qrFor?.shareCode && <ShareQrDialog code={qrFor.shareCode} sessionAt={qrFor.createdAt} onClose={() => setQrFor(null)} />}
-    </div>
+    </CardFlow>
   );
 }

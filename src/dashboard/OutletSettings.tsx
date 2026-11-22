@@ -5,6 +5,7 @@ import { boomerangMode, DEFAULT_SETTINGS, formatRupiah, includesVideos } from '.
 import { toast } from '../ui/components';
 import type { PageProps } from './Dashboard';
 import { DokuSetup } from './DokuSetup';
+import { CardFlow } from '../ui/CardFlow';
 import { LoadState, PageHead, describe, useLoad } from './ui';
 
 /** What every tablet shares: the outlet's name, logo, prices and ways of paying. Receipt texts are set on each tablet. */
@@ -72,7 +73,7 @@ export function OutletSettings({ api }: PageProps) {
         </button>
       </PageHead>
 
-      <div class="admin-grid">
+      <CardFlow minWidth={420}>
         <section class="panel">
           <h2>Outlet</h2>
           <TextField
@@ -149,7 +150,7 @@ export function OutletSettings({ api }: PageProps) {
               {!draft.payment.cashConfirm && <NoConfirmWarning what="tunai" />}
             </div>
           )}
-          <Check label="Voucher" hint="Kode sekali pakai dari menu Voucher." checked={draft.payment.voucher} onChange={(v) => edit((d) => void (d.payment.voucher = v))} />
+          <Check label="Voucher" hint="Kode sekali pakai dari menu Kode Promo." checked={draft.payment.voucher} onChange={(v) => edit((d) => void (d.payment.voucher = v))} />
         </section>
 
         <section class="panel">
@@ -157,7 +158,7 @@ export function OutletSettings({ api }: PageProps) {
           <p class="hint">
             Setiap sesi selalu mendapat kode QR unduhan: foto berwarna dengan frame (dan videonya, kalau harganya termasuk video), bisa
             diunduh selama {SHARE_DAYS} hari lalu dihapus otomatis. Kodenya selalu muncul di layar akhir sesi, di Riwayat dan Transaksi
-            tablet, dan di menu Transaksi dashboard.
+            tablet, dan di menu Riwayat Sesi dashboard.
           </p>
           <Check
             label="Cetak kode QR di struk"
@@ -185,6 +186,22 @@ export function OutletSettings({ api }: PageProps) {
               mencetak QR dan fotonya menunggu di tablet.
             </p>
           )}
+        </section>
+
+        <section class="panel">
+          <h2>Akun pemilik</h2>
+          <p class="hint">
+            Masuk sebagai <b>{api.email}</b>.
+          </p>
+          <label class="field">
+            <span>Password baru (minimal 8 karakter)</span>
+            <input type="password" autocomplete="new-password" value={password} onInput={(event) => setPassword(event.currentTarget.value)} />
+          </label>
+          <div class="row">
+            <button class="btn small" disabled={busy || password.length < 8 || api.demo} onClick={() => void changePassword()}>
+              Ganti password
+            </button>
+          </div>
         </section>
 
         {draft.payment.qris && draft.payment.qrisAuto && <DokuSetup api={api} />}
@@ -240,23 +257,7 @@ export function OutletSettings({ api }: PageProps) {
             ))}
           </div>
         </section>
-
-        <section class="panel">
-          <h2>Akun pemilik</h2>
-          <p class="hint">
-            Masuk sebagai <b>{api.email}</b>.
-          </p>
-          <label class="field">
-            <span>Password baru (minimal 8 karakter)</span>
-            <input type="password" autocomplete="new-password" value={password} onInput={(event) => setPassword(event.currentTarget.value)} />
-          </label>
-          <div class="row">
-            <button class="btn small" disabled={busy || password.length < 8 || api.demo} onClick={() => void changePassword()}>
-              Ganti password
-            </button>
-          </div>
-        </section>
-      </div>
+      </CardFlow>
     </>
   );
 }
@@ -266,7 +267,7 @@ function NoConfirmWarning({ what }: { what: string }) {
   return (
     <p class="banner">
       Tanpa konfirmasi, siapa pun bisa memulai sesi {what} tanpa membayar, dan sesi itu tetap tercatat sebagai uang masuk. Pakai hanya
-      untuk booth yang selalu dijaga. Sesinya ditandai <b>tanpa konfirmasi</b> di menu Transaksi supaya bisa dicocokkan dengan uangnya.
+      untuk booth yang selalu dijaga. Sesinya ditandai <b>tanpa PIN</b> di menu Riwayat Sesi supaya bisa dicocokkan dengan uangnya.
     </p>
   );
 }

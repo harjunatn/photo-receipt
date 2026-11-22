@@ -32,6 +32,8 @@ export interface CloudTx {
   staff_confirmed: boolean;
   /** The code of this session's digital copies, printed as a QR code on the receipt. */
   share_code: string | null;
+  /** true: an extra copy of an earlier session's receipt, paid for separately; not a session of its own. */
+  extra?: boolean;
 }
 
 export interface SyncState {

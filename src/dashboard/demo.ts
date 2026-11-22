@@ -1,4 +1,4 @@
-import type { PayMethod } from '../lib/log';
+import { EXTRA_COPY_PACKAGE, type PayMethod } from '../lib/log';
 import { newShareCode } from '../lib/cloud/shared';
 import { normalizeCode, voucherStatus, type VoucherStatus } from '../lib/vouchers';
 import { DEFAULT_PLATFORM, type PlatformConfig } from '../lib/cloud/shared';
@@ -210,7 +210,23 @@ function createDemoApi(
         share_code: back < 7 ? newShareCode() : null,
         // A few cash sessions were taken without the staff PIN, to show how they are marked.
         staff_confirmed: !(method === 'cash' && n % 5 === 0),
+        payment_status: method === 'qris' ? 'paid' : null,
       });
+      // Now and then a second guest in the photo buys a copy of their own: a row for that payment alone.
+      if (!double && n % 7 === 3) {
+        const first = transactions[transactions.length - 1];
+        transactions.push({
+          ...first,
+          id: `${first.id}-lagi`,
+          at: iso(at + 60_000),
+          package: EXTRA_COPY_PACKAGE,
+          method: 'cash',
+          voucher_code: null,
+          prints: 1,
+          staff_confirmed: true,
+          payment_status: null,
+        });
+      }
     }
   }
   transactions.sort((a, b) => b.at.localeCompare(a.at));
@@ -224,7 +240,18 @@ function createDemoApi(
     used_by_name: i % 4 === 0 ? (devices[i % 2]?.name ?? 'Tablet') : null,
   }));
   let outlet: unknown = {};
-  let frames: (CustomFrameRow & { image: string })[] = [];
+  // Two frames of the franchise's own, one of them switched off, so the gallery shows how they are edited.
+  const sampleFrame = (colour: string, photos: boolean) =>
+    `data:image/svg+xml,${encodeURIComponent(
+      `<svg xmlns="http://www.w3.org/2000/svg" width="384" height="900"><path fill="${colour}" fill-rule="evenodd" d="M0 0h384v900H0zM32 60h320v340H32zM32 440h320v340H32z"/>` +
+        (photos ? '<path fill="#d9c9ec" d="M32 60h320v340H32zM32 440h320v340H32z"/>' : '') +
+        '<text x="192" y="855" fill="#fff" font-family="sans-serif" font-size="44" font-weight="700" text-anchor="middle">HELLO!</text></svg>',
+    )}`;
+  const sampleLayout = { width: 384, height: 900, slots: [{ x: 32, y: 60, w: 320, h: 340 }, { x: 32, y: 440, w: 320, h: 340 }], print: 'dither' as const };
+  let frames: (CustomFrameRow & { image: string })[] = [
+    { id: 'contoh-merah', name: 'Hello Merah', blurb: '', layout: sampleLayout, image: sampleFrame('#c2452d', false), thumb: sampleFrame('#c2452d', true), active: true, updated_at: iso(now) },
+    { id: 'contoh-biru', name: 'Hello Biru', blurb: '', layout: sampleLayout, image: sampleFrame('#2d5fc2', false), thumb: sampleFrame('#2d5fc2', true), active: false, updated_at: iso(now) },
+  ];
   let doku: DokuState = {
     can_save: true,
     source: 'none',
@@ -352,7 +379,7 @@ function createDemoApi(
         const day = dayKey(new Date(at));
         const key = `${day}|${tx.device_id}|${tx.method}`;
         const row = groups.get(key) ?? { day, device_id: tx.device_id, device_name: tx.device_name, method: tx.method, sessions: 0, prints: 0, revenue: 0 };
-        row.sessions += 1;
+        if (tx.package !== EXTRA_COPY_PACKAGE) row.sessions += 1;
         row.prints += tx.prints;
         row.revenue += tx.method === 'qris' || tx.method === 'cash' ? tx.price : 0;
         groups.set(key, row);

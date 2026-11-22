@@ -1,3 +1,4 @@
+import { CardFlow } from '../ui/CardFlow';
 import { useEffect, useState } from 'preact/hooks';
 import { NumberField, TextField } from '../admin/fields';
 import type { PlatformConfig } from '../lib/cloud/shared';
@@ -50,7 +51,7 @@ export function PlatformSettings({ admin }: AdminPageProps) {
         </button>
       </PageHead>
 
-      <div class="admin-grid">
+      <CardFlow minWidth={420}>
         <section class="panel">
           <h2>Merek platform</h2>
           <TextField label="Nama platform" hint="Tampil di dashboard ini dan di halaman unduh foto tamu." value={draft.name} onChange={(v) => setDraft({ ...draft, name: v })} />
@@ -82,7 +83,7 @@ export function PlatformSettings({ admin }: AdminPageProps) {
           />
           <p class="hint">Tanggal langganan tiap franchise diatur di menu Franchise → Atur.</p>
         </section>
-      </div>
+      </CardFlow>
     </>
   );
 }

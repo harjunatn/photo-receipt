@@ -185,7 +185,7 @@ export function Vouchers({ api }: PageProps) {
 
   return (
     <>
-      <PageHead title="Voucher" lead="Kode sekali pakai, berlaku di semua tablet yang terpasang. Tablet perlu internet untuk menerimanya." />
+      <PageHead title="Kode Promo" lead="Kode sekali pakai, berlaku di semua tablet yang terpasang. Tablet perlu internet untuk menerimanya." />
 
       <div class="tiles">
         {(['active', 'used', 'expired'] as const).map((key) => (

@@ -144,17 +144,17 @@ html.dashboard .dash-links button {
     color 0.15s;
 }
 
-/* The dot in front of each page; it lights up on the open one. */
-html.dashboard .dash-links button::before {
-  content: '';
+/* The icon in front of each page; it lights up on the open one. */
+html.dashboard .dash-links button svg {
   flex: none;
-  width: 6px;
-  height: 6px;
-  border-radius: 3px;
-  background: var(--d-dot);
-  transition:
-    background 0.15s,
-    box-shadow 0.15s;
+  width: 19px;
+  height: 19px;
+  color: #7f8e87;
+  transition: color 0.15s;
+}
+
+html.dashboard .dash-links button:hover svg {
+  color: var(--d-text-2);
 }
 
 html.dashboard .dash-links button:hover {
@@ -168,9 +168,8 @@ html.dashboard .dash-links button.on {
   color: #fff;
 }
 
-html.dashboard .dash-links button.on::before {
-  background: var(--accent);
-  box-shadow: 0 0 0 4px rgb(30 214 192 / 0.15);
+html.dashboard .dash-links button.on svg {
+  color: var(--accent);
 }
 
 html.dashboard .dash-main {
@@ -260,6 +259,62 @@ html.dashboard .dash-account-menu .btn {
   margin-top: 10px;
 }
 
+html.dashboard .menu {
+  position: relative;
+}
+
+html.dashboard .menu > .btn svg {
+  margin-right: -4px;
+  color: var(--ink-2);
+}
+
+html.dashboard .menu-list {
+  position: absolute;
+  top: calc(100% + 8px);
+  right: 0;
+  z-index: 20;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  min-width: 220px;
+  padding: 6px;
+  border: 1px solid var(--d-control-line);
+  border-radius: 12px;
+  background: var(--card);
+  box-shadow: 0 18px 40px rgb(0 0 0 / 0.45);
+  animation: fade 0.15s;
+}
+
+html.dashboard .menu-list button {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 2px;
+  min-height: 44px;
+  padding: 8px 12px;
+  border: 0;
+  border-radius: 8px;
+  background: none;
+  color: var(--ink);
+  font-size: 14px;
+  text-align: left;
+}
+
+html.dashboard .menu-list button:hover,
+html.dashboard .menu-list button:focus-visible {
+  outline: none;
+  background: var(--soft);
+}
+
+html.dashboard .menu-list b {
+  font-weight: 500;
+}
+
+html.dashboard .menu-list small {
+  color: var(--ink-2);
+  font-size: 12px;
+}
+
 /* ---------- Page heading ---------- */
 
 html.dashboard .dash-head {
@@ -310,11 +365,7 @@ html.dashboard .dash-sub {
   color: #fff;
 }
 
-/* ---------- Cards, numbered ---------- */
-
-html.dashboard .dash-main {
-  counter-reset: card;
-}
+/* ---------- Cards ---------- */
 
 html.dashboard .panel {
   gap: 18px;
@@ -328,11 +379,8 @@ html.dashboard .panel.busy {
   opacity: 0.6;
 }
 
-/* A card's heading is a small label with the card's number in front: "01 OUTLET". */
+/* A card's heading is a small label: "OUTLET". */
 html.dashboard .panel h2 {
-  display: flex;
-  align-items: center;
-  gap: 10px;
   color: var(--body);
   font-size: 12px;
   font-weight: 500;
@@ -341,47 +389,13 @@ html.dashboard .panel h2 {
   text-transform: uppercase;
 }
 
-html.dashboard .dash-main .panel > h2::before,
-html.dashboard .dash-main .panel > .row:first-child > h2::before {
-  counter-increment: card;
-}
-
-/*
- * A tile counts on itself: it is a size container (for its number's font size),
- * and a count made inside one would not reach the cards after it.
- */
-html.dashboard .dash-main .tile {
-  counter-increment: card;
-}
-
-html.dashboard .dash-main .panel > h2::before,
-html.dashboard .dash-main .panel > .row:first-child > h2::before,
-html.dashboard .dash-main .tile > span:first-child::before {
-  content: counter(card, decimal-leading-zero);
-  flex: none;
-  padding: 3px 6px;
-  border-radius: 4px;
-  background: var(--ink);
-  color: var(--page);
-  font-size: 11px;
-  font-weight: 600;
-  letter-spacing: 0;
-  line-height: 1.3;
-}
-
-/* A box inside a card: flat, darker, with a plain heading and no number. */
+/* A box inside a card: flat, darker, with a plain heading. */
 html.dashboard .panel .panel {
   gap: 14px;
   padding: 22px;
   border: 1px solid var(--line);
   border-radius: 12px;
   background: var(--cream);
-}
-
-html.dashboard .dash-main .panel .panel > h2::before,
-html.dashboard .dash-main .panel .panel > .row:first-child > h2::before {
-  counter-increment: none;
-  content: none;
 }
 
 html.dashboard .panel .panel h2 {
@@ -391,9 +405,14 @@ html.dashboard .panel .panel h2 {
   text-transform: none;
 }
 
-/* Cards two to a row on a laptop, like the design; one on a phone. */
+/*
+ * Cards two to a row on a laptop, like the design; one on a phone. Cards in a
+ * row share one height, so a short card leaves no hole beside a tall one.
+ * (Settings pages use CardFlow, which packs cards of very different heights.)
+ */
 html.dashboard .admin-grid {
   grid-template-columns: repeat(auto-fit, minmax(min(100%, 420px), 1fr));
+  align-items: stretch;
   gap: 20px;
 }
 
@@ -561,6 +580,30 @@ html.dashboard .dash-gate .field input {
     box-shadow 0.15s;
 }
 
+html.dashboard .field select {
+  appearance: none;
+  -webkit-appearance: none;
+  padding-right: 42px;
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='%2393a19a' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='m6 9 6 6 6-6'/%3E%3C/svg%3E");
+  background-repeat: no-repeat;
+  background-position: right 14px center;
+  background-size: 16px;
+  line-height: 1.3;
+  cursor: pointer;
+}
+
+/* Safari draws date fields shorter and centred unless told otherwise. */
+html.dashboard .dash .field input[type='date'] {
+  -webkit-appearance: none;
+  appearance: none;
+  line-height: 1.3;
+  text-align: left;
+}
+
+html.dashboard .field input[type='date']::-webkit-date-and-time-value {
+  text-align: left;
+}
+
 html.dashboard .field textarea {
   padding: 12px 16px;
   font-size: 14px;
@@ -654,9 +697,6 @@ html.dashboard .tile {
 }
 
 html.dashboard .tile span {
-  display: flex;
-  align-items: center;
-  gap: 10px;
   color: var(--body);
   letter-spacing: 0.16em;
 }
@@ -723,7 +763,7 @@ html.dashboard .share-track i {
 
 html.dashboard .table th,
 html.dashboard .table td {
-  padding: 16px 12px;
+  padding: 16px 10px;
   border-top: 0;
   border-bottom: 1px solid var(--d-row-line);
 }

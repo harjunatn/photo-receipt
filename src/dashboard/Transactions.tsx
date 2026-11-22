@@ -6,13 +6,13 @@ import { buildXlsx, type SheetColumn } from '../lib/export/xlsx';
 import { PAY_METHOD_LABEL, toCsv, type PayMethod } from '../lib/log';
 import { formatRupiah } from '../lib/settings';
 import { toast } from '../ui/components';
-import { EyeIcon, QrIcon } from '../ui/icons';
+import { DownloadIcon, EyeIcon, QrIcon } from '../ui/icons';
 import { ShareQrDialog } from '../ui/ShareQr';
 import { shareUrl } from '../lib/cloud/shared';
 import type { ShareState, Tx, TxFilter } from './api';
 import type { PageProps } from './Dashboard';
 import { dayKey, total } from './stats';
-import { LoadState, PageHead, Pager, Tile, dateTime, describe, useLoad } from './ui';
+import { LoadState, MenuButton, PageHead, Pager, Tile, dateTime, describe, useLoad } from './ui';
 
 const PAGE_SIZES = [20, 50, 100, 200];
 const PAGE_SIZE_KEY = 'dashboard.tx-page-size';
@@ -47,18 +47,33 @@ function presetDays(preset: Preset, now: Date): [string, string] {
 }
 
 type ExportKind = 'xlsx' | 'pdf' | 'csv';
-const EXPORT_LABEL: Record<ExportKind, string> = { xlsx: 'Unduh Excel', pdf: 'Unduh PDF', csv: 'CSV' };
+const EXPORTS: { kind: ExportKind; label: string; hint: string }[] = [
+  { kind: 'xlsx', label: 'Excel (.xlsx)', hint: 'Tabel dengan jumlah di baris terakhir' },
+  { kind: 'pdf', label: 'PDF', hint: 'Laporan siap cetak' },
+  { kind: 'csv', label: 'CSV', hint: 'Data mentah untuk aplikasi lain' },
+];
 
 /** Whether staff confirmed the payment: only cash and static QRIS can be taken without, when the franchise allows it. */
 const unconfirmed = (tx: Tx) => tx.staff_confirmed === false;
 const confirmation = (tx: Tx) => (unconfirmed(tx) ? 'Tidak' : tx.method === 'cash' || tx.method === 'qris' ? 'Ya' : '');
+
+/**
+ * How the payment stands. An automatic QRIS payment says what the provider last reported for it;
+ * every other way of paying is settled by the time its session is recorded.
+ */
+export function paymentState(tx: Pick<Tx, 'method' | 'payment_status'>): { label: string; tag: 'ok' | 'warn' | 'err' } {
+  if (tx.method === 'qris' && tx.payment_status && tx.payment_status !== 'paid') {
+    return tx.payment_status === 'pending' ? { label: 'Menunggu', tag: 'warn' } : { label: 'Gagal', tag: 'err' };
+  }
+  return { label: 'Berhasil', tag: 'ok' };
+}
 
 /** Money that actually came in: QRIS and cash; vouchers and free sessions bring none. */
 const received = (tx: Tx) => (tx.method === 'qris' || tx.method === 'cash' ? tx.price : 0);
 
 function csvRows(all: Tx[]): (string | number)[][] {
   return [
-    ['waktu', 'perangkat', 'no_sesi', 'frame', 'pilihan', 'cara_bayar', 'konfirmasi_petugas', 'harga', 'uang_diterima', 'voucher', 'lembar'],
+    ['waktu', 'perangkat', 'no_sesi', 'frame', 'pilihan', 'cara_bayar', 'status', 'pin_petugas', 'harga', 'uang_diterima', 'voucher', 'lembar'],
     ...all.map((tx) => [
       dateTime(tx.at),
       tx.device_name,
@@ -66,6 +81,7 @@ function csvRows(all: Tx[]): (string | number)[][] {
       tx.frame ?? '',
       tx.package ?? '',
       PAY_METHOD_LABEL[tx.method],
+      paymentState(tx).label,
       confirmation(tx),
       tx.price,
       received(tx),
@@ -82,7 +98,8 @@ const SHEET_COLUMNS: SheetColumn[] = [
   { header: 'Frame', width: 16 },
   { header: 'Pilihan', width: 16 },
   { header: 'Cara bayar', width: 12 },
-  { header: 'Konfirmasi petugas', width: 19 },
+  { header: 'Status', width: 11 },
+  { header: 'PIN petugas', width: 12 },
   { header: 'Voucher', width: 16 },
   { header: 'Lembar', width: 9, format: 'integer', sum: true },
   { header: 'Harga', width: 13, format: 'rupiah', sum: true },
@@ -97,6 +114,7 @@ function sheetRow(tx: Tx): (string | number | Date | null)[] {
     tx.frame,
     tx.package,
     PAY_METHOD_LABEL[tx.method],
+    paymentState(tx).label,
     confirmation(tx),
     tx.voucher_code,
     tx.prints,
@@ -117,12 +135,12 @@ function pdfReport(all: Tx[], context: { brand: string; period: string; method: 
   const money = all.reduce((sum, tx) => sum + received(tx), 0);
   const loose = all.filter(unconfirmed);
   return {
-    title: `Laporan transaksi ${context.brand}`,
+    title: `Laporan riwayat sesi ${context.brand}`,
     lines: [
       `Periode ${context.period} · Cara bayar: ${context.method} · Perangkat: ${context.device}`,
       `${sessions.toLocaleString('id-ID')} sesi · ${prints.toLocaleString('id-ID')} lembar dicetak · Uang diterima ${formatRupiah(money)} (QRIS dan tunai)`,
       ...(loose.length > 0
-        ? [`${loose.length.toLocaleString('id-ID')} sesi tanpa konfirmasi petugas, senilai ${formatRupiah(loose.reduce((sum, tx) => sum + received(tx), 0))}: cocokkan dengan uang yang diterima.`]
+        ? [`${loose.length.toLocaleString('id-ID')} sesi tanpa PIN petugas, senilai ${formatRupiah(loose.reduce((sum, tx) => sum + received(tx), 0))}: cocokkan dengan uang yang diterima.`]
         : []),
     ],
     columns: [
@@ -140,7 +158,7 @@ function pdfReport(all: Tx[], context: { brand: string; period: string; method: 
       tx.device_name,
       tx.session_no === null ? '' : String(tx.session_no),
       [tx.frame, tx.package].filter(Boolean).join(' · '),
-      tx.voucher_code ? `${PAY_METHOD_LABEL[tx.method]} ${tx.voucher_code}` : unconfirmed(tx) ? `${PAY_METHOD_LABEL[tx.method]} · tanpa konfirmasi` : PAY_METHOD_LABEL[tx.method],
+      tx.voucher_code ? `${PAY_METHOD_LABEL[tx.method]} ${tx.voucher_code}` : unconfirmed(tx) ? `${PAY_METHOD_LABEL[tx.method]} · tanpa PIN` : PAY_METHOD_LABEL[tx.method],
       String(tx.prints),
       formatRupiah(tx.price),
       formatRupiah(received(tx)),
@@ -201,12 +219,12 @@ export function Transactions({ api }: PageProps) {
     setExporting(kind);
     try {
       const all = await collectAll(filter);
-      const name = `transaksi-${first}-sd-${last}`;
+      const name = `riwayat-sesi-${first}-sd-${last}`;
       if (kind === 'csv') {
         // The BOM makes Excel read the file as UTF-8.
         download(`${name}.csv`, new Blob(['\ufeff', toCsv(csvRows(all))], { type: 'text/csv' }));
       } else if (kind === 'xlsx') {
-        const sheet = buildXlsx('Transaksi', SHEET_COLUMNS, all.map(sheetRow));
+        const sheet = buildXlsx('Riwayat sesi', SHEET_COLUMNS, all.map(sheetRow));
         download(`${name}.xlsx`, new Blob([sheet], { type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' }));
       } else {
         const outlet = (await api.getOutlet().catch(() => null)) as { brand?: { title?: unknown } } | null;
@@ -229,13 +247,27 @@ export function Transactions({ api }: PageProps) {
 
   return (
     <>
-      <PageHead title="Transaksi" lead="Semua sesi yang selesai, dari semua perangkat.">
-        {(['xlsx', 'pdf', 'csv'] as const).map((kind) => (
-          <button key={kind} class="btn small" disabled={exporting !== null || !filter || !load.data?.total} onClick={() => void exportAs(kind)}>
-            {exporting === kind ? 'Menyiapkan…' : EXPORT_LABEL[kind]}
-          </button>
-        ))}
+      <PageHead title="Riwayat Sesi" lead="Semua sesi yang selesai, dari semua booth.">
+        <MenuButton
+          label={
+            <>
+              <DownloadIcon />
+              {exporting ? 'Menyiapkan…' : 'Unduh'}
+            </>
+          }
+          disabled={exporting !== null || !filter || !load.data?.total}
+          items={EXPORTS.map((option) => ({ label: option.label, hint: option.hint, onPick: () => void exportAs(option.kind) }))}
+        />
       </PageHead>
+
+      <div class="tiles">
+        <Tile label="Uang diterima" value={load.data ? formatRupiah(load.data.sum.revenue) : '—'} note="QRIS dan tunai" />
+        <Tile
+          label="Sesi"
+          value={load.data ? load.data.sum.sessions.toLocaleString('id-ID') : '—'}
+          note={load.data ? `${load.data.sum.prints.toLocaleString('id-ID')} lembar dicetak` : 'lembar dicetak'}
+        />
+      </div>
 
       <section class="panel">
         <h2>Filter</h2>
@@ -336,19 +368,10 @@ export function Transactions({ api }: PageProps) {
       <LoadState load={load} />
       {load.data && (
         <>
-          <div class="tiles">
-            <Tile label="Uang diterima" value={formatRupiah(load.data.sum.revenue)} note="QRIS dan tunai" />
-            <Tile
-              label="Sesi"
-              value={load.data.sum.sessions.toLocaleString('id-ID')}
-              note={`${load.data.sum.prints.toLocaleString('id-ID')} lembar dicetak`}
-            />
-          </div>
-
           <section class={`panel ${load.loading ? 'busy' : ''}`}>
             <h2>Daftar sesi</h2>
             {load.data.rows.length === 0 ? (
-              <p class="hint">Tidak ada transaksi untuk pilihan ini.</p>
+              <p class="hint">Tidak ada sesi untuk pilihan ini.</p>
             ) : (
               <div class="table-wrap">
                 <table class="table">
@@ -358,6 +381,7 @@ export function Transactions({ api }: PageProps) {
                       <th>Perangkat</th>
                       <th>Frame · pilihan</th>
                       <th>Cara bayar</th>
+                      <th>Status</th>
                       <th class="num">Harga</th>
                       <th>Hasil foto</th>
                       <th class="num">Aksi</th>
@@ -367,8 +391,8 @@ export function Transactions({ api }: PageProps) {
                     {load.data.rows.map((tx) => (
                       <tr key={tx.id}>
                         <td>{dateTime(tx.at)}</td>
-                        <td>{tx.device_name}</td>
-                        <td>
+                        <td class="wrap">{tx.device_name}</td>
+                        <td class="wrap">
                           {tx.frame} · {tx.package}
                         </td>
                         <td>
@@ -378,10 +402,13 @@ export function Transactions({ api }: PageProps) {
                             <>
                               {' '}
                               <span class="tag warn" title="Sesi dimulai tanpa PIN petugas, karena konfirmasi dimatikan di Pengaturan.">
-                                tanpa konfirmasi
+                                tanpa PIN
                               </span>
                             </>
                           )}
+                        </td>
+                        <td>
+                          <span class={`tag ${paymentState(tx).tag}`}>{paymentState(tx).label}</span>
                         </td>
                         <td class="num">{formatRupiah(tx.price)}</td>
                         <td>

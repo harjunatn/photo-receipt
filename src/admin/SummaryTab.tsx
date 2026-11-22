@@ -5,6 +5,7 @@ import { usePrinter } from '../lib/printer/manager';
 import { transportSupported } from '../lib/printer/transports';
 import { DEFAULT_PIN, useSettings } from '../lib/settings';
 import { useStore } from '../lib/store';
+import { CardFlow } from '../ui/CardFlow';
 
 /** At-a-glance health of the booth: printer, camera, connection and the things to fix before guests arrive. */
 export function SummaryTab() {
@@ -37,7 +38,7 @@ export function SummaryTab() {
   if (settings.packages.every((p) => !p.active)) problems.push('Belum ada harga yang aktif. Atur di dashboard pemilik (menu Pengaturan).');
 
   return (
-    <div class="admin-grid">
+    <CardFlow>
       <section class="panel span">
         <h2>Kesiapan booth</h2>
         {problems.map((problem) => (
@@ -70,6 +71,6 @@ export function SummaryTab() {
         <p class="hint">Penjualan dan daftar transaksi tablet ini ada di tab Dashboard dan Transaksi.</p>
       </section>
 
-    </div>
+    </CardFlow>
   );
 }

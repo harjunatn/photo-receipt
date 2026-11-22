@@ -1537,6 +1537,24 @@ textarea {
   gap: 18px;
 }
 
+/* Boxes side by side inside a panel share one height, so none leaves a hole. */
+.panel .admin-grid {
+  align-items: stretch;
+  container-type: inline-size;
+}
+
+/*
+ * A print preview beside its controls is exactly as tall as they are, and
+ * scrolls inside when the receipt is longer. Only while the two sit side by
+ * side (two columns of 340px and the gap); stacked, it keeps its own height.
+ */
+@container (min-width: 698px) {
+  .panel .admin-grid > .preview-box {
+    contain: size;
+    max-height: none;
+  }
+}
+
 .panel {
   display: flex;
   flex-direction: column;

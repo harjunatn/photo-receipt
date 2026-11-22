@@ -9,6 +9,12 @@ export const PAY_METHOD_LABEL: Record<PayMethod, string> = {
   cash: 'Tunai',
 };
 
+/**
+ * What the history calls one more copy of a session's receipt, sold after the session: a row
+ * of its own (its own payment, its own time) that is not counted as another session.
+ */
+export const EXTRA_COPY_PACKAGE = 'Cetak ulang';
+
 /** One finished session, without photos — the basis for the sales summary. */
 export interface LogEntry {
   at: number;
@@ -18,6 +24,8 @@ export interface LogEntry {
   method: PayMethod;
   voucher?: string;
   prints: number;
+  /** true: an extra copy of session `no`, paid for separately. Adds money and paper, not a session. */
+  extra?: boolean;
 }
 
 export interface Totals {
@@ -43,7 +51,7 @@ export function totalsSince(entries: LogEntry[], since: number): Totals {
   const totals: Totals = { sessions: 0, prints: 0, revenue: 0 };
   for (const entry of entries) {
     if (entry.at < since) continue;
-    totals.sessions += 1;
+    if (!entry.extra) totals.sessions += 1;
     totals.prints += entry.prints;
     totals.revenue += paidAmount(entry);
   }

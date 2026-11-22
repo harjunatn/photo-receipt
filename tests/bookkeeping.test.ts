@@ -24,6 +24,11 @@ describe('sales totals', () => {
     expect(totalsSince(log, 0)).toEqual({ sessions: 3, prints: 4, revenue: 40000 });
     expect(totalsSince([], 0)).toEqual({ sessions: 0, prints: 0, revenue: 0 });
   });
+
+  it('counts a paid extra copy as money and paper, not as another session', () => {
+    const log = [entry({ method: 'voucher', price: 5000 }), entry({ method: 'cash', price: 5000, extra: true, packageName: 'Klasik · Cetak ulang' })];
+    expect(totalsSince(log, 0)).toEqual({ sessions: 1, prints: 2, revenue: 5000 });
+  });
 });
 
 describe('toCsv', () => {

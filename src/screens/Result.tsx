@@ -6,12 +6,12 @@ import { qrShape } from '../lib/qr';
 import { saveSession } from '../lib/db';
 import type { BitImage } from '../lib/image/types';
 import { pokeIdle } from '../lib/kiosk';
-import { addLogEntry, nextSessionNumber } from '../lib/log';
+import { addLogEntry, EXTRA_COPY_PACKAGE, nextSessionNumber } from '../lib/log';
 import { printer, usePrinter } from '../lib/printer/manager';
 import { renderDigital, renderDraft, renderFrameBoomerang, renderSlideshow, type Draft } from '../lib/session';
-import { settingsStore } from '../lib/settings';
+import { formatRupiah, settingsStore } from '../lib/settings';
 import { sound } from '../lib/sound';
-import { PinPad, ReceiptPaper, Steps } from '../ui/components';
+import { Overlay, PinPad, ReceiptPaper, Steps } from '../ui/components';
 
 interface Props {
   draft: Draft;
@@ -34,24 +34,32 @@ export function Result({ draft, onFinish }: Props) {
   // Staff unlock this screen once with their PIN, to fix the printer or print another copy.
   const [askPin, setAskPin] = useState<'fix' | 'reprint' | null>(null);
   const [staff, setStaff] = useState(false);
+  // Staff choose whether one more copy is paid for or replaces a spoilt print.
+  const [chooseCopy, setChooseCopy] = useState(false);
   const [secondsLeft, setSecondsLeft] = useState(RETURN_SECONDS_WITH_QR);
   const started = useRef(false);
+  const sessionNo = useRef<number | null>(null);
   const returnSeconds = draft.shareCode ? RETURN_SECONDS_WITH_QR : RETURN_SECONDS;
+  // One more copy costs what one sheet of the chosen price costs.
+  const copyPrice = Math.round(draft.pkg.price / Math.max(1, draft.pkg.prints));
 
-  const print = async (image: BitImage, copies = draft.pkg.prints) => {
+  /** Prints the image; false when it did not come out. */
+  const print = async (image: BitImage, copies = draft.pkg.prints): Promise<boolean> => {
     if (printer.state.get().status === 'disconnected') await printer.reconnect();
     if (printer.state.get().status !== 'connected') {
       setPhase('no-printer');
-      return;
+      return false;
     }
     setPhase('printing');
     try {
       await printer.print(image, copies);
       sound.done();
       setPhase('done');
+      return true;
     } catch (cause) {
       setMessage(cause instanceof Error ? cause.message : 'Gagal mencetak.');
       setPhase('error');
+      return false;
     }
   };
 
@@ -63,13 +71,14 @@ export function Result({ draft, onFinish }: Props) {
     void (async () => {
       try {
         const settings = settingsStore.get();
-        const sessionNo = nextSessionNumber(draft.when);
-        const image = await renderDraft(draft, sessionNo, settings);
+        const no = nextSessionNumber(draft.when);
+        sessionNo.current = no;
+        const image = await renderDraft(draft, no, settings);
         setBits(image);
 
         addLogEntry({
           at: draft.when.getTime(),
-          no: sessionNo,
+          no,
           packageName: `${draft.frame.name} · ${draft.pkg.name}`,
           price: draft.pkg.price,
           method: draft.method,
@@ -79,7 +88,7 @@ export function Result({ draft, onFinish }: Props) {
         queueTransaction({
           id: crypto.randomUUID(),
           at: draft.when.toISOString(),
-          session_no: sessionNo,
+          session_no: no,
           frame: draft.frame.name,
           package: draft.pkg.name,
           price: draft.pkg.price,
@@ -93,7 +102,7 @@ export function Result({ draft, onFinish }: Props) {
         if (draft.shareCode) {
           const code = draft.shareCode;
           // Made a moment later, so that building the colour copy never holds up the print.
-          setTimeout(() => void sendDigital(draft, code, sessionNo), 1500);
+          setTimeout(() => void sendDigital(draft, code, no), 1500);
         }
         if (settings.storage.keepPhotos) {
           // Saved in the background: a full disk must not stop the guest's print.
@@ -104,7 +113,7 @@ export function Result({ draft, onFinish }: Props) {
               saveSession(
                 {
                   id: crypto.randomUUID(),
-                  no: sessionNo,
+                  no,
                   createdAt: draft.when.getTime(),
                   packageName: `${draft.frame.name} · ${draft.pkg.name}`,
                   price: draft.pkg.price,
@@ -136,22 +145,64 @@ export function Result({ draft, onFinish }: Props) {
     if (phase === 'printing' || phase === 'preparing') pokeIdle();
   }, [phase, printerState.progress]);
 
-  // The countdown back to the start waits while staff type their PIN, then starts over.
+  // The countdown back to the start waits while staff type their PIN or choose, then starts over.
   useEffect(() => {
-    if (phase !== 'done' || askPin) return;
+    if (phase !== 'done' || askPin || chooseCopy) return;
     setSecondsLeft(returnSeconds);
     const timer = setInterval(() => setSecondsLeft((n) => n - 1), 1000);
     return () => clearInterval(timer);
-  }, [phase, askPin]);
+  }, [phase, askPin, chooseCopy]);
 
   useEffect(() => {
     if (phase === 'done' && secondsLeft <= 0) onFinish();
   }, [phase, secondsLeft]);
 
-  /** One more copy of this receipt, e.g. for the second guest in the photo. Staff only, so prints stay paid for. */
+  /**
+   * One more copy of this receipt. Paid: the second guest in the photo wants their own, pays for
+   * it again, and the history gets a row for that payment. Free: the first print came out spoilt.
+   */
+  const printCopy = async (paid: boolean) => {
+    setChooseCopy(false);
+    if (!bits || !(await print(bits, 1))) return;
+    const no = sessionNo.current;
+    if (!paid || no === null) return;
+    const at = new Date();
+    addLogEntry({
+      at: at.getTime(),
+      no,
+      packageName: `${draft.frame.name} · ${EXTRA_COPY_PACKAGE}`,
+      price: copyPrice,
+      method: 'cash',
+      prints: 1,
+      extra: true,
+    });
+    queueTransaction({
+      id: crypto.randomUUID(),
+      at: at.toISOString(),
+      session_no: no,
+      frame: draft.frame.name,
+      package: EXTRA_COPY_PACKAGE,
+      price: copyPrice,
+      method: 'cash',
+      voucher_code: null,
+      prints: 1,
+      payment_id: null,
+      // Only staff reach this, with their PIN.
+      staff_confirmed: true,
+      share_code: draft.shareCode ?? null,
+      extra: true,
+    });
+  };
+
+  /** Staff only, so prints stay paid for. Where a sheet costs nothing there is nothing to choose. */
+  const offerCopy = () => {
+    if (copyPrice > 0) setChooseCopy(true);
+    else void printCopy(false);
+  };
+
   const reprint = () => {
     if (!bits) return;
-    if (staff) void print(bits, 1);
+    if (staff) offerCopy();
     else setAskPin('reprint');
   };
 
@@ -244,9 +295,27 @@ export function Result({ draft, onFinish }: Props) {
             const then = askPin;
             setAskPin(null);
             setStaff(true);
-            if (then === 'reprint' && bits) void print(bits, 1);
+            if (then === 'reprint' && bits) offerCopy();
           }}
         />
+      )}
+
+      {chooseCopy && (
+        <Overlay onClose={() => setChooseCopy(false)}>
+          <div class="card dialog">
+            <h2 class="heading small">Cetak 1 lembar lagi</h2>
+            <p class="lead">Lembar tambahan dibayar lagi oleh tamu, dan tercatat di riwayat sebagai pembayaran tunai.</p>
+            <button class="btn primary" onClick={() => void printCopy(true)}>
+              Tamu bayar {formatRupiah(copyPrice)}
+            </button>
+            <button class="btn" onClick={() => void printCopy(false)}>
+              Gratis, cetakan tadi rusak
+            </button>
+            <button class="link" onClick={() => setChooseCopy(false)}>
+              Batal
+            </button>
+          </div>
+        </Overlay>
       )}
     </div>
   );

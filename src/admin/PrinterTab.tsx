@@ -9,6 +9,7 @@ import { DEFAULT_SETTINGS, useSettings, type TransportKind } from '../lib/settin
 import { ReceiptPaper } from '../ui/components';
 import { edit, printWithFeedback } from './actions';
 import { Check, NumberField, Segmented, Slider } from './fields';
+import { CardFlow } from '../ui/CardFlow';
 
 const KIND_HINTS: Record<TransportKind, string> = {
   usb: 'Sambungkan printer ke tablet dengan kabel (lewat OTG / USB hub). Tekan Hubungkan, pilih printernya di jendela Chrome, lalu izinkan.',
@@ -64,7 +65,7 @@ export function PrinterTab() {
   };
 
   return (
-    <div class="admin-grid">
+    <CardFlow>
       <section class="panel">
         <h2>Koneksi printer</h2>
         <Segmented
@@ -296,7 +297,7 @@ export function PrinterTab() {
       </section>
 
       <PrintProblems />
-    </div>
+    </CardFlow>
   );
 }
 

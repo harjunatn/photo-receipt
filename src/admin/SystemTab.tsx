@@ -4,6 +4,7 @@ import { logStore } from '../lib/log';
 import { DEFAULT_SETTINGS, settingsStore, useSettings } from '../lib/settings';
 import { toast } from '../ui/components';
 import { edit } from './actions';
+import { CardFlow } from '../ui/CardFlow';
 
 /** Staff PIN, full-screen mode and backup of the configuration. */
 export function SystemTab() {
@@ -36,7 +37,7 @@ export function SystemTab() {
   };
 
   return (
-    <div class="admin-grid">
+    <CardFlow>
       <section class="panel">
         <h2>PIN petugas</h2>
         <p class="hint">
@@ -136,6 +137,6 @@ export function SystemTab() {
           </button>
         )}
       </section>
-    </div>
+    </CardFlow>
   );
 }

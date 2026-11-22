@@ -3,6 +3,7 @@ import { DEMO_CAMERA_ID, listCameras } from '../lib/camera';
 import { useSettings } from '../lib/settings';
 import { edit } from './actions';
 import { Check, NumberField, Segmented } from './fields';
+import { CardFlow } from '../ui/CardFlow';
 
 /** How a session runs on this tablet: camera, countdown, sound. The receipt has its own tab. */
 export function SessionTab() {
@@ -14,7 +15,7 @@ export function SessionTab() {
   }, []);
 
   return (
-    <div class="admin-grid">
+    <CardFlow>
       <section class="panel">
         <h2>Sesi foto</h2>
         <Segmented
@@ -54,6 +55,6 @@ export function SessionTab() {
           onChange={(v) => edit((s) => void (s.session.idleSec = v))}
         />
       </section>
-    </div>
+    </CardFlow>
   );
 }

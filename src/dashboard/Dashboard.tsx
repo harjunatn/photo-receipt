@@ -5,6 +5,7 @@ import { cloudConfigured, DEFAULT_PLATFORM } from '../lib/cloud/shared';
 import { useStore } from '../lib/store';
 import { applyUpdate, updateReady } from '../lib/update';
 import { ToastHost } from '../ui/components';
+import { BoothIcon, GalleryIcon, HistoryIcon, HomeIcon, LayersIcon, ScanIcon, SlidersIcon, StoreIcon, TicketIcon } from '../ui/icons';
 import {
   changeOwnPassword,
   NOT_FOUND,
@@ -27,24 +28,24 @@ import { OutletSettings } from './OutletSettings';
 import { Payments } from './Payments';
 import { PlatformSettings } from './PlatformSettings';
 import { Transactions } from './Transactions';
-import { dateOnly, describe, useLoad } from './ui';
+import { dateOnly, describe, useDismiss, useLoad } from './ui';
 import { Vouchers } from './Vouchers';
 
 /** Pages about one franchise. The platform owner picks which franchise they look at. */
 const FRANCHISE_PAGES = [
-  { id: 'ringkasan', label: 'Dashboard', view: Overview },
-  { id: 'perangkat', label: 'Perangkat', view: Devices },
-  { id: 'transaksi', label: 'Transaksi', view: Transactions },
-  { id: 'pembayaran', label: 'Pembayaran QRIS', view: Payments },
-  { id: 'voucher', label: 'Voucher', view: Vouchers },
-  { id: 'frame', label: 'Koleksi Frame', view: FrameSets },
-  { id: 'pengaturan', label: 'Pengaturan', view: OutletSettings },
+  { id: 'ringkasan', label: 'Beranda', icon: HomeIcon, view: Overview },
+  { id: 'perangkat', label: 'Booth Saya', icon: BoothIcon, view: Devices },
+  { id: 'transaksi', label: 'Riwayat Sesi', icon: HistoryIcon, view: Transactions },
+  { id: 'pembayaran', label: 'Kasir QRIS', icon: ScanIcon, view: Payments },
+  { id: 'voucher', label: 'Kode Promo', icon: TicketIcon, view: Vouchers },
+  { id: 'frame', label: 'Galeri Frame', icon: GalleryIcon, view: FrameSets },
+  { id: 'pengaturan', label: 'Pengaturan', icon: SlidersIcon, view: OutletSettings },
 ] as const;
 
 /** Pages only the platform owner has. */
 const ADMIN_PAGES = [
-  { id: 'franchise', label: 'Franchise', view: Franchises },
-  { id: 'platform', label: 'Pengaturan platform', view: PlatformSettings },
+  { id: 'franchise', label: 'Franchise', icon: StoreIcon, view: Franchises },
+  { id: 'platform', label: 'Pengaturan platform', icon: LayersIcon, view: PlatformSettings },
 ] as const;
 
 export type PageId = (typeof FRANCHISE_PAGES)[number]['id'] | (typeof ADMIN_PAGES)[number]['id'];
@@ -285,6 +286,7 @@ export function Dashboard() {
               <span class="dash-group">Platform</span>
               {ADMIN_PAGES.map((entry) => (
                 <button key={entry.id} class={entry.id === current ? 'on' : ''} onClick={() => go(entry.id)}>
+                  <entry.icon />
                   {entry.label}
                 </button>
               ))}
@@ -297,6 +299,7 @@ export function Dashboard() {
               </span>
               {FRANCHISE_PAGES.map((entry) => (
                 <button key={entry.id} class={entry.id === current ? 'on' : ''} onClick={() => go(entry.id)}>
+                  <entry.icon />
                   {entry.label}
                 </button>
               ))}
@@ -312,7 +315,7 @@ export function Dashboard() {
           </div>
           <AccountMenu email={account.email} leave={demoData ? 'Tutup contoh' : 'Keluar'} onLeave={signOut} />
         </header>
-        {demoData &&<p class="banner">Ini data contoh. Tidak ada yang tersimpan, dan semuanya kembali seperti semula saat halaman dimuat ulang.</p>}
+        {demoData && <p class="banner">Ini data contoh. Tidak ada yang tersimpan, dan semuanya kembali seperti semula saat halaman dimuat ulang.</p>}
         {adminPage && admin ? (
           <adminPage.view
             key={adminPage.id}
@@ -363,23 +366,7 @@ export function Dashboard() {
 /** The signed-in account at the top right: its initial, opening to the email address and the way out. */
 function AccountMenu({ email, leave, onLeave }: { email: string; leave: string; onLeave: () => void }) {
   const [open, setOpen] = useState(false);
-  const box = useRef<HTMLDivElement>(null);
-
-  useEffect(() => {
-    if (!open) return;
-    const outside = (event: PointerEvent) => {
-      if (!box.current?.contains(event.target as Node)) setOpen(false);
-    };
-    const escape = (event: KeyboardEvent) => {
-      if (event.key === 'Escape') setOpen(false);
-    };
-    document.addEventListener('pointerdown', outside);
-    document.addEventListener('keydown', escape);
-    return () => {
-      document.removeEventListener('pointerdown', outside);
-      document.removeEventListener('keydown', escape);
-    };
-  }, [open]);
+  const box = useDismiss<HTMLDivElement>(open, () => setOpen(false));
 
   return (
     <div class="dash-account" ref={box}>

@@ -7,6 +7,7 @@ import { useSettings } from '../lib/settings';
 import { ReceiptPaper } from '../ui/components';
 import { edit } from './actions';
 import { AreaField, Check, TextField } from './fields';
+import { CardFlow } from '../ui/CardFlow';
 
 /**
  * What this booth's receipt says. Each tablet writes its own texts, so booths can
@@ -45,7 +46,7 @@ export function ReceiptTab() {
   }, [receipt, frame, printer.dots, printer.raster, settings.platform.receiptLine]);
 
   return (
-    <div class="admin-grid">
+    <CardFlow>
       <section class="panel">
         <h2>Teks struk</h2>
         <p class="hint">Khusus tablet ini. Logo dan frame diatur di dashboard franchise.</p>
@@ -85,6 +86,6 @@ export function ReceiptTab() {
           <ReceiptPaper bits={preview} />
         </div>
       </section>
-    </div>
+    </CardFlow>
   );
 }

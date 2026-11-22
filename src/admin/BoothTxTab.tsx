@@ -10,6 +10,7 @@ import { useStore } from '../lib/store';
 import { toast } from '../ui/components';
 import { ShareQrDialog } from '../ui/ShareQr';
 import { QrIcon } from '../ui/icons';
+import { CardFlow } from '../ui/CardFlow';
 
 const PAGE_SIZE = 30;
 const METHODS: PayMethod[] = ['qris', 'cash', 'voucher', 'free'];
@@ -41,9 +42,9 @@ export function BoothTxTab() {
 
   if (!pairing) {
     return (
-      <div class="admin-grid">
+      <CardFlow>
         <p class="banner panel span">Sambungkan tablet ini ke dashboard dulu (tab Sambungan) untuk melihat transaksinya.</p>
-      </div>
+      </CardFlow>
     );
   }
 
@@ -78,7 +79,7 @@ export function BoothTxTab() {
   };
 
   return (
-    <div class="admin-grid">
+    <CardFlow>
       <section class="panel span">
         <div class="row">
           <div class="grow">
@@ -152,7 +153,7 @@ export function BoothTxTab() {
                     <td>
                       {PAY_METHOD_LABEL[tx.method]}
                       {tx.voucher_code && <small class="mono"> {tx.voucher_code}</small>}
-                      {tx.staff_confirmed === false && <small> · tanpa konfirmasi</small>}
+                      {tx.staff_confirmed === false && <small> · tanpa PIN</small>}
                     </td>
                     <td class="num">{formatRupiah(tx.price)}</td>
                     <td class="num">
@@ -171,6 +172,6 @@ export function BoothTxTab() {
         {load.data && <Pager offset={offset} limit={PAGE_SIZE} total={load.data.total} onChange={setOffset} />}
       </section>
       {qrFor?.share_code && <ShareQrDialog code={qrFor.share_code} sessionAt={qrFor.at} onClose={() => setQrFor(null)} />}
-    </div>
+    </CardFlow>
   );
 }

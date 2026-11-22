@@ -31,7 +31,7 @@ export function Payments({ api }: PageProps) {
   return (
     <>
       <PageHead
-        title="Pembayaran QRIS"
+        title="Kasir QRIS"
         lead="Setiap kode QR otomatis yang dibuat tablet. “Lunas tanpa sesi” berarti uangnya masuk tetapi sesi fotonya tidak tercatat selesai — periksa, dan kembalikan uangnya kalau perlu."
       >
         <button class="btn small" onClick={load.reload}>

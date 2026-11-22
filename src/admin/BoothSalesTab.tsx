@@ -8,6 +8,7 @@ import { fetchBoothStats, outboxStore, pairingStore } from '../lib/cloud/device'
 import { logStore, PAY_METHOD_LABEL, startOfToday, totalsSince } from '../lib/log';
 import { formatRupiah } from '../lib/settings';
 import { useStore } from '../lib/store';
+import { CardFlow } from '../ui/CardFlow';
 
 /** Sales of this tablet only, from the server: the same figures the owner sees for it in the dashboard. */
 export function BoothSalesTab() {
@@ -25,9 +26,9 @@ export function BoothSalesTab() {
 
   if (!pairing) {
     return (
-      <div class="admin-grid">
+      <CardFlow>
         <p class="banner panel span">Sambungkan tablet ini ke dashboard dulu (tab Sambungan) untuk melihat penjualannya.</p>
-      </div>
+      </CardFlow>
     );
   }
 
@@ -50,7 +51,7 @@ export function BoothSalesTab() {
     // Without the server, at least today's count from this tablet's own notes.
     const today = totalsSince(log, startOfToday());
     return (
-      <div class="admin-grid">
+      <CardFlow>
         {header}
         {load.error ? (
           <section class="panel span">
@@ -62,7 +63,7 @@ export function BoothSalesTab() {
         ) : (
           <div class="spinner" />
         )}
-      </div>
+      </CardFlow>
     );
   }
 
@@ -76,7 +77,7 @@ export function BoothSalesTab() {
   const monthTotals = total(stats, (row) => row.day.startsWith(today.slice(0, 7)));
 
   return (
-    <div class="admin-grid">
+    <CardFlow>
       {header}
       {load.error && <p class="banner err panel span">{load.error}</p>}
 
@@ -107,6 +108,6 @@ export function BoothSalesTab() {
           measure="sessions"
         />
       </section>
-    </div>
+    </CardFlow>
   );
 }

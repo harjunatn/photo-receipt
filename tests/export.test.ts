@@ -88,3 +88,17 @@ describe('PDF report', () => {
     expect(textWidth(cut, 8.5)).toBeLessThanOrEqual(80);
   });
 });
+
+describe('payment status in the session history', () => {
+  it('reads automatic QRIS from the provider and treats every other payment as settled', async () => {
+    const { paymentState } = await import('../src/dashboard/Transactions');
+    expect(paymentState({ method: 'qris', payment_status: 'paid' })).toEqual({ label: 'Berhasil', tag: 'ok' });
+    expect(paymentState({ method: 'qris', payment_status: 'pending' })).toEqual({ label: 'Menunggu', tag: 'warn' });
+    expect(paymentState({ method: 'qris', payment_status: 'failed' })).toEqual({ label: 'Gagal', tag: 'err' });
+    expect(paymentState({ method: 'qris', payment_status: 'expired' })).toEqual({ label: 'Gagal', tag: 'err' });
+    // Static QRIS has no provider behind it; staff took the payment.
+    expect(paymentState({ method: 'qris', payment_status: null })).toEqual({ label: 'Berhasil', tag: 'ok' });
+    expect(paymentState({ method: 'cash', payment_status: null })).toEqual({ label: 'Berhasil', tag: 'ok' });
+    expect(paymentState({ method: 'voucher', payment_status: null })).toEqual({ label: 'Berhasil', tag: 'ok' });
+  });
+});
