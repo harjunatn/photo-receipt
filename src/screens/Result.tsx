@@ -31,13 +31,14 @@ export function Result({ draft, onFinish }: Props) {
   const [bits, setBits] = useState<BitImage | null>(null);
   const [phase, setPhase] = useState<Phase>('preparing');
   const [message, setMessage] = useState('');
-  const [askPin, setAskPin] = useState(false);
+  // Staff unlock this screen once with their PIN, to fix the printer or print another copy.
+  const [askPin, setAskPin] = useState<'fix' | 'reprint' | null>(null);
   const [staff, setStaff] = useState(false);
   const [secondsLeft, setSecondsLeft] = useState(RETURN_SECONDS_WITH_QR);
   const started = useRef(false);
   const returnSeconds = draft.shareCode ? RETURN_SECONDS_WITH_QR : RETURN_SECONDS;
 
-  const print = async (image: BitImage) => {
+  const print = async (image: BitImage, copies = draft.pkg.prints) => {
     if (printer.state.get().status === 'disconnected') await printer.reconnect();
     if (printer.state.get().status !== 'connected') {
       setPhase('no-printer');
@@ -45,7 +46,7 @@ export function Result({ draft, onFinish }: Props) {
     }
     setPhase('printing');
     try {
-      await printer.print(image, draft.pkg.prints);
+      await printer.print(image, copies);
       sound.done();
       setPhase('done');
     } catch (cause) {
@@ -135,16 +136,24 @@ export function Result({ draft, onFinish }: Props) {
     if (phase === 'printing' || phase === 'preparing') pokeIdle();
   }, [phase, printerState.progress]);
 
+  // The countdown back to the start waits while staff type their PIN, then starts over.
   useEffect(() => {
-    if (phase !== 'done') return;
+    if (phase !== 'done' || askPin) return;
     setSecondsLeft(returnSeconds);
     const timer = setInterval(() => setSecondsLeft((n) => n - 1), 1000);
     return () => clearInterval(timer);
-  }, [phase]);
+  }, [phase, askPin]);
 
   useEffect(() => {
     if (phase === 'done' && secondsLeft <= 0) onFinish();
   }, [phase, secondsLeft]);
+
+  /** One more copy of this receipt, e.g. for the second guest in the photo. Staff only, so prints stay paid for. */
+  const reprint = () => {
+    if (!bits) return;
+    if (staff) void print(bits, 1);
+    else setAskPin('reprint');
+  };
 
   const connectAndPrint = async () => {
     if ((await printer.connect()) && bits) await print(bits);
@@ -190,6 +199,9 @@ export function Result({ draft, onFinish }: Props) {
               <button class="btn primary huge" onClick={onFinish}>
                 Selesai ({Math.max(0, secondsLeft)})
               </button>
+              <button class="btn" disabled={!bits} onClick={reprint}>
+                Cetak ulang struk ini{staff ? '' : ' (petugas)'}
+              </button>
             </>
           )}
 
@@ -211,7 +223,7 @@ export function Result({ draft, onFinish }: Props) {
                   </button>
                 </div>
               ) : (
-                <button class="btn primary" onClick={() => setAskPin(true)}>
+                <button class="btn primary" onClick={() => setAskPin('fix')}>
                   Petugas: perbaiki printer
                 </button>
               )}
@@ -226,11 +238,13 @@ export function Result({ draft, onFinish }: Props) {
 
       {askPin && (
         <PinPad
-          title="Perbaiki printer"
-          onCancel={() => setAskPin(false)}
+          title={askPin === 'reprint' ? 'Cetak ulang struk' : 'Perbaiki printer'}
+          onCancel={() => setAskPin(null)}
           onSuccess={() => {
-            setAskPin(false);
+            const then = askPin;
+            setAskPin(null);
             setStaff(true);
+            if (then === 'reprint' && bits) void print(bits, 1);
           }}
         />
       )}

@@ -15,7 +15,9 @@ tambahan dan tanpa server.
 4. **Edit & foto ulang** — tamu melihat struk persis seperti yang akan tercetak, lalu bisa mengganti gaya foto (Normal,
    Cerah, Kontras, Komik, Sketsa, Garis) atau mengulang foto satu per satu. (Pilihan ganti frame di langkah ini sedang
    disembunyikan; kodenya tetap ada, cukup hapus aturan `.frame-choice` di `src/styles.css` untuk menampilkannya lagi.)
-5. **Cetak**.
+5. **Cetak**. Di layar akhir ada tombol **Cetak ulang struk ini** untuk petugas (perlu PIN sekali per sesi), misalnya
+   kalau dua tamu dalam satu foto masing-masing mau struknya. Tiap tekan mencetak satu lembar lagi; hitungan mundur ke
+   layar awal berhenti selama PIN diketik.
 
 Frame mana yang ditawarkan, harga, dan cara bayar diatur di dashboard franchise; printer, kamera dan teks struk diatur
 petugas di tablet (ikon ⚙ di layar awal).
@@ -399,8 +401,14 @@ titik-titik yang benar-benar dikirim ke printer. Ubah satu pengaturan, tekan **T
 | Wajah pucat / hilang | Turunkan *Gamma* atau *Kecerahan*; coba pola *Floyd–Steinberg*. |
 | Area gelap jadi blok hitam | Turunkan *Kepadatan hitam*, naikkan *Detail*. |
 | Tepi kanan terpotong | Kecilkan *Lebar cetak (titik per baris)*. |
-| Cetakan berantakan / berhenti di tengah | Bagian *Lanjutan* → **Stabil**. |
+| Cetakan berantakan / berhenti di tengah | Bagian *Lanjutan* → **Stabil**. Lihat juga *Masalah cetak terakhir* di bawah. |
 | Gambar jadi huruf acak | Bagian *Lanjutan* → format **ESC \***. |
+| Struk setelah cetakan yang terputus diawali huruf Cina acak | Sudah ditangani otomatis: setelah cetakan terputus, cetakan berikutnya diawali sedikit kertas kosong yang menyelesaikan gambar yang terpotong. |
+
+Tab **Printer** juga menyimpan **Masalah cetak terakhir** (20 terakhir): kapan, lewat apa, sampai berapa persen, dan
+pesannya. Terputus di persen yang acak biasanya kabel atau adaptor OTG yang longgar; selalu terputus di frame yang
+banyak hitamnya biasanya daya printer yang kurang. Printer USB yang menolak data sebentar (status *stall*) dicoba lagi
+sampai tiga kali sebelum cetakan dianggap gagal.
 | Kertas tidak terpotong | *Potong kertas* → pilih sesuai printer, atau *Tidak* untuk printer tanpa pemotong. |
 
 ## Pembayaran

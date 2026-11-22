@@ -1551,6 +1551,28 @@ textarea {
   grid-column: 1 / -1;
 }
 
+/* The printer's recent problems: one line each, time first. */
+.problems {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.problems li {
+  display: grid;
+  grid-template-columns: auto 1fr;
+  gap: 2px 12px;
+  padding-bottom: 8px;
+  border-bottom: 1px solid var(--line);
+}
+
+.problems li .hint {
+  grid-column: 2;
+}
+
 /* A panel inside a panel sits flat on a tinted background. */
 .panel .panel {
   border: 0;

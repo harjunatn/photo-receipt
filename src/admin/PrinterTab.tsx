@@ -1,7 +1,8 @@
 import { useEffect, useMemo, useState } from 'preact/hooks';
 import { listSessions } from '../lib/db';
 import { samplePhoto } from '../lib/demoScene';
-import { printer, usePrinter } from '../lib/printer/manager';
+import { printer, printProblems, usePrinter } from '../lib/printer/manager';
+import { useStore } from '../lib/store';
 import { transportSupported } from '../lib/printer/transports';
 import { composePhotoOnly, composeTestPage, loadReceiptFonts, receiptToBits } from '../lib/receipt/compose';
 import { DEFAULT_SETTINGS, useSettings, type TransportKind } from '../lib/settings';
@@ -293,6 +294,56 @@ export function PrinterTab() {
           />
         </div>
       </section>
+
+      <PrintProblems />
     </div>
+  );
+}
+
+const TIME = new Intl.DateTimeFormat('id-ID', { day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit' });
+
+/**
+ * Prints that broke off and printers that went away, newest first, so staff can
+ * tell a loose cable (cut off at random) from a printer that gives up on heavy
+ * black designs (cut off where the frame is darkest).
+ */
+function PrintProblems() {
+  const problems = useStore(printProblems);
+  return (
+    <section class="panel span">
+      <div class="row">
+        <h2 class="grow">Masalah cetak terakhir</h2>
+        {problems.length > 0 && (
+          <button class="btn small" onClick={() => printProblems.set([])}>
+            Kosongkan
+          </button>
+        )}
+      </div>
+      {problems.length === 0 ? (
+        <p class="hint">Belum ada. Cetakan yang terputus di tengah atau printer yang tiba-tiba lepas akan tercatat di sini.</p>
+      ) : (
+        <>
+          <ul class="problems">
+            {problems.map((problem) => (
+              <li key={problem.at}>
+                <span class="mono">{TIME.format(problem.at)}</span>
+                <span>
+                  {KIND_LABEL[problem.kind]}
+                  {problem.device ? ` · ${problem.device}` : ''}
+                  {problem.progress !== null ? ` · terhenti di ${Math.round(problem.progress * 100)}%` : ''}
+                </span>
+                <span class="hint">{problem.message}</span>
+              </li>
+            ))}
+          </ul>
+          <p class="hint">
+            Cetakan berikutnya setelah yang terputus diawali sedikit kertas kosong: itu menyelesaikan gambar yang terpotong, supaya
+            struk berikutnya tidak keluar sebagai huruf acak. Kalau sering terputus lewat USB: pakai kabel OTG yang pendek dan
+            kokoh, pastikan adaptor listrik printer bawaannya (bukan colokan USB), dan coba mode Stabil di atas. Kalau selalu
+            terhenti di frame yang banyak hitamnya, kemungkinan daya printer kurang saat memanaskan banyak titik sekaligus.
+          </p>
+        </>
+      )}
+    </section>
   );
 }

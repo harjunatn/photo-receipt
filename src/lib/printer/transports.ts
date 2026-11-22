@@ -261,6 +261,9 @@ class BluetoothTransport implements Transport {
 
 const USB_PRINTER_CLASS = 7;
 const USB_CHUNK = 4096;
+/** How often, and after how long, a refused USB write is tried again. */
+const USB_STALL_RETRIES = 3;
+const USB_STALL_WAIT_MS = 300;
 
 class UsbTransport implements Transport {
   readonly kind = 'usb' as const;
@@ -355,9 +358,21 @@ class UsbTransport implements Transport {
   async write(data: Bytes): Promise<void> {
     const device = this.device;
     if (!device) throw new Error('Printer USB belum terhubung.');
-    for (let offset = 0; offset < data.length; offset += USB_CHUNK) {
-      const result = await device.transferOut(this.endpoint, data.subarray(offset, offset + USB_CHUNK));
-      if (result.status !== 'ok') throw new Error('Printer USB menolak data.');
+    let stalls = 0;
+    for (let offset = 0; offset < data.length; ) {
+      const chunk = data.subarray(offset, offset + USB_CHUNK);
+      const result = await device.transferOut(this.endpoint, chunk);
+      if (result.status === 'ok') {
+        offset += chunk.length;
+        continue;
+      }
+      // A printer that is busy (hot print head, a moment without paper) may refuse data for a
+      // moment. Clear the refusal and carry on from where it stopped, a few times before giving up.
+      offset += result.bytesWritten;
+      if (result.status !== 'stall' || stalls >= USB_STALL_RETRIES) throw new Error('Printer USB menolak data.');
+      stalls += 1;
+      await device.clearHalt('out', this.endpoint);
+      await sleep(USB_STALL_WAIT_MS * stalls);
     }
   }
 }
