@@ -338,7 +338,7 @@ async function sendDigital(draft: Draft, code: string, sessionNo: number): Promi
   } catch {
     return;
   }
-  // While the platform owner offers an AI version, the photos also go up without their frame, for the guest to pick one.
+  // While this franchise offers an AI version, the photos also go up without their frame, for the guest to pick one.
   if (settings.platform.ai) {
     const plain = await renderPlainPhotos(draft).catch(() => []);
     const kinds = ['p1', 'p2', 'p3', 'p4', 'p5', 'p6'] as const;

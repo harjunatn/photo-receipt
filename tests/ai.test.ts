@@ -205,11 +205,12 @@ describe('share-ai', () => {
 
 describe('share-get with the AI edit', () => {
   const file = (key: string, extra: Record<string, unknown> = {}) => ({ key, size: 10, type: 'image/jpeg', ...extra });
-  const lookup = (platformAi: unknown, files: Record<string, unknown>, ai: unknown = { failed: 0, busy: false }) => {
+  /** `ai` is what the database says of the session: whether its franchise has the feature, failed tries, one in progress. */
+  const lookup = (ai: unknown, files: Record<string, unknown>) => {
     const fetchFn = async (): Promise<Response> =>
       new Response(
         JSON.stringify({
-          platform: { name: 'jepretin', watermark: 'didukung oleh jepretin', ...(platformAi ? { ai: platformAi } : {}) },
+          platform: { name: 'jepretin', watermark: 'didukung oleh jepretin' },
           shares: [{ code: CODE, files, ai, created_at: NOW.toISOString(), expires_at: new Date(NOW.getTime() + 86_400_000).toISOString(), device_name: 'Booth', brand: { title: 'Hello Snaply' } }],
         }),
         { status: 200 },
@@ -218,22 +219,24 @@ describe('share-get with the AI edit', () => {
   };
   const SESSION = { photo: file(`s/${CODE}/photo.jpg`), p1: file(`s/${CODE}/p1.jpg`), p2: file(`s/${CODE}/p2.jpg`) };
 
-  it('offers the styles while the owner has it on and the booth sent plain photos', async () => {
-    const share = await lookup({ enabled: true }, SESSION, { failed: 1, busy: false });
+  it("offers the styles while the session's franchise has the feature and the booth sent plain photos", async () => {
+    const share = await lookup({ on: true, failed: 1, busy: false }, SESSION);
     expect(share.ai).toEqual({ open: true, busy: false, tries_left: 2, styles: AI_STYLES.map(({ id, label }) => ({ id, label })) });
     // What the AI is told stays on the server.
     expect(JSON.stringify(share)).not.toContain('Redraw');
     expect(new URL(share.files.p2.view).pathname).toBe(`/hello-snaply-hasil/s/${CODE}/p2.jpg`);
   });
 
-  it('offers nothing while it is off, or when the session has no plain photos', async () => {
+  it('offers nothing to a franchise without the feature, or when the session has no plain photos', async () => {
     expect((await lookup(null, SESSION)).ai).toBeUndefined();
-    expect((await lookup({ enabled: false }, SESSION)).ai).toBeUndefined();
-    expect((await lookup({ enabled: true }, { photo: SESSION.photo })).ai).toBeUndefined();
+    expect((await lookup({ on: false, failed: 0, busy: false }, SESSION)).ai).toBeUndefined();
+    // A database from before the switch moved to each franchise says nothing of it: not offered.
+    expect((await lookup({ failed: 0, busy: false }, SESSION)).ai).toBeUndefined();
+    expect((await lookup({ on: true, failed: 0, busy: false }, { photo: SESSION.photo })).ai).toBeUndefined();
   });
 
   it('keeps a finished AI version downloadable, also after the feature is switched off', async () => {
-    const share = await lookup({ enabled: false }, { ...SESSION, ai: file(`s/${CODE}/ai.png`, { type: 'image/png', style: 'anime' }) });
+    const share = await lookup({ on: false, failed: 0, busy: false }, { ...SESSION, ai: file(`s/${CODE}/ai.png`, { type: 'image/png', style: 'anime' }) });
     expect(share.ai.open).toBe(false);
     expect(share.files.ai.style).toBe('anime');
     expect(new URL(share.files.ai.download).searchParams.get('response-content-disposition')).toBe(`attachment; filename="hello-snaply-${CODE}-ai.png"`);

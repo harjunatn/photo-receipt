@@ -162,24 +162,19 @@ describe('platform settings', () => {
       watermark: '',
       receiptLine: '@jepretin.id',
       graceDays: 0,
-      ai: { enabled: false, monthlyLimit: 300 },
     });
-  });
-
-  it('keep the AI edit off unless the owner switched it on, with a sane monthly limit', () => {
-    expect(completePlatform({}).ai).toEqual({ enabled: false, monthlyLimit: 300 });
-    expect(completePlatform({ ai: { enabled: true, monthlyLimit: 50 } }).ai).toEqual({ enabled: true, monthlyLimit: 50 });
-    // Anything but a plain "true" leaves it off; a limit that is no whole number falls back.
-    expect(completePlatform({ ai: { enabled: 'ya', monthlyLimit: -4 } }).ai).toEqual({ enabled: false, monthlyLimit: 300 });
-    expect(completePlatform({ ai: 'nyala' }).ai).toEqual({ enabled: false, monthlyLimit: 300 });
+    // The AI edit is switched on per franchise now; nothing of it is kept among the platform's settings.
+    expect(completePlatform({ ai: { enabled: true, monthlyLimit: 50 } })).toEqual(DEFAULT_PLATFORM);
   });
 
   it('reach the tablet with the outlet settings, and stay as they were when not sent', () => {
     const next = applyRemote(DEFAULT_SETTINGS, {}, null, { name: 'Jepretin', watermark: 'oleh Jepretin', receiptLine: '@jepretin.id' });
     expect(next.platform).toEqual({ name: 'Jepretin', watermark: 'oleh Jepretin', receiptLine: '@jepretin.id', ai: false });
     expect(applyRemote(next, {}, null).platform).toEqual(next.platform);
-    // The tablet hears when the AI edit is switched on, so it starts sending the photos without their frame.
+    // The server tells the tablet whether its own franchise has the AI edit; only then does it send the photos without their frame.
     expect(applyRemote(next, {}, null, { name: 'Jepretin', ai: { enabled: true } }).platform.ai).toBe(true);
+    expect(applyRemote(next, {}, null, { name: 'Jepretin', ai: { enabled: false } }).platform.ai).toBe(false);
+    expect(applyRemote(next, {}, null, { name: 'Jepretin', ai: { enabled: 'ya' } }).platform.ai).toBe(false);
     // A franchise's outlet settings cannot carry platform settings in with them.
     expect(applyRemote(DEFAULT_SETTINGS, { platform: { watermark: 'punyaku' } }, null).platform).toEqual(DEFAULT_SETTINGS.platform);
   });

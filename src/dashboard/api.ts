@@ -1,5 +1,5 @@
 import { createClient, type SupabaseClient } from '@supabase/supabase-js';
-import { completePlatform, SUPABASE_KEY, SUPABASE_URL, type OutletConfig, type PlatformConfig, type SubscriptionState } from '../lib/cloud/shared';
+import { completePlatform, DEFAULT_AI_MONTHLY_LIMIT, SUPABASE_KEY, SUPABASE_URL, type OutletConfig, type PlatformConfig, type SubscriptionState } from '../lib/cloud/shared';
 import type { FrameLayout } from '../lib/receipt/custom';
 import type { PayMethod } from '../lib/log';
 import type { VoucherStatus } from '../lib/vouchers';
@@ -154,6 +154,12 @@ export interface FranchiseRow extends Franchise {
   members: number;
   sessions_30d: number;
   revenue_30d: number;
+  /** Guests of this franchise are offered an AI version of a photo. Only the platform owner can change it. */
+  ai_enabled: boolean;
+  /** Most AI versions this franchise may have made in a calendar month. */
+  ai_monthly_limit: number;
+  /** AI versions made this calendar month. */
+  ai_month: number;
 }
 
 export interface MemberRow {
@@ -284,6 +290,8 @@ export interface AdminApi {
   removeMember(userId: string): Promise<void>;
   getPlatform(): Promise<PlatformConfig>;
   savePlatform(config: PlatformConfig): Promise<void>;
+  /** Switches the AI version of a photo on or off for one franchise, and sets its monthly limit. */
+  setFranchiseAi(id: string, enabled: boolean, monthlyLimit: number): Promise<void>;
   /** With `check`, Google is also asked whether it accepts the key (free; no picture is made). */
   aiStatus(check: boolean): Promise<AiStatus>;
   aiUsage(): Promise<AiUsage>;
@@ -558,7 +566,15 @@ export function createSupabaseAdminApi(db: SupabaseClient): AdminApi {
       return {
         today: reply.today,
         graceDays: reply.grace_days,
-        franchises: reply.franchises.map((row) => ({ ...row, revenue_30d: Number(row.revenue_30d), sessions_30d: Number(row.sessions_30d) })),
+        franchises: reply.franchises.map((row) => ({
+          ...row,
+          revenue_30d: Number(row.revenue_30d),
+          sessions_30d: Number(row.sessions_30d),
+          // Absent while the server's schema is older than this page: off, with the starting limit.
+          ai_enabled: row.ai_enabled === true,
+          ai_monthly_limit: Number.isInteger(row.ai_monthly_limit) ? row.ai_monthly_limit : DEFAULT_AI_MONTHLY_LIMIT,
+          ai_month: Number(row.ai_month) || 0,
+        })),
       };
     },
     async saveFranchise(input) {
@@ -586,6 +602,9 @@ export function createSupabaseAdminApi(db: SupabaseClient): AdminApi {
     getPlatform: () => readPlatform(db),
     async savePlatform(config) {
       unwrap(await db.from('platform').update({ config }).eq('id', 1).select('id'));
+    },
+    async setFranchiseAi(id, enabled, monthlyLimit) {
+      checked(await db.rpc('admin_franchise_ai', { p_franchise: id, p_enabled: enabled, p_limit: monthlyLimit }));
     },
     aiStatus: (check) => callFunction<AiStatus>(db, 'share-ai', { action: 'status', check }),
     async aiUsage() {

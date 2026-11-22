@@ -5,6 +5,8 @@ import { Overlay, toast } from '../ui/components';
 import { newTempPassword, type AdminApi, type FranchiseRow, type MemberRow, type SubscriptionState } from './api';
 import type { AdminPageProps } from './Dashboard';
 import { addMonths, extendFrom } from './stats';
+import { CardFlow } from '../ui/CardFlow';
+import { costRange } from './PlatformSettings';
 import { LoadState, PageHead, Tile, ago, dateOnly, dateTime, describe, useLoad } from './ui';
 
 const STATE_LABEL: Record<SubscriptionState, string> = { active: 'Aktif', grace: 'Masa tenggang', expired: 'Langganan berakhir', suspended: 'Dihentikan' };
@@ -115,6 +117,7 @@ export function Franchises({ admin, current, open, changed }: AdminPageProps) {
             <div class="row">
               <h2 class="grow">{row.name}</h2>
               {current?.id === row.id && <span class="tag">Sedang dibuka</span>}
+              {row.ai_enabled && <span class="tag">AI</span>}
               <span class={`tag ${STATE_TAG[row.state]}`}>{STATE_LABEL[row.state]}</span>
             </div>
             <dl class="facts">
@@ -137,6 +140,14 @@ export function Franchises({ admin, current, open, changed }: AdminPageProps) {
               <div>
                 <dt>Terakhir aktif</dt>
                 <dd>{ago(row.last_seen_at, Date.now())}</dd>
+              </div>
+              <div style={{ gridColumn: '1 / -1' }}>
+                <dt>Edit foto AI</dt>
+                <dd>
+                  {row.ai_enabled
+                    ? `${row.ai_month.toLocaleString('id-ID')} dari ${row.ai_monthly_limit.toLocaleString('id-ID')} foto bulan ini`
+                    : 'Tidak aktif'}
+                </dd>
               </div>
             </dl>
             {row.note && <p class="hint">Catatan: {row.note}</p>}
@@ -223,6 +234,9 @@ function FranchiseEditor(props: {
   const [paidUntil, setPaidUntil] = useState(row.paid_until ?? '');
   const [active, setActive] = useState(row.active);
   const [note, setNote] = useState(row.note ?? '');
+  // The AI version of a photo is sold per franchise: its own switch and monthly limit, saved on their own.
+  const [aiOn, setAiOn] = useState(row.ai_enabled);
+  const [aiLimit, setAiLimit] = useState(String(row.ai_monthly_limit));
   const [busy, setBusy] = useState(false);
   const [email, setEmail] = useState('');
   const [confirmDelete, setConfirmDelete] = useState('');
@@ -236,6 +250,15 @@ function FranchiseEditor(props: {
     setActive(row.active);
     setNote(row.note ?? '');
   }, [row.name, row.paid_until, row.active, row.note]);
+
+  useEffect(() => {
+    setAiOn(row.ai_enabled);
+    setAiLimit(String(row.ai_monthly_limit));
+  }, [row.ai_enabled, row.ai_monthly_limit]);
+
+  const limit = Number(aiLimit);
+  const limitValid = aiLimit.trim() !== '' && Number.isInteger(limit) && limit >= 0 && limit <= 100_000;
+  const aiDirty = aiOn !== row.ai_enabled || (limitValid && limit !== row.ai_monthly_limit);
 
   const dirty = name.trim() !== row.name || paidUntil !== (row.paid_until ?? '') || active !== row.active || note.trim() !== (row.note ?? '');
 
@@ -255,6 +278,12 @@ function FranchiseEditor(props: {
       await admin.saveFranchise({ id: row.id, name: name.trim(), active, paid_until: paidUntil || null, note: note.trim() });
       props.onSaved({ id: row.id, name: name.trim() });
     }, 'Disimpan. Tablet mengikutinya dalam satu-dua menit.');
+
+  const saveAi = () =>
+    run(async () => {
+      await admin.setFranchiseAi(row.id, aiOn, limit);
+      props.onSaved({ id: row.id, name: row.name });
+    }, aiOn ? 'Disimpan. Tablet franchise ini mengikutinya dalam satu-dua menit.' : 'Disimpan.');
 
   const addMember = (event: Event) => {
     event.preventDefault();
@@ -281,8 +310,9 @@ function FranchiseEditor(props: {
 
   const stopsOn = paidUntil ? addDays(paidUntil, props.graceDays) : '';
 
+  // Three boxes of unequal height: packed without holes, like the settings pages.
   return (
-    <div class="admin-grid" style={{ margin: 0 }}>
+    <CardFlow minWidth={340}>
       <div class="panel" style={{ boxShadow: 'none' }}>
         <h2>Langganan</h2>
         <label class="field">
@@ -322,6 +352,38 @@ function FranchiseEditor(props: {
         <div class="row">
           <button class="btn small primary" disabled={busy || !dirty || !name.trim()} onClick={() => void save()}>
             {dirty ? 'Simpan' : 'Tersimpan'}
+          </button>
+        </div>
+      </div>
+
+      <div class="panel" style={{ boxShadow: 'none' }}>
+        <h2>Edit foto AI</h2>
+        <p class="hint">
+          Di halaman unduh, tamu franchise ini bisa meminta satu fotonya digambar ulang oleh AI, gratis 1 kali per sesi. Biayanya masuk ke API
+          key Gemini milikmu, kira-kira {costRange(1)} per foto.
+        </p>
+        <label class="check">
+          <input type="checkbox" checked={aiOn} onChange={(event) => setAiOn(event.currentTarget.checked)} />
+          <span>
+            Aktif untuk franchise ini
+            <small>
+              Saat menyala, tablet franchise ini ikut mengirim foto tanpa frame, dan tab Versi AI muncul di halaman unduh untuk sesi-sesi
+              sesudahnya. Admin franchise tidak bisa mengubahnya.
+            </small>
+          </span>
+        </label>
+        <label class="field">
+          <span>Batas per bulan (foto)</span>
+          <input type="number" inputMode="numeric" min={0} max={100000} value={aiLimit} onInput={(event) => setAiLimit(event.currentTarget.value)} />
+          <small class="hint">
+            {limitValid
+              ? `Bulan ini terpakai ${row.ai_month.toLocaleString('id-ID')}. Setelah ${limit.toLocaleString('id-ID')} foto dalam satu bulan kalender, tamu franchise ini tidak bisa membuat versi AI lagi sampai bulan berikutnya; biaya terbesarnya kira-kira ${costRange(limit)} sebulan.`
+              : 'Isi dengan angka bulat dari 0 sampai 100.000.'}
+          </small>
+        </label>
+        <div class="row">
+          <button class="btn small primary" disabled={busy || !aiDirty || !limitValid} onClick={() => void saveAi()}>
+            {aiDirty ? 'Simpan' : 'Tersimpan'}
           </button>
         </div>
       </div>
@@ -399,6 +461,6 @@ function FranchiseEditor(props: {
           </button>
         </div>
       </div>
-    </div>
+    </CardFlow>
   );
 }

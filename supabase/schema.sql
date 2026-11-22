@@ -62,8 +62,25 @@ create table if not exists public.franchises (
   paid_until date,
   -- Catatan superadmin; tidak terlihat oleh admin franchise.
   note text,
+  -- Edit foto AI di halaman unduh tamu. Dijual per franchise, jadi hanya superadmin yang menyalakannya
+  -- (bukan bagian dari config, yang boleh diubah admin franchise).
+  ai_enabled boolean not null default false,
+  -- Paling banyak hasil AI franchise ini dalam satu bulan kalender.
+  ai_monthly_limit int not null default 300 check (ai_monthly_limit between 0 and 100000),
   created_at timestamptz not null default now()
 );
+alter table public.franchises add column if not exists ai_enabled boolean not null default false;
+alter table public.franchises add column if not exists ai_monthly_limit int not null default 300 check (ai_monthly_limit between 0 and 100000);
+-- Sebelumnya fitur ini dinyalakan sekaligus untuk semua franchise di Pengaturan platform. Kalau saat itu menyala,
+-- semua franchise yang sudah ada ikut menyala dengan batas yang sama, sekali saja: tandanya di pengaturan
+-- platform lalu dihapus, sehingga menjalankan berkas ini lagi tidak menyalakan ulang yang sudah dimatikan.
+update public.franchises f
+  set ai_enabled = true,
+      ai_monthly_limit = case when (p.config -> 'ai' ->> 'monthlyLimit') ~ '^[0-9]{1,6}$'
+                              then least((p.config -> 'ai' ->> 'monthlyLimit')::int, 100000) else 300 end
+  from public.platform p
+  where p.id = 1 and p.config -> 'ai' ->> 'enabled' = 'true';
+update public.platform set config = config - 'ai' where id = 1 and config ? 'ai';
 
 create or replace function public.franchise_touch_config()
 returns trigger language plpgsql as $$
@@ -577,7 +594,8 @@ begin
   end if;
   select * into f from franchises where id = d.franchise_id;
   select * into pl from platform where id = 1;
-  version := f.config_at::text || '|' || pl.updated_at::text;
+  -- Ikut berubah saat edit foto AI franchise ini dinyalakan atau dimatikan, supaya tablet mengambil ulang.
+  version := f.config_at::text || '|' || pl.updated_at::text || '|' || f.ai_enabled::text;
   result := jsonb_build_object(
     'id', d.id,
     'name', d.name,
@@ -596,7 +614,11 @@ begin
     )
   );
   if p_known is distinct from version then
-    result := result || jsonb_build_object('outlet', f.config, 'platform', pl.config);
+    -- Tablet membaca tanda edit foto AI dari sini: saat menyala ia ikut mengunggah foto tanpa frame.
+    result := result || jsonb_build_object(
+      'outlet', f.config,
+      'platform', pl.config || jsonb_build_object('ai', jsonb_build_object('enabled', f.ai_enabled))
+    );
   end if;
   return result;
 end;
@@ -939,6 +961,9 @@ begin
     select jsonb_agg(jsonb_build_object(
       'id', f.id, 'name', f.name, 'active', f.active, 'paid_until', f.paid_until, 'note', f.note,
       'state', franchise_state(f.active, f.paid_until, grace), 'created_at', f.created_at,
+      'ai_enabled', f.ai_enabled, 'ai_monthly_limit', f.ai_monthly_limit,
+      'ai_month', (select count(*) from ai_edits e where e.franchise_id = f.id and e.status = 'done'
+                    and e.created_at >= date_trunc('month', now() at time zone 'Asia/Jakarta') at time zone 'Asia/Jakarta'),
       'devices', (select count(*) from devices d where d.franchise_id = f.id),
       'devices_online', (select count(*) from devices d where d.franchise_id = f.id and d.last_seen_at > now() - interval '3 minutes'),
       'last_seen_at', (select max(d.last_seen_at) from devices d where d.franchise_id = f.id),
@@ -1410,6 +1435,7 @@ as $$
                                           'brand', (select f.config -> 'brand' from franchises f where f.id = s.franchise_id),
                                           -- Edit foto AI: percobaan yang gagal, dan apakah satu sedang dikerjakan.
                                           'ai', jsonb_build_object(
+                                            'on', coalesce((select f.ai_enabled from franchises f where f.id = s.franchise_id), false),
                                             'failed', (select count(*) from ai_edits e where e.code = s.code
                                                         and (e.status = 'failed' or (e.status = 'pending' and e.created_at <= now() - interval '3 minutes'))),
                                             'busy', exists (select 1 from ai_edits e where e.code = s.code
@@ -1431,7 +1457,7 @@ grant execute on function public.share_lookup(text[]) to service_role;
 
 -- Membuka satu percobaan edit foto AI untuk sebuah sesi, kalau masih boleh. Dipanggil Edge Function share-ai
 -- sebelum fotonya dikirim ke layanan AI, supaya jatah dan batas biaya dijaga di satu tempat:
---   off       fitur dimatikan di Pengaturan platform
+--   off       franchise sesi ini tidak punya fitur ini (superadmin menyalakannya per franchise)
 --   used      sesi ini sudah punya hasil AI (jatahnya satu)
 --   busy      percobaan lain untuk sesi ini masih berjalan
 --   tries     sudah tiga kali gagal
@@ -1442,8 +1468,7 @@ language plpgsql security definer set search_path = public
 as $$
 declare
   s shares;
-  cfg jsonb;
-  cap int;
+  f franchises;
   month_start timestamptz := date_trunc('month', now() at time zone 'Asia/Jakarta') at time zone 'Asia/Jakarta';
   new_id uuid;
 begin
@@ -1455,8 +1480,8 @@ begin
   if s.expires_at < now() then
     return jsonb_build_object('error', 'expired');
   end if;
-  select config -> 'ai' into cfg from platform where id = 1;
-  if coalesce(cfg ->> 'enabled', 'false') <> 'true' then
+  select * into f from franchises where id = s.franchise_id;
+  if not coalesce(f.ai_enabled, false) then
     return jsonb_build_object('error', 'off');
   end if;
   if s.files ? 'ai' or exists (select 1 from ai_edits where code = p_code and status = 'done') then
@@ -1471,10 +1496,9 @@ begin
   if (select count(*) from ai_edits where code = p_code and status <> 'done') >= 3 then
     return jsonb_build_object('error', 'tries');
   end if;
-  cap := case when (cfg ->> 'monthlyLimit') ~ '^[0-9]{1,6}$' then (cfg ->> 'monthlyLimit')::int else 300 end;
   if (select count(*) from ai_edits
        where franchise_id = s.franchise_id and created_at >= month_start
-         and (status = 'done' or (status = 'pending' and created_at > now() - interval '3 minutes'))) >= cap then
+         and (status = 'done' or (status = 'pending' and created_at > now() - interval '3 minutes'))) >= f.ai_monthly_limit then
     return jsonb_build_object('error', 'limit');
   end if;
   insert into ai_edits (code, franchise_id, style, photo)
@@ -1532,6 +1556,28 @@ begin
 end;
 $$;
 
+-- Superadmin menyalakan atau mematikan edit foto AI untuk satu franchise, dan menyetel batas bulanannya.
+create or replace function public.admin_franchise_ai(p_franchise uuid, p_enabled boolean, p_limit int)
+returns jsonb
+language plpgsql security definer set search_path = public
+as $$
+begin
+  if not is_superadmin() then
+    return jsonb_build_object('error', 'forbidden');
+  end if;
+  if p_enabled is null or p_limit is null or p_limit < 0 or p_limit > 100000 then
+    return jsonb_build_object('error', 'bad-request');
+  end if;
+  update franchises set ai_enabled = p_enabled, ai_monthly_limit = p_limit where id = p_franchise;
+  if not found then
+    return jsonb_build_object('error', 'not-found');
+  end if;
+  return jsonb_build_object('ok', true);
+end;
+$$;
+
+revoke execute on function public.admin_franchise_ai(uuid, boolean, int) from public, anon;
+grant execute on function public.admin_franchise_ai(uuid, boolean, int) to authenticated;
 revoke execute on function public.share_ai_begin(text, text, text) from public, anon, authenticated;
 revoke execute on function public.share_ai_finish(uuid, boolean, jsonb, text) from public, anon, authenticated;
 revoke execute on function public.ai_usage() from public, anon;

@@ -144,7 +144,7 @@ export interface Settings {
     watermark: string;
     /** Last line of every receipt. */
     receiptLine: string;
-    /** The platform owner offers guests an AI version of a photo; the booth then also sends the photos without their frame. */
+    /** This franchise's guests are offered an AI version of a photo; the booth then also sends the photos without their frame. */
     ai: boolean;
   };
 }

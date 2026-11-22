@@ -186,8 +186,8 @@ interface ShareRow {
   brand?: { title?: unknown; accent?: unknown } | null;
   code: string;
   files: Partial<Record<ShareKind | typeof AI_KIND, { key: string; size: number; type: string; expects?: unknown; style?: unknown }>>;
-  /** How the session's AI edit stands: tries that failed, and whether one is being drawn now. */
-  ai?: { failed?: unknown; busy?: unknown } | null;
+  /** How the session's AI edit stands: whether its franchise has the feature, tries that failed, and whether one is being drawn now. */
+  ai?: { on?: unknown; failed?: unknown; busy?: unknown } | null;
   created_at: string;
   expires_at: string;
   device_name: string;
@@ -216,15 +216,8 @@ export async function handleShareGet(input: Record<string, unknown>, env: ShareE
   const codes = [...new Set(asked.map(text).filter((code) => CODE.test(code)))].slice(0, 60);
   if (codes.length === 0) return { status: 200, body: { error: 'bad-request' } };
 
-  const found = await rpc<{ platform?: { name?: unknown; watermark?: unknown; ai?: { enabled?: unknown } | null } | null; shares?: ShareRow[] }>(
-    env,
-    fetchFn,
-    'share_lookup',
-    { p_codes: codes },
-  );
+  const found = await rpc<{ platform?: { name?: unknown; watermark?: unknown } | null; shares?: ShareRow[] }>(env, fetchFn, 'share_lookup', { p_codes: codes });
   const platform = { name: text(found.platform?.name), watermark: text(found.platform?.watermark) };
-  // The platform owner's switch for the AI edit; a result made while it was on stays downloadable.
-  const aiOn = found.platform?.ai?.enabled === true;
   const brandOf = (row: ShareRow | undefined) => ({ title: text(row?.brand?.title) || platform.name || 'Foto', accent: text(row?.brand?.accent) || '' });
   const rows = new Map((found.shares ?? []).map((row) => [row.code, row]));
   const brand = brandOf(codes.map((code) => rows.get(code)).find((row) => row !== undefined));
@@ -253,7 +246,9 @@ export async function handleShareGet(input: Record<string, unknown>, env: ShareE
       }
       // Videos the tablet said would follow the photo and that have not arrived yet.
       const coming = expectedFrom(row.files.photo?.expects).filter((kind) => !files[kind]);
-      // The AI edit is offered while the owner has it switched on and the booth sent plain photos to pick from.
+      // The AI edit is offered while the platform owner has it switched on for this franchise and the booth sent plain
+      // photos to pick from. A result made while it was on stays downloadable.
+      const aiOn = row.ai?.on === true;
       const plain = PLAIN_KINDS.some((kind) => files[kind]);
       const ai =
         files[AI_KIND] || (aiOn && plain)

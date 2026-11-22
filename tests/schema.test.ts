@@ -442,7 +442,7 @@ describe('tablets', () => {
     });
   });
 
-  it('guard the AI edit: only while switched on, one result per session, three tries, and a monthly limit per franchise', async () => {
+  it('guard the AI edit: only for a franchise that has it, one result per session, three tries, and that franchise\'s monthly limit', async () => {
     const file = (code: string) => JSON.stringify({ key: `s/${code}/p1.jpg`, size: 1000, type: 'image/jpeg' });
     const begin = (code: string, photo = 'p1') => one(`select share_ai_begin($1, 'anime', $2) r`, [code, photo]);
     const finish = (id: string, ok: boolean, result: string | null = null) =>
@@ -453,11 +453,33 @@ describe('tablets', () => {
         expect((await one(`select share_claim($1, $2) r`, [tokenA, code])).ok).toBe(true);
         expect((await one(`select share_add_file($1, $2, 'p1', $3::jsonb) r`, [tokenA, code, file(code)])).ok).toBe(true);
       }
-      // Switched off until the platform owner turns it on.
+      // Off for every franchise until the platform owner switches it on for that one.
       expect((await begin(codes[0])).error).toBe('off');
     });
-    await db.query(`update platform set config = config || '{"ai": {"enabled": true, "monthlyLimit": 2}}'::jsonb where id = 1`);
+    // Only the platform owner can: a franchise's own admin cannot give themselves the feature.
+    await asUser(ANI, async () => {
+      expect((await one('select admin_franchise_ai($1, true, 2) r', [franchiseA])).error).toBe('forbidden');
+      await db.query('update franchises set ai_enabled = true where id = $1', [franchiseA]).catch(() => undefined);
+    });
+    expect((await rows('select ai_enabled from franchises where id = $1', [franchiseA]))[0].ai_enabled).toBe(false);
+    await asUser(OWNER, async () => {
+      expect((await one('select admin_franchise_ai($1, true, 100001) r', [franchiseA])).error).toBe('bad-request');
+      expect((await one(`select admin_franchise_ai('00000000-0000-0000-0000-0000000000ff', true, 2) r`)).error).toBe('not-found');
+      expect((await one('select admin_franchise_ai($1, true, 2) r', [franchiseA])).ok).toBe(true);
+      const listed = (await one('select admin_franchises() r')).franchises as Row[];
+      expect(listed.find((row) => row.id === franchiseA)).toMatchObject({ ai_enabled: true, ai_monthly_limit: 2, ai_month: 0 });
+      expect(listed.find((row) => row.id === franchiseB)).toMatchObject({ ai_enabled: false, ai_monthly_limit: 300 });
+    });
+    // The franchise's tablets hear of it at their next sync, and the other franchise's do not.
+    expect((await one(`select device_sync($1) r`, [tokenA])).platform.ai).toEqual({ enabled: true });
+    expect((await one(`select device_sync($1) r`, [tokenB])).platform.ai).toEqual({ enabled: false });
     await asRole('service_role', async () => {
+      // Another franchise's session stays without, whatever franchise A bought.
+      expect((await one(`select share_claim($1, 'ai00000000b1') r`, [tokenB])).ok).toBe(true);
+      expect((await one(`select share_add_file($1, 'ai00000000b1', 'p1', $2::jsonb) r`, [tokenB, file('ai00000000b1')])).ok).toBe(true);
+      expect((await begin('ai00000000b1')).error).toBe('off');
+      expect((await one(`select share_lookup(array['ai00000000b1']) r`)).shares[0].ai).toEqual({ on: false, failed: 0, busy: false });
+
       expect((await begin('ai0000000009')).error).toBe('not-found');
       expect((await begin(codes[0], 'p2')).error).toBe('no-photo');
 
@@ -473,12 +495,12 @@ describe('tablets', () => {
       }
       expect((await begin(codes[0])).error).toBe('tries');
       const failed = (await one(`select share_lookup(array[$1]) r`, [codes[0]])).shares[0];
-      expect(failed.ai).toEqual({ failed: 3, busy: false });
+      expect(failed.ai).toEqual({ on: true, failed: 3, busy: false });
       expect(failed.files.ai).toBeUndefined();
 
       // One result per session.
       const first = await begin(codes[1]);
-      expect((await one(`select share_lookup(array[$1]) r`, [codes[1]])).shares[0].ai).toEqual({ failed: 0, busy: true });
+      expect((await one(`select share_lookup(array[$1]) r`, [codes[1]])).shares[0].ai).toEqual({ on: true, failed: 0, busy: true });
       await finish(first.id, true, JSON.stringify({ key: `s/${codes[1]}/ai.jpg`, size: 5000, type: 'image/jpeg' }));
       const done = (await one(`select share_lookup(array[$1]) r`, [codes[1]])).shares[0];
       expect(done.files.ai).toMatchObject({ key: `s/${codes[1]}/ai.jpg`, style: 'anime' });
@@ -505,9 +527,34 @@ describe('tablets', () => {
       await expect(db.query(`select share_ai_begin('ai0000000004', 'anime', 'p1')`)).rejects.toThrow();
     });
 
-    await db.query(`delete from shares where code = any($1::text[])`, [codes]);
+    // Switched off again: no new versions, and the tablets stop sending plain photos.
+    const versionOn = (await one(`select device_sync($1) r`, [tokenA])).outlet_version;
+    await asUser(OWNER, async () => expect((await one('select admin_franchise_ai($1, false, 2) r', [franchiseA])).ok).toBe(true));
+    const off = await one(`select device_sync($1, '{}'::jsonb, $2) r`, [tokenA, versionOn]);
+    expect(off.outlet_version).not.toBe(versionOn);
+    expect(off.platform.ai).toEqual({ enabled: false });
+    await asRole('service_role', async () => expect((await begin(codes[3])).error).toBe('off'));
+
+    await db.query(`delete from shares where code = any($1::text[])`, [[...codes, 'ai00000000b1']]);
     expect(await rows('select 1 from ai_edits')).toHaveLength(0);
-    await db.query(`update platform set config = config - 'ai' where id = 1`);
+    await db.query('update franchises set ai_enabled = false, ai_monthly_limit = 300');
+  });
+
+  it('carry the earlier platform-wide AI switch over to every franchise, once', async () => {
+    // Before the switch moved to each franchise, it was one setting for all of them.
+    await db.query(`update platform set config = config || '{"ai": {"enabled": true, "monthlyLimit": 50}}'::jsonb where id = 1`);
+    await db.exec(SCHEMA);
+    expect(await rows('select ai_enabled, ai_monthly_limit from franchises order by name')).toEqual([
+      { ai_enabled: true, ai_monthly_limit: 50 },
+      { ai_enabled: true, ai_monthly_limit: 50 },
+    ]);
+    expect((await rows(`select config ? 'ai' as has from platform where id = 1`))[0].has).toBe(false);
+    // Running the schema again does not switch a franchise back on that the owner has switched off since.
+    await db.query('update franchises set ai_enabled = false where id = $1', [franchiseB]);
+    await db.exec(SCHEMA);
+    expect((await rows('select ai_enabled from franchises where id = $1', [franchiseB]))[0].ai_enabled).toBe(false);
+    expect((await rows('select ai_enabled from franchises where id = $1', [franchiseA]))[0].ai_enabled).toBe(true);
+    await db.query('update franchises set ai_enabled = false, ai_monthly_limit = 300');
   });
 });
 

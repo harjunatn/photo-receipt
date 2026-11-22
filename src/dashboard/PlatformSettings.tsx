@@ -1,6 +1,6 @@
 import { CardFlow } from '../ui/CardFlow';
 import { useEffect, useState } from 'preact/hooks';
-import { Check, NumberField, TextField } from '../admin/fields';
+import { NumberField, TextField } from '../admin/fields';
 import { AI_EDIT_COST_RP, type PlatformConfig } from '../lib/cloud/shared';
 import { formatRupiah } from '../lib/settings';
 import { toast } from '../ui/components';
@@ -90,31 +90,26 @@ export function PlatformSettings({ admin }: AdminPageProps) {
           <h2>Edit foto AI</h2>
           <p class="hint">
             Di halaman unduh, tamu bisa meminta satu fotonya digambar ulang oleh AI (kartun 3D, anime, komik, cat air, atau karikatur),
-            gratis 1 kali per sesi. Tiap hasil dibayar dari API key Gemini milikmu, sekitar {formatRupiah(AI_EDIT_COST_RP)} per foto.
+            gratis 1 kali per sesi. Tiap hasil dibayar dari API key Gemini milikmu: sekitar {formatRupiah(AI_EDIT_COST_RP.low)} sampai{' '}
+            {formatRupiah(AI_EDIT_COST_RP.high)} per foto, tergantung modelnya.
           </p>
-          <Check
-            label="Aktifkan edit foto AI"
-            hint="Saat menyala, tablet ikut mengirim foto tanpa frame, dan tab Versi AI muncul di halaman unduh untuk sesi-sesi sesudahnya. Saat dimatikan, hasil yang sudah jadi tetap bisa diunduh."
-            checked={draft.ai.enabled}
-            onChange={(v) => setDraft({ ...draft, ai: { ...draft.ai, enabled: v } })}
-          />
-          <NumberField
-            label="Batas per franchise per bulan"
-            hint={`Setelah sebanyak ini dalam satu bulan kalender, tamu franchise itu tidak bisa membuat versi AI lagi sampai bulan berikutnya. Dengan batas ini, biaya terbesar per franchise sekitar ${formatRupiah(draft.ai.monthlyLimit * AI_EDIT_COST_RP)} sebulan.`}
-            value={draft.ai.monthlyLimit}
-            min={0}
-            max={100_000}
-            onChange={(v) => setDraft({ ...draft, ai: { ...draft.ai, monthlyLimit: Math.max(0, Math.round(v)) } })}
-          />
-          <AiPanel admin={admin} enabled={draft.ai.enabled} />
+          <p class="hint">
+            Fitur ini dinyalakan per franchise, beserta batas bulanannya: menu <b>Franchise</b> → <b>Atur</b> → <b>Edit foto AI</b>.
+          </p>
+          <AiPanel admin={admin} />
         </section>
       </CardFlow>
     </>
   );
 }
 
+/** What that many AI versions cost, as the range the price per photo falls in. */
+export function costRange(count: number): string {
+  return `${formatRupiah(count * AI_EDIT_COST_RP.low)} – ${formatRupiah(count * AI_EDIT_COST_RP.high)}`;
+}
+
 /** Whether the server is ready to make AI versions (the key, checked with Google on request), and what was made this month. */
-function AiPanel({ admin, enabled }: { admin: AdminApi; enabled: boolean }) {
+function AiPanel({ admin }: { admin: AdminApi }) {
   const status = useLoad(() => admin.aiStatus(false), [admin]);
   const usage = useLoad(() => admin.aiUsage(), [admin]);
   const [checked, setChecked] = useState<AiStatus['check'] | null>(null);
@@ -141,10 +136,10 @@ function AiPanel({ admin, enabled }: { admin: AdminApi; enabled: boolean }) {
         ) : (
           <>
             {!status.data.has_key ? (
-              <p class={`banner ${enabled ? 'err' : ''}`}>
-                API key belum diisi{enabled ? ', jadi tamu akan melihat “Versi AI sedang tidak tersedia”' : ''}. Isi di Supabase → Edge Functions →
-                Secrets dengan nama <b class="mono">GEMINI_API_KEY</b>, lalu muat ulang halaman ini. Kuncinya hanya disimpan di server dan tidak
-                pernah tampil di sini.
+              <p class="banner err">
+                API key belum diisi, jadi tamu franchise yang fiturnya menyala akan melihat “Versi AI sedang tidak tersedia”. Isi di Supabase →
+                Edge Functions → Secrets dengan nama <b class="mono">GEMINI_API_KEY</b>, lalu muat ulang halaman ini. Kuncinya hanya disimpan di
+                server dan tidak pernah tampil di sini.
               </p>
             ) : (
               <p class="hint">
@@ -174,14 +169,15 @@ function AiPanel({ admin, enabled }: { admin: AdminApi; enabled: boolean }) {
         ) : (
           <>
             <p class="hint">
-              <b>{usage.data.done.toLocaleString('id-ID')}</b> versi AI dibuat, sekitar <b>{formatRupiah(usage.data.done * AI_EDIT_COST_RP)}</b>.{' '}
+              <b>{usage.data.done.toLocaleString('id-ID')}</b> versi AI dibuat, kira-kira <b>{costRange(usage.data.done)}</b>. Angka pastinya ada
+              di tagihan Google.{' '}
               {usage.data.failed > 0 ? `${usage.data.failed.toLocaleString('id-ID')} percobaan gagal (tidak memakai jatah tamu).` : ''}
             </p>
             {usage.data.franchises.map((row) => (
               <div class="member" key={row.id}>
                 <span>{row.name}</span>
                 <span class="hint">
-                  {row.done.toLocaleString('id-ID')} foto · {formatRupiah(row.done * AI_EDIT_COST_RP)}
+                  {row.done.toLocaleString('id-ID')} foto · {costRange(row.done)}
                 </span>
               </div>
             ))}

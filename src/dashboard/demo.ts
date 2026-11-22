@@ -40,6 +40,8 @@ interface DemoFranchise extends Franchise {
   created_at: string;
   seed: number;
   booths: string[];
+  /** The AI version of a photo: sold to this franchise or not, its monthly limit, and how many it made this month. */
+  ai: { enabled: boolean; limit: number; month: number };
 }
 
 const today = () => new Date().toISOString().slice(0, 10);
@@ -59,9 +61,9 @@ function stateOf(franchise: Pick<DemoFranchise, 'active' | 'paid_until'>, graceD
 export function createDemo(): { account: Account; admin: AdminApi; apiFor(franchise: Franchise): OwnerApi } {
   let platform: PlatformConfig = { ...DEFAULT_PLATFORM };
   let franchises: DemoFranchise[] = [
-    { id: 'demo-pusat', name: 'Foto Senja', active: true, paid_until: null, note: 'Booth milik sendiri', created_at: new Date(Date.now() - 60 * DAY).toISOString(), seed: 7, booths: ['Booth Kafe Senja', 'Booth Mal Lantai 2', 'Booth Acara'] },
-    { id: 'demo-budi', name: 'Booth Budi', active: true, paid_until: dayFrom(4), note: 'Transfer tiap tanggal 5', created_at: new Date(Date.now() - 26 * DAY).toISOString(), seed: 21, booths: ['Tablet Budi 1', 'Tablet Budi 2'] },
-    { id: 'demo-citra', name: 'Citra Photo', active: true, paid_until: dayFrom(-3), note: null, created_at: new Date(Date.now() - 34 * DAY).toISOString(), seed: 33, booths: ['Tablet Citra'] },
+    { id: 'demo-pusat', name: 'Foto Senja', active: true, paid_until: null, note: 'Booth milik sendiri', created_at: new Date(Date.now() - 60 * DAY).toISOString(), seed: 7, booths: ['Booth Kafe Senja', 'Booth Mal Lantai 2', 'Booth Acara'], ai: { enabled: true, limit: 300, month: 61 } },
+    { id: 'demo-budi', name: 'Booth Budi', active: true, paid_until: dayFrom(4), note: 'Transfer tiap tanggal 5', created_at: new Date(Date.now() - 26 * DAY).toISOString(), seed: 21, booths: ['Tablet Budi 1', 'Tablet Budi 2'], ai: { enabled: true, limit: 100, month: 25 } },
+    { id: 'demo-citra', name: 'Citra Photo', active: true, paid_until: dayFrom(-3), note: null, created_at: new Date(Date.now() - 34 * DAY).toISOString(), seed: 33, booths: ['Tablet Citra'], ai: { enabled: false, limit: 300, month: 0 } },
   ];
   const members = new Map<string, MemberRow[]>([
     ['demo-budi', [{ user_id: 'demo-u1', email: 'budi@contoh.id', created_at: new Date(Date.now() - 26 * DAY).toISOString(), last_sign_in_at: new Date(Date.now() - DAY).toISOString(), must_change_password: false }]],
@@ -105,6 +107,9 @@ export function createDemo(): { account: Account; admin: AdminApi; apiFor(franch
             members: members.get(franchise.id)?.length ?? 0,
             sessions_30d: month.reduce((sum, row) => sum + row.sessions, 0),
             revenue_30d: month.reduce((sum, row) => sum + row.revenue, 0),
+            ai_enabled: franchise.ai.enabled,
+            ai_monthly_limit: franchise.ai.limit,
+            ai_month: franchise.ai.month,
           };
         }),
       );
@@ -113,13 +118,16 @@ export function createDemo(): { account: Account; admin: AdminApi; apiFor(franch
     async saveFranchise(input) {
       if (input.id === null) {
         const id = `demo-${crypto.randomUUID().slice(0, 8)}`;
-        franchises = [...franchises, { id, name: input.name, active: input.active, paid_until: input.paid_until, note: input.note || null, created_at: new Date().toISOString(), seed: 0, booths: [] }];
+        franchises = [...franchises, { id, name: input.name, active: input.active, paid_until: input.paid_until, note: input.note || null, created_at: new Date().toISOString(), seed: 0, booths: [], ai: { enabled: false, limit: 300, month: 0 } }];
         return id;
       }
       franchises = franchises.map((franchise) =>
         franchise.id === input.id ? { ...franchise, name: input.name, active: input.active, paid_until: input.paid_until, note: input.note || null } : franchise,
       );
       return input.id;
+    },
+    async setFranchiseAi(id, enabled, monthlyLimit) {
+      franchises = franchises.map((franchise) => (franchise.id === id ? { ...franchise, ai: { ...franchise.ai, enabled, limit: monthlyLimit } } : franchise));
     },
     async deleteFranchise(id) {
       franchises = franchises.filter((franchise) => franchise.id !== id);
@@ -154,15 +162,12 @@ export function createDemo(): { account: Account; admin: AdminApi; apiFor(franch
       return check ? { ...status, check: { ok: true, message: 'Google menerima API key ini dan mengenal model gemini-nano-banana-2.1.' } } : status;
     },
     async aiUsage() {
-      if (!platform.ai.enabled) return { done: 0, failed: 0, last_error: null, franchises: [] };
+      const used = franchises.filter((franchise) => franchise.ai.month > 0);
       return {
-        done: 86,
-        failed: 3,
+        done: used.reduce((sum, franchise) => sum + franchise.ai.month, 0),
+        failed: used.length > 0 ? 3 : 0,
         last_error: null,
-        franchises: [
-          { id: 'demo-pusat', name: 'Foto Senja', done: 61 },
-          { id: 'demo-budi', name: 'Booth Budi', done: 25 },
-        ],
+        franchises: used.map((franchise) => ({ id: franchise.id, name: franchise.name, done: franchise.ai.month })).sort((a, b) => b.done - a.done),
       };
     },
   };
