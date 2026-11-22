@@ -148,6 +148,23 @@ export function createDemo(): { account: Account; admin: AdminApi; apiFor(franch
     async savePlatform(config) {
       platform = { ...config };
     },
+    // The example has a key in place and a month's worth of use, so the page shows what it will look like.
+    async aiStatus(check) {
+      const status = { has_key: true, model: 'gemini-nano-banana-2.1', image_size: '1K', storage: true };
+      return check ? { ...status, check: { ok: true, message: 'Google menerima API key ini dan mengenal model gemini-nano-banana-2.1.' } } : status;
+    },
+    async aiUsage() {
+      if (!platform.ai.enabled) return { done: 0, failed: 0, last_error: null, franchises: [] };
+      return {
+        done: 86,
+        failed: 3,
+        last_error: null,
+        franchises: [
+          { id: 'demo-pusat', name: 'Foto Senja', done: 61 },
+          { id: 'demo-budi', name: 'Booth Budi', done: 25 },
+        ],
+      };
+    },
   };
 
   return { account: { email: 'pemilik@contoh.id', superadmin: true, franchise: null, mustChangePassword: false }, admin, apiFor };

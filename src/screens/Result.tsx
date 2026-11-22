@@ -8,7 +8,7 @@ import type { BitImage } from '../lib/image/types';
 import { pokeIdle } from '../lib/kiosk';
 import { addLogEntry, EXTRA_COPY_PACKAGE, nextSessionNumber } from '../lib/log';
 import { printer, usePrinter } from '../lib/printer/manager';
-import { renderDigital, renderDraft, renderFrameBoomerang, renderSlideshow, type Draft } from '../lib/session';
+import { renderDigital, renderDraft, renderFrameBoomerang, renderPlainPhotos, renderSlideshow, type Draft } from '../lib/session';
 import { formatRupiah, settingsStore } from '../lib/settings';
 import { sound } from '../lib/sound';
 import { Overlay, PinPad, ReceiptPaper, Steps } from '../ui/components';
@@ -337,6 +337,12 @@ async function sendDigital(draft: Draft, code: string, sessionNo: number): Promi
     ]);
   } catch {
     return;
+  }
+  // While the platform owner offers an AI version, the photos also go up without their frame, for the guest to pick one.
+  if (settings.platform.ai) {
+    const plain = await renderPlainPhotos(draft).catch(() => []);
+    const kinds = ['p1', 'p2', 'p3', 'p4', 'p5', 'p6'] as const;
+    await queueShareFiles(code, plain.map((blob, index) => ({ kind: kinds[index], blob }))).catch(() => undefined);
   }
   if (!draft.videos) return;
   // A boomerang recorded in its own step after the photos, or else the one inside the frame, made now.

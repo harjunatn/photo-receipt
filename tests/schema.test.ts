@@ -144,7 +144,7 @@ describe('schema', () => {
     await fresh.exec(SCHEMA);
     const tables = await fresh.query<{ tablename: string }>(`select tablename from pg_tables where schemaname = 'public' order by 1`);
     expect(tables.rows.map((row) => row.tablename)).toEqual([
-      'devices', 'frames', 'franchise_secrets', 'franchises', 'members', 'payments', 'platform', 'shares', 'superadmins', 'transactions', 'vouchers',
+      'ai_edits', 'devices', 'frames', 'franchise_secrets', 'franchises', 'members', 'payments', 'platform', 'shares', 'superadmins', 'transactions', 'vouchers',
     ]);
     const left = await fresh.query(`select proname from pg_proc p join pg_namespace n on n.oid = p.pronamespace where n.nspname = 'public' and proname in ('is_owner', 'claim_owner')`);
     expect(left.rows).toHaveLength(0);
@@ -440,6 +440,74 @@ describe('tablets', () => {
       expect(brands).toEqual({ aaaaaaaaaaa2: 'Ani Snap', bbbbbbbbbbb3: 'Budi Booth' });
       expect(found.platform.name).toBe('jepretin');
     });
+  });
+
+  it('guard the AI edit: only while switched on, one result per session, three tries, and a monthly limit per franchise', async () => {
+    const file = (code: string) => JSON.stringify({ key: `s/${code}/p1.jpg`, size: 1000, type: 'image/jpeg' });
+    const begin = (code: string, photo = 'p1') => one(`select share_ai_begin($1, 'anime', $2) r`, [code, photo]);
+    const finish = (id: string, ok: boolean, result: string | null = null) =>
+      one(`select share_ai_finish($1::uuid, $2, $3::jsonb, $4) r`, [id, ok, result, ok ? null : 'ditolak layanan AI']);
+    const codes = ['ai0000000001', 'ai0000000002', 'ai0000000003', 'ai0000000004'];
+    await asRole('service_role', async () => {
+      for (const code of codes) {
+        expect((await one(`select share_claim($1, $2) r`, [tokenA, code])).ok).toBe(true);
+        expect((await one(`select share_add_file($1, $2, 'p1', $3::jsonb) r`, [tokenA, code, file(code)])).ok).toBe(true);
+      }
+      // Switched off until the platform owner turns it on.
+      expect((await begin(codes[0])).error).toBe('off');
+    });
+    await db.query(`update platform set config = config || '{"ai": {"enabled": true, "monthlyLimit": 2}}'::jsonb where id = 1`);
+    await asRole('service_role', async () => {
+      expect((await begin('ai0000000009')).error).toBe('not-found');
+      expect((await begin(codes[0], 'p2')).error).toBe('no-photo');
+
+      // Three tries that fail, then no more; a failure never becomes a result.
+      for (let attempt = 0; attempt < 3; attempt++) {
+        const started = await begin(codes[0]);
+        expect(started).toMatchObject({ ok: true, key: `s/${codes[0]}/p1.jpg`, type: 'image/jpeg' });
+        // A second tap while the first is still being drawn is turned away.
+        expect((await begin(codes[0])).error).toBe('busy');
+        expect((await finish(started.id, false)).ok).toBe(true);
+        // Finishing twice changes nothing.
+        expect((await finish(started.id, true, '{"key":"x"}')).error).toBe('not-found');
+      }
+      expect((await begin(codes[0])).error).toBe('tries');
+      const failed = (await one(`select share_lookup(array[$1]) r`, [codes[0]])).shares[0];
+      expect(failed.ai).toEqual({ failed: 3, busy: false });
+      expect(failed.files.ai).toBeUndefined();
+
+      // One result per session.
+      const first = await begin(codes[1]);
+      expect((await one(`select share_lookup(array[$1]) r`, [codes[1]])).shares[0].ai).toEqual({ failed: 0, busy: true });
+      await finish(first.id, true, JSON.stringify({ key: `s/${codes[1]}/ai.jpg`, size: 5000, type: 'image/jpeg' }));
+      const done = (await one(`select share_lookup(array[$1]) r`, [codes[1]])).shares[0];
+      expect(done.files.ai).toMatchObject({ key: `s/${codes[1]}/ai.jpg`, style: 'anime' });
+      expect((await begin(codes[1])).error).toBe('used');
+
+      // The franchise's monthly limit (2 here) counts results, not failures.
+      const second = await begin(codes[2]);
+      await finish(second.id, true, JSON.stringify({ key: `s/${codes[2]}/ai.jpg`, size: 5000, type: 'image/jpeg' }));
+      expect((await begin(codes[3])).error).toBe('limit');
+    });
+
+    // The platform owner sees this month's use; a franchise admin does not get the platform's totals.
+    await asUser(OWNER, async () => {
+      const usage = await one('select ai_usage() r');
+      expect(usage).toMatchObject({ done: 2, failed: 3, last_error: 'ditolak layanan AI' });
+      expect(usage.franchises).toEqual([{ id: franchiseA, name: 'Booth Ani', done: 2 }]);
+    });
+    await asUser(ANI, async () => {
+      expect((await one('select ai_usage() r')).error).toBe('forbidden');
+      expect(await rows('select status from ai_edits')).toHaveLength(5);
+    });
+    await asUser(BUDI, async () => expect(await rows('select status from ai_edits')).toHaveLength(0));
+    await asRole('anon', async () => {
+      await expect(db.query(`select share_ai_begin('ai0000000004', 'anime', 'p1')`)).rejects.toThrow();
+    });
+
+    await db.query(`delete from shares where code = any($1::text[])`, [codes]);
+    expect(await rows('select 1 from ai_edits')).toHaveLength(0);
+    await db.query(`update platform set config = config - 'ai' where id = 1`);
   });
 });
 

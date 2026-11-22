@@ -173,6 +173,34 @@ export async function renderDigital(draft: Draft, sessionNo: number, settings: S
   return { photo: await toJpeg(full, 0.9), thumb: await toJpeg(thumbnail(draft, full), 0.82) };
 }
 
+/** Longest side of a photo sent without its frame; enough for the AI service, small enough to upload in a moment. */
+const PLAIN_LONG_SIDE = 1280;
+/** The download page offers at most this many photos to pick from. */
+export const PLAIN_PHOTOS_MAX = 6;
+
+/**
+ * The session's photos without the frame, each cut the way the guest cut it
+ * for its place in the frame. The AI version on the download page is drawn
+ * from one of these: sent with the frame, the AI would redraw the frame too.
+ */
+export async function renderPlainPhotos(draft: Draft): Promise<Blob[]> {
+  const photos: Blob[] = [];
+  for (let i = 0; i < draft.shots.length && photos.length < PLAIN_PHOTOS_MAX; i++) {
+    const shot = draft.shots[i];
+    if (!shot) continue;
+    const win = cropWindow(shot.canvas.width, shot.canvas.height, draft.frame.slots[i] ?? 4 / 3, shot.crop);
+    const scale = Math.min(1, PLAIN_LONG_SIDE / Math.max(win.sw, win.sh));
+    const plain = document.createElement('canvas');
+    plain.width = Math.max(1, Math.round(win.sw * scale));
+    plain.height = Math.max(1, Math.round(win.sh * scale));
+    const ctx = plain.getContext('2d')!;
+    ctx.imageSmoothingQuality = 'high';
+    ctx.drawImage(shot.canvas, win.sx, win.sy, win.sw, win.sh, 0, 0, plain.width, plain.height);
+    photos.push(await toJpeg(plain, 0.86));
+  }
+  return photos;
+}
+
 /** Width of the colour receipt at the end of the slideshow: it shows 500 pixels wide. */
 const SLIDESHOW_RECEIPT_WIDTH = 600;
 

@@ -78,6 +78,25 @@ export interface PaymentRow {
   has_session: boolean;
 }
 
+/** Whether the server holds a key for the AI service, and what Google said about it when asked. The key itself never leaves the server. */
+export interface AiStatus {
+  has_key: boolean;
+  model: string;
+  image_size: string;
+  /** false while the cloud storage for guest downloads is not set up; without it there is nowhere to keep the result. */
+  storage: boolean;
+  check?: { ok: boolean; message: string };
+}
+
+/** AI versions made this calendar month, over every franchise. */
+export interface AiUsage {
+  done: number;
+  failed: number;
+  /** Why the latest failed try failed, as the server recorded it. */
+  last_error: string | null;
+  franchises: { id: string; name: string; done: number }[];
+}
+
 export interface TxFilter {
   from: Date;
   /** Exclusive. */
@@ -265,6 +284,9 @@ export interface AdminApi {
   removeMember(userId: string): Promise<void>;
   getPlatform(): Promise<PlatformConfig>;
   savePlatform(config: PlatformConfig): Promise<void>;
+  /** With `check`, Google is also asked whether it accepts the key (free; no picture is made). */
+  aiStatus(check: boolean): Promise<AiStatus>;
+  aiUsage(): Promise<AiUsage>;
 }
 
 /** A password for handing over to a new admin: easy to read out, and replaced at first sign-in. */
@@ -564,6 +586,10 @@ export function createSupabaseAdminApi(db: SupabaseClient): AdminApi {
     getPlatform: () => readPlatform(db),
     async savePlatform(config) {
       unwrap(await db.from('platform').update({ config }).eq('id', 1).select('id'));
+    },
+    aiStatus: (check) => callFunction<AiStatus>(db, 'share-ai', { action: 'status', check }),
+    async aiUsage() {
+      return checked<AiUsage>(await db.rpc('ai_usage'));
     },
   };
 }

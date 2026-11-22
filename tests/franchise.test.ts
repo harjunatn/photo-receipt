@@ -162,13 +162,24 @@ describe('platform settings', () => {
       watermark: '',
       receiptLine: '@jepretin.id',
       graceDays: 0,
+      ai: { enabled: false, monthlyLimit: 300 },
     });
+  });
+
+  it('keep the AI edit off unless the owner switched it on, with a sane monthly limit', () => {
+    expect(completePlatform({}).ai).toEqual({ enabled: false, monthlyLimit: 300 });
+    expect(completePlatform({ ai: { enabled: true, monthlyLimit: 50 } }).ai).toEqual({ enabled: true, monthlyLimit: 50 });
+    // Anything but a plain "true" leaves it off; a limit that is no whole number falls back.
+    expect(completePlatform({ ai: { enabled: 'ya', monthlyLimit: -4 } }).ai).toEqual({ enabled: false, monthlyLimit: 300 });
+    expect(completePlatform({ ai: 'nyala' }).ai).toEqual({ enabled: false, monthlyLimit: 300 });
   });
 
   it('reach the tablet with the outlet settings, and stay as they were when not sent', () => {
     const next = applyRemote(DEFAULT_SETTINGS, {}, null, { name: 'Jepretin', watermark: 'oleh Jepretin', receiptLine: '@jepretin.id' });
-    expect(next.platform).toEqual({ name: 'Jepretin', watermark: 'oleh Jepretin', receiptLine: '@jepretin.id' });
+    expect(next.platform).toEqual({ name: 'Jepretin', watermark: 'oleh Jepretin', receiptLine: '@jepretin.id', ai: false });
     expect(applyRemote(next, {}, null).platform).toEqual(next.platform);
+    // The tablet hears when the AI edit is switched on, so it starts sending the photos without their frame.
+    expect(applyRemote(next, {}, null, { name: 'Jepretin', ai: { enabled: true } }).platform.ai).toBe(true);
     // A franchise's outlet settings cannot carry platform settings in with them.
     expect(applyRemote(DEFAULT_SETTINGS, { platform: { watermark: 'punyaku' } }, null).platform).toEqual(DEFAULT_SETTINGS.platform);
   });

@@ -144,6 +144,8 @@ export interface Settings {
     watermark: string;
     /** Last line of every receipt. */
     receiptLine: string;
+    /** The platform owner offers guests an AI version of a photo; the booth then also sends the photos without their frame. */
+    ai: boolean;
   };
 }
 
@@ -251,6 +253,7 @@ export const DEFAULT_SETTINGS: Settings = {
     name: 'jepretin',
     watermark: 'didukung oleh jepretin',
     receiptLine: '@jepretin',
+    ai: false,
   },
 };
 

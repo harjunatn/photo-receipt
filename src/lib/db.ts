@@ -42,7 +42,8 @@ export interface UploadRecord {
   /** code:kind */
   id: string;
   code: string;
-  kind: 'photo' | 'thumb' | 'live' | 'slideshow';
+  /** p1 … p6: the session's photos without their frame, for the AI version on the download page. */
+  kind: 'photo' | 'thumb' | 'live' | 'slideshow' | 'p1' | 'p2' | 'p3' | 'p4' | 'p5' | 'p6';
   blob: Blob;
   /** With the photo: the videos that follow, so the download page waits for them. */
   expects?: ('live' | 'slideshow')[];

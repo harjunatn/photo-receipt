@@ -342,6 +342,33 @@ Masa simpan 3 hari tertulis di tiga tempat yang harus sama: aturan hapus di buck
 [`src/lib/cloud/shared.ts`](src/lib/cloud/shared.ts), dan `interval '3 days'` di fungsi `share_claim` pada
 [`supabase/schema.sql`](supabase/schema.sql).
 
+## Edit foto AI di halaman unduh (Gemini)
+
+Kalau dinyalakan, halaman unduh tamu mendapat tab **Versi AI**: tamu memilih satu foto dari sesinya dan satu gaya
+(Kartun 3D, Anime, Komik, Cat air, Karikatur), lalu fotonya digambar ulang oleh model gambar Gemini milik Google.
+Gratis 1 kali per sesi untuk tamu; biayanya (sekitar Rp550 per foto ukuran 1K) dibayar pemilik platform lewat API
+key-nya.
+
+- **Menyalakan:** dashboard → **Pengaturan platform → Edit foto AI → Aktifkan edit foto AI**, lalu Simpan. Bawaannya
+  mati. Di kartu yang sama: batas per franchise per bulan (bawaan 300), status API key dengan tombol **Periksa API
+  key** (bertanya ke Google apakah kuncinya diterima; gratis), dan pemakaian bulan ini per franchise.
+- **API key:** Supabase → **Edge Functions → Secrets** → tambah `GEMINI_API_KEY` (dari Google AI Studio, proyek yang
+  billing-nya aktif: keluaran gambar tidak punya kuota gratis). Kuncinya hanya dibaca fungsi `share-ai`; ia tidak
+  pernah dikirim ke browser atau tablet. Dua pengaturan lain boleh ditambah di tempat yang sama:
+  `GEMINI_IMAGE_MODEL` (bawaan `gemini-nano-banana-2.1`) dan `GEMINI_IMAGE_SIZE` (`1K`, `2K` atau `4K`; bawaan `1K`).
+- **Yang berubah saat menyala:** tablet ikut mengunggah foto tiap jepretan tanpa frame (paling banyak 6, sisi
+  terpanjang 1280 px), karena kalau hasil ber-frame yang dikirim, AI ikut menggambar ulang frame dan tulisannya. Foto
+  polos dan hasil AI disimpan di R2 bersama berkas sesi lain dan terhapus setelah 3 hari.
+- **Penjagaan biaya, semuanya di server:** satu hasil per kode QR; percobaan yang gagal atau ditolak AI tidak memakai
+  jatah, tetapi setelah tiga kali gagal tawarannya ditutup; batas bulanan per franchise; dan tamu hanya bisa mengirim
+  nama gaya dari daftar, bukan perintah sendiri (teks perintahnya ada di
+  [`supabase/functions/_shared/styles.ts`](supabase/functions/_shared/styles.ts), tempat menambah atau mengubah gaya).
+- **Kalau gagal:** alasan kegagalan terakhir tampil di kartu **Pemakaian bulan ini**, dan lengkapnya ada di log fungsi
+  `share-ai` di Supabase.
+
+Fungsinya memanggil Interactions API Gemini lebih dulu (cara yang didokumentasikan Google untuk mengedit foto dengan
+model ini) dan `generateContent` sebagai cadangan.
+
 ## Menghubungkan printer
 
 - **USB** — paling stabil dan paling cepat. Sambungkan lewat OTG/hub, tekan **Hubungkan**, pilih printer di jendela
@@ -548,6 +575,12 @@ cara bayar, kode voucher) dan status tablet.
 Hasil foto berframe setiap sesi, satu foto kecil untuk daftar transaksi, dan (kalau harganya termasuk video) boomerang
 serta video slideshow dikirim ke Cloudflare R2 dan dihapus otomatis setelah 3 hari. Selama itu fotonya bisa dibuka oleh
 tamu pemegang kode QR-nya, admin franchise itu, dan superadmin.
+
+Kalau **Edit foto AI** dinyalakan, foto tiap jepretan tanpa frame juga dikirim ke R2 (ikut terhapus setelah 3 hari).
+Satu foto baru dikirim ke layanan AI Google saat tamu sendiri menekan **Buat versi AI** di halaman unduh, dan halaman
+itu mengatakannya di dekat tombolnya. Pada pemakaian API berbayar, Google menyatakan tidak memakai kiriman untuk
+melatih modelnya, tetapi menyimpan log sementara untuk mendeteksi penyalahgunaan; semua hasilnya diberi watermark tak
+terlihat (SynthID).
 
 ## Untuk pengembangan
 

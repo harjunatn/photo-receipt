@@ -243,6 +243,25 @@ create table if not exists public.shares (
 );
 create index if not exists shares_franchise on public.shares (franchise_id, created_at desc);
 
+-- Edit foto AI di halaman unduh tamu: satu baris untuk tiap percobaan mengubah satu foto sesi dengan satu gaya.
+-- Dipakai untuk jatah (satu hasil per sesi), batas per franchise per bulan, dan hitungan biaya pemilik platform.
+create table if not exists public.ai_edits (
+  id uuid primary key default gen_random_uuid(),
+  code text not null references public.shares (code) on delete cascade,
+  franchise_id uuid not null references public.franchises (id) on delete cascade,
+  style text not null,
+  -- Foto polos mana dari sesi itu yang diubah: p1 … p6.
+  photo text not null,
+  -- pending: sedang dikerjakan · done: jadi · failed: gagal atau ditolak AI (tidak menghabiskan jatah tamu)
+  status text not null default 'pending' check (status in ('pending', 'done', 'failed')),
+  -- Alasan kegagalan, untuk pemilik platform.
+  detail text,
+  created_at timestamptz not null default now(),
+  finished_at timestamptz
+);
+create index if not exists ai_edits_code on public.ai_edits (code);
+create index if not exists ai_edits_franchise on public.ai_edits (franchise_id, created_at desc);
+
 -- Frame buatan franchise sendiri: gambar dengan lubang transparan tempat foto.
 create table if not exists public.frames (
   id uuid primary key default gen_random_uuid(),
@@ -405,6 +424,7 @@ alter table public.transactions enable row level security;
 alter table public.vouchers enable row level security;
 alter table public.payments enable row level security;
 alter table public.shares enable row level security;
+alter table public.ai_edits enable row level security;
 alter table public.frames enable row level security;
 
 revoke all on public.platform, public.superadmins, public.franchises, public.members, public.franchise_secrets,
@@ -487,6 +507,11 @@ drop policy if exists tenant_read on public.shares;
 create policy tenant_read on public.shares for select to authenticated
   using ((select public.is_superadmin()) or franchise_id = (select public.my_franchise()));
 grant select on public.shares to authenticated;
+
+drop policy if exists tenant_read on public.ai_edits;
+create policy tenant_read on public.ai_edits for select to authenticated
+  using ((select public.is_superadmin()) or franchise_id = (select public.my_franchise()));
+grant select on public.ai_edits to authenticated;
 
 -- ---------------------------------------------------------------- fungsi untuk tablet
 
@@ -1382,7 +1407,13 @@ as $$
     'shares', coalesce((
       select jsonb_agg(jsonb_build_object('code', s.code, 'files', s.files, 'created_at', s.created_at,
                                           'expires_at', s.expires_at, 'device_name', s.device_name,
-                                          'brand', (select f.config -> 'brand' from franchises f where f.id = s.franchise_id)))
+                                          'brand', (select f.config -> 'brand' from franchises f where f.id = s.franchise_id),
+                                          -- Edit foto AI: percobaan yang gagal, dan apakah satu sedang dikerjakan.
+                                          'ai', jsonb_build_object(
+                                            'failed', (select count(*) from ai_edits e where e.code = s.code
+                                                        and (e.status = 'failed' or (e.status = 'pending' and e.created_at <= now() - interval '3 minutes'))),
+                                            'busy', exists (select 1 from ai_edits e where e.code = s.code
+                                                             and e.status = 'pending' and e.created_at > now() - interval '3 minutes'))))
       from shares s
       where s.code = any (p_codes[1:60])
     ), '[]'::jsonb)
@@ -1395,3 +1426,115 @@ revoke execute on function public.share_lookup(text[]) from public, anon, authen
 grant execute on function public.share_claim(text, text) to service_role;
 grant execute on function public.share_add_file(text, text, text, jsonb) to service_role;
 grant execute on function public.share_lookup(text[]) to service_role;
+
+-- ---------------------------------------------------------------- edit foto AI
+
+-- Membuka satu percobaan edit foto AI untuk sebuah sesi, kalau masih boleh. Dipanggil Edge Function share-ai
+-- sebelum fotonya dikirim ke layanan AI, supaya jatah dan batas biaya dijaga di satu tempat:
+--   off       fitur dimatikan di Pengaturan platform
+--   used      sesi ini sudah punya hasil AI (jatahnya satu)
+--   busy      percobaan lain untuk sesi ini masih berjalan
+--   tries     sudah tiga kali gagal
+--   limit     franchise ini sudah mencapai batas bulanannya
+create or replace function public.share_ai_begin(p_code text, p_style text, p_photo text)
+returns jsonb
+language plpgsql security definer set search_path = public
+as $$
+declare
+  s shares;
+  cfg jsonb;
+  cap int;
+  month_start timestamptz := date_trunc('month', now() at time zone 'Asia/Jakarta') at time zone 'Asia/Jakarta';
+  new_id uuid;
+begin
+  -- Baris sesi dikunci, supaya dua ketukan bersamaan tidak sama-sama lolos.
+  select * into s from shares where code = p_code for update;
+  if not found then
+    return jsonb_build_object('error', 'not-found');
+  end if;
+  if s.expires_at < now() then
+    return jsonb_build_object('error', 'expired');
+  end if;
+  select config -> 'ai' into cfg from platform where id = 1;
+  if coalesce(cfg ->> 'enabled', 'false') <> 'true' then
+    return jsonb_build_object('error', 'off');
+  end if;
+  if s.files ? 'ai' or exists (select 1 from ai_edits where code = p_code and status = 'done') then
+    return jsonb_build_object('error', 'used');
+  end if;
+  if coalesce(p_photo, '') !~ '^p[1-6]$' or not (s.files ? p_photo) then
+    return jsonb_build_object('error', 'no-photo');
+  end if;
+  if exists (select 1 from ai_edits where code = p_code and status = 'pending' and created_at > now() - interval '3 minutes') then
+    return jsonb_build_object('error', 'busy');
+  end if;
+  if (select count(*) from ai_edits where code = p_code and status <> 'done') >= 3 then
+    return jsonb_build_object('error', 'tries');
+  end if;
+  cap := case when (cfg ->> 'monthlyLimit') ~ '^[0-9]{1,6}$' then (cfg ->> 'monthlyLimit')::int else 300 end;
+  if (select count(*) from ai_edits
+       where franchise_id = s.franchise_id and created_at >= month_start
+         and (status = 'done' or (status = 'pending' and created_at > now() - interval '3 minutes'))) >= cap then
+    return jsonb_build_object('error', 'limit');
+  end if;
+  insert into ai_edits (code, franchise_id, style, photo)
+  values (p_code, s.franchise_id, left(coalesce(p_style, ''), 40), p_photo)
+  returning id into new_id;
+  return jsonb_build_object('ok', true, 'id', new_id, 'key', s.files -> p_photo ->> 'key', 'type', s.files -> p_photo ->> 'type');
+end;
+$$;
+
+-- Menutup percobaan itu: berhasil (berkas hasilnya dicatat di sesi) atau gagal (dengan alasannya).
+create or replace function public.share_ai_finish(p_id uuid, p_ok boolean, p_file jsonb default null, p_detail text default null)
+returns jsonb
+language plpgsql security definer set search_path = public
+as $$
+declare
+  e ai_edits;
+begin
+  update ai_edits
+    set status = case when p_ok then 'done' else 'failed' end, finished_at = now(), detail = left(p_detail, 500)
+    where id = p_id and status = 'pending'
+    returning * into e;
+  if not found then
+    return jsonb_build_object('error', 'not-found');
+  end if;
+  if p_ok then
+    update shares set files = files || jsonb_build_object('ai', coalesce(p_file, '{}'::jsonb) || jsonb_build_object('style', e.style))
+      where code = e.code;
+  end if;
+  return jsonb_build_object('ok', true);
+end;
+$$;
+
+-- Pemakaian edit foto AI bulan ini, untuk pemilik platform: jumlah seluruhnya dan per franchise.
+create or replace function public.ai_usage()
+returns jsonb
+language plpgsql stable security definer set search_path = public
+as $$
+declare
+  month_start timestamptz := date_trunc('month', now() at time zone 'Asia/Jakarta') at time zone 'Asia/Jakarta';
+begin
+  if not is_superadmin() then
+    return jsonb_build_object('error', 'forbidden');
+  end if;
+  return jsonb_build_object(
+    'done', (select count(*) from ai_edits where status = 'done' and created_at >= month_start),
+    'failed', (select count(*) from ai_edits where status = 'failed' and created_at >= month_start),
+    'last_error', (select detail from ai_edits where status = 'failed' and detail is not null order by created_at desc limit 1),
+    'franchises', coalesce((
+      select jsonb_agg(jsonb_build_object('id', f.id, 'name', f.name, 'done', u.done) order by u.done desc, f.name)
+      from (select franchise_id, count(*) as done from ai_edits
+             where status = 'done' and created_at >= month_start group by franchise_id) u
+      join franchises f on f.id = u.franchise_id
+    ), '[]'::jsonb)
+  );
+end;
+$$;
+
+revoke execute on function public.share_ai_begin(text, text, text) from public, anon, authenticated;
+revoke execute on function public.share_ai_finish(uuid, boolean, jsonb, text) from public, anon, authenticated;
+revoke execute on function public.ai_usage() from public, anon;
+grant execute on function public.share_ai_begin(text, text, text) to service_role;
+grant execute on function public.share_ai_finish(uuid, boolean, jsonb, text) to service_role;
+grant execute on function public.ai_usage() to authenticated;

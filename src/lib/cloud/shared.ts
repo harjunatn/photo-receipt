@@ -37,20 +37,43 @@ export interface PlatformConfig {
   receiptLine: string;
   /** Days a booth keeps running after its franchise's subscription ran out. */
   graceDays: number;
+  /** The AI version of a photo on the guest's download page, paid for by the platform owner. */
+  ai: {
+    enabled: boolean;
+    /** Most AI versions one franchise may have made in a calendar month. */
+    monthlyLimit: number;
+  };
 }
 
-export const DEFAULT_PLATFORM: PlatformConfig = { ...DEFAULT_SETTINGS.platform, graceDays: 7 };
+/** What one AI version costs the platform owner, roughly, at the default size (Google's price per 1K image, in rupiah). */
+export const AI_EDIT_COST_RP = 550;
+export const DEFAULT_AI_MONTHLY_LIMIT = 300;
+
+export const DEFAULT_PLATFORM: PlatformConfig = {
+  name: DEFAULT_SETTINGS.platform.name,
+  watermark: DEFAULT_SETTINGS.platform.watermark,
+  receiptLine: DEFAULT_SETTINGS.platform.receiptLine,
+  graceDays: 7,
+  ai: { enabled: false, monthlyLimit: DEFAULT_AI_MONTHLY_LIMIT },
+};
 
 /** Fills the gaps of saved platform settings, e.g. before the owner has saved any. */
 export function completePlatform(saved: unknown): PlatformConfig {
   const source = isObject(saved) ? saved : {};
   const line = (value: unknown, fallback: string, max: number) => (typeof value === 'string' ? value.trim().slice(0, max) : fallback);
   const days = Number(source.graceDays);
+  const ai = isObject(source.ai) ? source.ai : {};
+  const limit = Number(ai.monthlyLimit);
   return {
     name: line(source.name, DEFAULT_PLATFORM.name, 40) || DEFAULT_PLATFORM.name,
     watermark: line(source.watermark, DEFAULT_PLATFORM.watermark, 60),
     receiptLine: line(source.receiptLine, DEFAULT_PLATFORM.receiptLine, 40),
     graceDays: Number.isInteger(days) && days >= 0 && days <= 60 ? days : DEFAULT_PLATFORM.graceDays,
+    ai: {
+      // Off unless the owner switched it on: every AI version costs money.
+      enabled: ai.enabled === true,
+      monthlyLimit: Number.isInteger(limit) && limit >= 0 && limit <= 100_000 ? limit : DEFAULT_AI_MONTHLY_LIMIT,
+    },
   };
 }
 
@@ -159,7 +182,7 @@ export function applyRemote(settings: Settings, outlet: unknown, frames: unknown
   // Sent together with the outlet; absent while only the frames changed.
   if (isObject(platform)) {
     const complete = completePlatform(platform);
-    next.platform = { name: complete.name, watermark: complete.watermark, receiptLine: complete.receiptLine };
+    next.platform = { name: complete.name, watermark: complete.watermark, receiptLine: complete.receiptLine, ai: complete.ai.enabled };
   }
   if (isObject(outlet)) {
     if (isObject(outlet.brand)) next.brand = mergeSettings(next.brand, outlet.brand);

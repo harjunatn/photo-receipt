@@ -297,7 +297,7 @@ async function refreshPublicPlatform(): Promise<void> {
   if (!cloudConfigured || pairingStore.get()) return;
   try {
     const platform = completePlatform(await rpc<unknown>('platform_public', {}));
-    const next = { name: platform.name, watermark: platform.watermark, receiptLine: platform.receiptLine };
+    const next = { ...settingsStore.get().platform, name: platform.name, watermark: platform.watermark, receiptLine: platform.receiptLine };
     if (JSON.stringify(next) !== JSON.stringify(settingsStore.get().platform)) settingsStore.update((s) => void (s.platform = next));
   } catch {
     // Offline, or a server that does not offer it yet: the name known so far stays.

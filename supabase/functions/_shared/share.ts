@@ -5,6 +5,7 @@
  */
 import { rpc, type Reply } from './handlers.ts';
 import { presignUrl } from './s3.ts';
+import { AI_STYLES, AI_TRIES, PLAIN_KINDS } from './styles.ts';
 
 export interface ShareEnv {
   supabaseUrl: string;
@@ -15,14 +16,25 @@ export interface ShareEnv {
 
 type Fetch = (url: string, init: RequestInit) => Promise<Response>;
 
+/** A session's photo without its frame, for the AI edit: small, one per shot. */
+const PLAIN = { ext: 'jpg', type: 'image/jpeg', max: 3_000_000 } as const;
+
 /** What a tablet may upload for one session, and how large each may be. */
 export const KINDS = {
   photo: { ext: 'jpg', type: 'image/jpeg', max: 15_000_000 },
   thumb: { ext: 'jpg', type: 'image/jpeg', max: 1_000_000 },
   live: { ext: 'mp4', type: 'video/mp4', max: 40_000_000 },
   slideshow: { ext: 'mp4', type: 'video/mp4', max: 40_000_000 },
+  p1: PLAIN,
+  p2: PLAIN,
+  p3: PLAIN,
+  p4: PLAIN,
+  p5: PLAIN,
+  p6: PLAIN,
 } as const;
 export type ShareKind = keyof typeof KINDS;
+/** The AI's version of one photo. Made by the share-ai function, never uploaded by a tablet. */
+export const AI_KIND = 'ai';
 
 const CODE = /^[a-z0-9]{12}$/;
 const UPLOAD_SECONDS = 15 * 60;
@@ -71,7 +83,8 @@ const expectedFrom = (value: unknown): LaterKind[] =>
   Array.isArray(value) ? LATER.filter((kind) => value.includes(kind)) : [];
 const objectKey = (code: string, kind: ShareKind) => `s/${code}/${kind}.${KINDS[kind].ext}`;
 
-function sign(env: ShareEnv, method: 'GET' | 'PUT' | 'HEAD', key: string, expiresIn: number, now: Date, query?: Record<string, string>) {
+/** A signed address for one object in the bucket. */
+export function sign(env: ShareEnv, method: 'GET' | 'PUT' | 'HEAD', key: string, expiresIn: number, now: Date, query?: Record<string, string>) {
   const r2 = env.r2!;
   return presignUrl({
     method,
@@ -172,16 +185,23 @@ interface ShareRow {
   /** Name and colour of the franchise whose booth took the photo. */
   brand?: { title?: unknown; accent?: unknown } | null;
   code: string;
-  files: Partial<Record<ShareKind, { key: string; size: number; type: string; expects?: unknown }>>;
+  files: Partial<Record<ShareKind | typeof AI_KIND, { key: string; size: number; type: string; expects?: unknown; style?: unknown }>>;
+  /** How the session's AI edit stands: tries that failed, and whether one is being drawn now. */
+  ai?: { failed?: unknown; busy?: unknown } | null;
   created_at: string;
   expires_at: string;
   device_name: string;
 }
 
+/** The file extension that goes with an image type; the AI service chooses the type of what it draws. */
+export function imageExt(type: string): string {
+  return type === 'image/png' ? 'png' : type === 'image/webp' ? 'webp' : 'jpg';
+}
+
 /** A file name for downloads: the outlet's name in plain letters, then the code. */
-function fileName(brand: string, code: string, kind: ShareKind): string {
+function fileName(brand: string, code: string, kind: string, ext: string): string {
   const base = brand.toLowerCase().normalize('NFKD').replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '') || 'foto';
-  return `${base}-${code}${kind === 'photo' ? '' : `-${kind}`}.${KINDS[kind].ext}`;
+  return `${base}-${code}${kind === 'photo' ? '' : `-${kind}`}.${ext}`;
 }
 
 /**
@@ -196,8 +216,15 @@ export async function handleShareGet(input: Record<string, unknown>, env: ShareE
   const codes = [...new Set(asked.map(text).filter((code) => CODE.test(code)))].slice(0, 60);
   if (codes.length === 0) return { status: 200, body: { error: 'bad-request' } };
 
-  const found = await rpc<{ platform?: { name?: unknown; watermark?: unknown } | null; shares?: ShareRow[] }>(env, fetchFn, 'share_lookup', { p_codes: codes });
+  const found = await rpc<{ platform?: { name?: unknown; watermark?: unknown; ai?: { enabled?: unknown } | null } | null; shares?: ShareRow[] }>(
+    env,
+    fetchFn,
+    'share_lookup',
+    { p_codes: codes },
+  );
   const platform = { name: text(found.platform?.name), watermark: text(found.platform?.watermark) };
+  // The platform owner's switch for the AI edit; a result made while it was on stays downloadable.
+  const aiOn = found.platform?.ai?.enabled === true;
   const brandOf = (row: ShareRow | undefined) => ({ title: text(row?.brand?.title) || platform.name || 'Foto', accent: text(row?.brand?.accent) || '' });
   const rows = new Map((found.shares ?? []).map((row) => [row.code, row]));
   const brand = brandOf(codes.map((code) => rows.get(code)).find((row) => row !== undefined));
@@ -209,22 +236,44 @@ export async function handleShareGet(input: Record<string, unknown>, env: ShareE
       if (!row) return { code, status: 'pending' };
       const own = brandOf(row);
       if (Date.parse(row.expires_at) < at.getTime()) return { code, status: 'expired', expires_at: row.expires_at, brand: own };
-      const files: Record<string, { view: string; download: string; size: number; type: string }> = {};
-      for (const kind of Object.keys(KINDS) as ShareKind[]) {
+      const files: Record<string, { view: string; download: string; size: number; type: string; style?: string }> = {};
+      for (const kind of [...(Object.keys(KINDS) as ShareKind[]), AI_KIND] as const) {
         const file = row.files[kind];
         if (!file) continue;
+        const ext = kind === AI_KIND ? imageExt(file.type) : KINDS[kind].ext;
         files[kind] = {
           view: await sign(env, 'GET', file.key, VIEW_SECONDS, at),
           download: await sign(env, 'GET', file.key, VIEW_SECONDS, at, {
-            'response-content-disposition': `attachment; filename="${fileName(own.title, code, kind)}"`,
+            'response-content-disposition': `attachment; filename="${fileName(own.title, code, kind, ext)}"`,
           }),
           size: file.size,
           type: file.type,
+          ...(kind === AI_KIND && text(file.style) ? { style: text(file.style) } : {}),
         };
       }
       // Videos the tablet said would follow the photo and that have not arrived yet.
       const coming = expectedFrom(row.files.photo?.expects).filter((kind) => !files[kind]);
-      return { code, status: files.photo ? 'ready' : 'pending', created_at: row.created_at, expires_at: row.expires_at, brand: own, files, coming };
+      // The AI edit is offered while the owner has it switched on and the booth sent plain photos to pick from.
+      const plain = PLAIN_KINDS.some((kind) => files[kind]);
+      const ai =
+        files[AI_KIND] || (aiOn && plain)
+          ? {
+              open: aiOn && plain && !files[AI_KIND],
+              busy: row.ai?.busy === true,
+              tries_left: Math.max(0, AI_TRIES - (Number(row.ai?.failed) || 0)),
+              styles: AI_STYLES.map((style) => ({ id: style.id, label: style.label })),
+            }
+          : undefined;
+      return {
+        code,
+        status: files.photo ? 'ready' : 'pending',
+        created_at: row.created_at,
+        expires_at: row.expires_at,
+        brand: own,
+        files,
+        coming,
+        ...(ai ? { ai } : {}),
+      };
     }),
   );
   return { status: 200, body: { brand, platform, shares } };
