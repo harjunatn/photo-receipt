@@ -1,0 +1,542 @@
+/*
+ * The booth in the brand's own look: a paper-white canvas, one electric blue, a
+ * lime highlight, heavy headlines, flat surfaces with hairlines and big rounded
+ * corners, and a ribbon of text across the welcome screen. Only the tablet gets
+ * it (html.booth); the guest download page and the dashboard keep their own look.
+ */
+
+/* Only the Latin part of each font is bundled, like the booth's other fonts. */
+@font-face {
+  font-family: 'Archivo Black';
+  font-style: normal;
+  font-display: swap;
+  font-weight: 400;
+  src: url('../node_modules/@fontsource/archivo-black/files/archivo-black-latin-400-normal.woff2') format('woff2');
+}
+
+@font-face {
+  font-family: 'DM Sans Variable';
+  font-style: normal;
+  font-display: swap;
+  font-weight: 100 1000;
+  src: url('../node_modules/@fontsource-variable/dm-sans/files/dm-sans-latin-wght-normal.woff2') format('woff2-variations');
+}
+
+html.booth {
+  --page: #f7f6f2;
+  --soft: #efede7;
+  --cream: #efede7;
+  --strong: #e3e1da;
+  --card: #fff;
+  --ink: #1c212d;
+  --body: #41454f;
+  --ink-2: #6a6e79;
+  --line: #dcdbd7;
+
+  --blue: #0235fe;
+  --lime: #b7fe00;
+  /* The operator's accent, when the outlet chose one: the full stop after the title, progress, PIN dots. */
+  --accent: var(--blue);
+
+  --ok: #1d5a12;
+  --ok-soft: #e4f9b3;
+  --warn: #6b5310;
+  --warn-soft: #fbefc6;
+  --err: #b3261e;
+  --err-soft: #fde5e0;
+
+  --radius: 24px;
+  --radius-md: 18px;
+  --radius-sm: 12px;
+  --ui: 'DM Sans Variable', 'DM Sans', system-ui, -apple-system, 'Segoe UI', Roboto, sans-serif;
+  --display: 'Archivo Black', 'Arial Black', Impact, system-ui, sans-serif;
+}
+
+/* ---------- Type ---------- */
+
+html.booth .display {
+  font-size: clamp(48px, 11.5vmin, 124px);
+  line-height: 0.94;
+  letter-spacing: -0.035em;
+}
+
+html.booth .heading {
+  font-size: clamp(30px, 5vmin, 54px);
+  line-height: 1.04;
+  letter-spacing: -0.025em;
+}
+
+html.booth .heading.small {
+  font-size: clamp(23px, 3.3vmin, 32px);
+}
+
+/* The small label above a title, as a lime tab. */
+html.booth .pill {
+  padding: 7px 14px;
+  border-radius: 999px;
+  background: var(--lime);
+  color: var(--blue);
+  font-weight: 700;
+  letter-spacing: 0.1em;
+}
+
+/* ---------- Buttons ---------- */
+
+html.booth .btn {
+  border: 1.5px solid var(--line);
+  background: #fff;
+  color: var(--ink);
+  font-weight: 600;
+}
+
+html.booth .btn.primary {
+  border-color: var(--blue);
+  background: var(--blue);
+  color: #fff;
+}
+
+html.booth .btn.dark {
+  border-color: var(--ink);
+  background: var(--ink);
+  color: #fff;
+}
+
+html.booth .btn.danger {
+  border-color: var(--err-soft);
+  background: var(--err-soft);
+  color: var(--err);
+}
+
+/* The one big button of a screen: headline type, with the lime dot of the brand's own buttons. */
+html.booth .btn.huge {
+  gap: 0.55em;
+  font-family: var(--display);
+  font-weight: 400;
+  letter-spacing: -0.01em;
+}
+
+html.booth .btn.primary.huge::before {
+  content: '';
+  flex: none;
+  width: 0.5em;
+  height: 0.5em;
+  border-radius: 50%;
+  background: var(--lime);
+}
+
+/* ---------- Cards, tags, chips ---------- */
+
+html.booth .card {
+  background: var(--card);
+}
+
+html.booth .strip-loading {
+  border-radius: 10px;
+}
+
+html.booth .tag {
+  background: #fff;
+  font-weight: 700;
+}
+
+html.booth .tag.ok {
+  background: var(--lime);
+  color: var(--blue);
+}
+
+html.booth .tag.warn {
+  background: var(--warn-soft);
+}
+
+html.booth .tag.err {
+  background: var(--err-soft);
+}
+
+html.booth .chip {
+  border: 1.5px solid var(--line);
+  background: #fff;
+  font-weight: 600;
+}
+
+html.booth .chip.on {
+  border-color: var(--blue);
+  background: var(--blue);
+  color: #fff;
+}
+
+/* ---------- Top bar ---------- */
+
+html.booth .steps {
+  gap: 4px;
+  padding: 5px;
+  border: 1px solid var(--line);
+  border-radius: 999px;
+  background: #fff;
+}
+
+html.booth .steps li {
+  align-items: center;
+  padding: 8px 14px;
+  border: 0;
+  border-radius: 999px;
+  font-weight: 700;
+  letter-spacing: 0.1em;
+}
+
+html.booth .steps i {
+  font-family: var(--ui);
+  font-size: 12px;
+  font-weight: 700;
+}
+
+html.booth .steps .done,
+html.booth .steps .done i {
+  color: var(--blue);
+}
+
+html.booth .steps .now {
+  background: var(--blue);
+  color: #fff;
+}
+
+html.booth .steps .now i {
+  color: var(--lime);
+}
+
+/* ---------- Welcome ---------- */
+
+html.booth .attract-copy,
+html.booth .attract-art {
+  position: relative;
+  z-index: 1;
+}
+
+/* The brand's ribbon: a band of blue winding down the side of the screen, carrying the outlet's own line. */
+html.booth .ribbon {
+  position: absolute;
+  top: 0;
+  right: 0;
+  z-index: 0;
+  width: 58%;
+  height: 100%;
+  pointer-events: none;
+}
+
+html.booth .ribbon.tall {
+  display: none;
+}
+
+html.booth .ribbon use {
+  fill: none;
+  stroke: var(--blue);
+  stroke-width: 76;
+  stroke-linecap: round;
+}
+
+html.booth .ribbon text {
+  fill: #fff;
+  font-family: var(--ui);
+  font-size: 25px;
+  font-weight: 700;
+  letter-spacing: 0.14em;
+}
+
+/* Prints lying on the ribbon: a little lift, so white paper stays apart from the blue and the canvas. */
+html.booth .strip {
+  padding: 1.6%;
+  border: 0;
+  border-radius: 6px;
+  box-shadow: 0 0 0 1px rgb(28 33 45 / 0.08), 0 18px 38px rgb(8 20 80 / 0.22);
+}
+
+html.booth .gear {
+  border: 1.5px solid var(--line);
+  background: #fff;
+  color: var(--ink);
+}
+
+html.booth .dot.on {
+  background: var(--blue);
+}
+
+html.booth .corner {
+  padding: 4px 4px 4px 14px;
+  border-radius: 999px;
+  background: var(--page);
+}
+
+/* ---------- Step 1: frames ---------- */
+
+html.booth .frame-card {
+  padding: 12px 12px 16px;
+  border: 1.5px solid var(--line);
+  border-radius: var(--radius);
+  background: #fff;
+  transition: transform 0.14s, border-color 0.14s;
+}
+
+html.booth .frame-card::before {
+  margin: 2px 4px 10px;
+  color: var(--blue);
+  font-weight: 700;
+}
+
+html.booth .frame-card:active {
+  border-color: var(--blue);
+}
+
+html.booth .frame-art {
+  border-radius: 16px;
+}
+
+html.booth .frame-card b {
+  margin: 12px 4px 0;
+  font-size: clamp(17px, 2.5vmin, 21px);
+  line-height: 1.15;
+  overflow-wrap: anywhere;
+}
+
+/* Room for two lines under every name, so the cards of one row are equally tall. */
+html.booth .frame-card small {
+  min-height: 2.7em;
+  margin-inline: 4px;
+}
+
+/* ---------- Step 2: payment ---------- */
+
+/* The order stays flat on the canvas; only the choices sit on a card. */
+html.booth .order {
+  background: none;
+}
+
+html.booth .amount {
+  color: var(--blue);
+  font-size: clamp(40px, 7vmin, 72px);
+  letter-spacing: -0.03em;
+}
+
+html.booth .method {
+  position: relative;
+  gap: 4px;
+  border: 1.5px solid var(--line);
+  border-radius: 20px;
+  background: var(--page);
+  transition: background 0.12s, border-color 0.12s, color 0.12s;
+}
+
+/* Says "tap me" where the name alone would read as a label. */
+html.booth .method::after {
+  content: '→';
+  position: absolute;
+  top: 14px;
+  right: 14px;
+  width: 34px;
+  height: 34px;
+  display: grid;
+  place-items: center;
+  border-radius: 50%;
+  background: var(--blue);
+  color: #fff;
+  font-weight: 700;
+  line-height: 1;
+}
+
+html.booth .method:active {
+  border-color: var(--blue);
+  background: var(--blue);
+  color: #fff;
+}
+
+html.booth .method:active small {
+  color: #d5deff;
+}
+
+html.booth .method:active::after {
+  background: var(--lime);
+  color: var(--blue);
+}
+
+html.booth .method b {
+  padding-right: 40px;
+  font-size: clamp(22px, 3.2vmin, 28px);
+  letter-spacing: -0.02em;
+}
+
+html.booth .qris-img,
+html.booth .qris-live {
+  padding: 10px;
+  border: 1.5px solid var(--line);
+  border-radius: 16px;
+}
+
+html.booth .code-display {
+  border: 1.5px solid var(--ink);
+}
+
+html.booth .code-display.empty {
+  border-color: var(--line);
+  color: var(--ink-2);
+}
+
+html.booth .key {
+  border: 1.5px solid var(--line);
+  background: #fff;
+  font-weight: 700;
+}
+
+html.booth .key:active {
+  border-color: var(--blue);
+  background: var(--blue);
+  color: #fff;
+}
+
+/* ---------- Step 3: camera ---------- */
+
+html.booth .countdown,
+html.booth .boomerang-title b {
+  font-style: normal;
+  letter-spacing: -0.04em;
+}
+
+html.booth .countdown {
+  font-size: min(42vmin, 340px);
+}
+
+html.booth .boomerang-bar {
+  background: #fff;
+}
+
+html.booth .thumb {
+  border-radius: 10px;
+}
+
+html.booth .thumb.active {
+  outline: 3px solid var(--blue);
+}
+
+/* ---------- Steps 4 and 5: edit, print ---------- */
+
+html.booth .edit-pair figcaption,
+html.booth .tool h3 {
+  font-weight: 700;
+}
+
+html.booth .adjust-view {
+  border-radius: 14px;
+}
+
+html.booth .adjust-zoom input {
+  accent-color: var(--blue);
+}
+
+html.booth .result-share {
+  border-width: 1.5px;
+}
+
+html.booth .progress {
+  height: 8px;
+  overflow: hidden;
+  border-radius: 999px;
+  background: var(--strong);
+}
+
+html.booth .progress i {
+  border-radius: 999px;
+}
+
+html.booth .spinner {
+  border-width: 3px;
+  border-color: var(--strong);
+  border-top-color: var(--blue);
+}
+
+/* ---------- Dialogs & PIN pad ---------- */
+
+html.booth .overlay {
+  background: rgb(28 33 45 / 0.45);
+}
+
+html.booth .dialog {
+  background: var(--page);
+}
+
+html.booth .dialog h2 {
+  font-family: var(--display);
+  font-size: 24px;
+  font-weight: 400;
+  letter-spacing: -0.02em;
+  line-height: 1.1;
+}
+
+html.booth .pin-dots i {
+  width: 14px;
+  height: 14px;
+  border-width: 2px;
+}
+
+html.booth .pinpad .key {
+  font-size: 26px;
+}
+
+html.booth .toast {
+  font-weight: 600;
+}
+
+/* ---------- Staff settings ---------- */
+
+/* The staff's own screens keep their layout; what is switched on wears the brand's blue. */
+html.booth .seg button {
+  background: #fff;
+}
+
+html.booth .seg button.on {
+  border-color: var(--blue);
+  background: var(--blue);
+  color: #fff;
+}
+
+html.booth .admin input[type='checkbox'],
+html.booth .admin input[type='range'] {
+  accent-color: var(--blue);
+}
+
+/* ---------- Tall and small screens ---------- */
+
+@media (orientation: portrait) {
+  /* Only the current step keeps its name, so the others shrink to their number. */
+  html.booth .steps li {
+    padding: 8px 11px;
+  }
+
+  html.booth .steps .now {
+    padding-inline: 14px;
+  }
+
+  /* The prints sit below the title here, and so does the ribbon: the one drawn for an upright screen. */
+  html.booth .ribbon.wide {
+    display: none;
+  }
+
+  html.booth .ribbon.tall {
+    display: block;
+    top: auto;
+    bottom: 0;
+    width: 100%;
+    height: 58%;
+  }
+}
+
+@media (max-width: 600px) {
+  html.booth .steps {
+    gap: 2px;
+    padding: 4px;
+  }
+
+  html.booth .steps li {
+    padding: 6px 9px;
+  }
+
+  html.booth .frame-card {
+    padding: 8px 8px 12px;
+  }
+}

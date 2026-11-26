@@ -162,6 +162,16 @@ export function boothTitle(settings: Pick<Settings, 'brand' | 'platform'>, franc
 }
 
 /**
+ * The words on the welcome screen's ribbon: the outlet's own line in capitals, repeated often enough
+ * to run the ribbon's whole length. Never a built-in slogan, so no franchise shows another's.
+ */
+export function ribbonText(line: string): string {
+  const words = line.trim().replace(/[.!\s]+$/, '').toUpperCase();
+  if (!words) return '';
+  return `${words}  •  `.repeat(Math.ceil(240 / (words.length + 5)));
+}
+
+/**
  * What a tablet starts from when it is paired: nothing of what the dashboard of its previous franchise
  * decided (name, logo, prices, ways of paying, frames) may linger until the new one's settings arrive.
  * The tablet's own settings stay, receipt texts included. Only a receipt title that merely followed the

@@ -3,6 +3,7 @@ import '@fontsource/space-mono/latin-700.css';
 // The newspaper page's headline.
 import '@fontsource/anton/latin-400.css';
 import './styles.css';
+import './theme.css';
 import { render } from 'preact';
 import { App } from './app';
 import { startCloudSync } from './lib/cloud/device';
@@ -24,6 +25,8 @@ window.addEventListener('hashchange', () => {
 });
 
 function startBooth(): void {
+  // Switches on the tablet's own theme; the dashboard and the guest download page keep theirs.
+  document.documentElement.classList.add('booth');
   // A long press must not open the browser's context menu on a public kiosk.
   document.addEventListener('contextmenu', (event) => event.preventDefault());
 

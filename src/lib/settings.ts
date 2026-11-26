@@ -157,6 +157,14 @@ export interface Settings {
 
 export const DEFAULT_PIN = '1234';
 
+/**
+ * Whether the outlet picked an accent colour of its own. The colour every outlet started with (and
+ * that earlier versions showed) counts as "never chosen": the booth then uses its theme's own colour.
+ */
+export function hasOwnAccent(accent: string): boolean {
+  return accent.trim().toLowerCase() !== DEFAULT_SETTINGS.brand.accent;
+}
+
 export const DEFAULT_SETTINGS: Settings = {
   brand: {
     // Empty until the franchise's own name arrives from its dashboard; the screens then fall back to the

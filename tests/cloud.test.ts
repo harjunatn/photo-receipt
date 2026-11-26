@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
-import { applyRemote, boothTitle, completeOutlet, forNewPairing, newShareCode, outletFromSettings, shareUrl } from '../src/lib/cloud/shared';
-import { boomerangMode, DEFAULT_SETTINGS } from '../src/lib/settings';
+import { applyRemote, boothTitle, completeOutlet, forNewPairing, newShareCode, outletFromSettings, ribbonText, shareUrl } from '../src/lib/cloud/shared';
+import { boomerangMode, DEFAULT_SETTINGS, hasOwnAccent } from '../src/lib/settings';
 import {
   compactRupiah,
   dayKey,
@@ -92,6 +92,21 @@ describe('the name a booth shows', () => {
     expect(boothTitle(settings('  '), 'PT Senja')).toBe('PT Senja');
     // Just paired: the franchise's name has not arrived yet.
     expect(boothTitle(settings(''), '')).toBe('jepretin');
+  });
+
+  it('writes the outlet\'s own line along the welcome ribbon, long enough to fill it', () => {
+    const text = ribbonText('Aesthetic in Every Snap.');
+    expect(text.startsWith('AESTHETIC IN EVERY SNAP  •  AESTHETIC IN EVERY SNAP  •  ')).toBe(true);
+    expect(text.length).toBeGreaterThanOrEqual(240);
+    // A long line is not cut short, and an empty one leaves the ribbon without words.
+    expect(ribbonText('Foto seru, langsung tercetak ala struk belanja')).toContain('FOTO SERU, LANGSUNG TERCETAK ALA STRUK BELANJA  •  ');
+    expect(ribbonText('   ')).toBe('');
+  });
+
+  it('follows the theme\'s colour until the outlet picks an accent of its own', () => {
+    expect(hasOwnAccent(DEFAULT_SETTINGS.brand.accent)).toBe(false);
+    expect(hasOwnAccent(' #C2552D ')).toBe(false);
+    expect(hasOwnAccent('#0235fe')).toBe(true);
   });
 
   it('has no built-in name that could show up at another franchise', () => {

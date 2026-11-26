@@ -6,7 +6,7 @@ import { useIdle } from './lib/kiosk';
 import type { PayMethod } from './lib/log';
 import { activeFrames, customFramesStore, type FrameDef } from './lib/receipt/frames';
 import type { Draft, Shot } from './lib/session';
-import { boomerangMode, includesVideos, useSettings, type PackageDef } from './lib/settings';
+import { boomerangMode, hasOwnAccent, includesVideos, useSettings, type PackageDef } from './lib/settings';
 import { sound } from './lib/sound';
 import { useStore } from './lib/store';
 import { applyUpdate, updateReady } from './lib/update';
@@ -41,7 +41,9 @@ export function App() {
   const allTaken = draft !== null && draft.shots.every((shot) => shot !== null);
 
   useEffect(() => {
-    document.documentElement.style.setProperty('--accent', settings.brand.accent);
+    const style = document.documentElement.style;
+    if (hasOwnAccent(settings.brand.accent)) style.setProperty('--accent', settings.brand.accent);
+    else style.removeProperty('--accent');
   }, [settings.brand.accent]);
 
   // Whether this tablet's browser can make MP4 videos decides if guests are offered them at all.
