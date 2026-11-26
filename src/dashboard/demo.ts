@@ -44,9 +44,14 @@ interface DemoFranchise extends Franchise {
   booths: string[];
   /** The AI version of a photo: sold to this franchise or not, its monthly limit, and how many it made this month. */
   ai: { enabled: boolean; limit: number; month: number };
-  /** Titip saldo: its QRIS goes through the platform's account. */
-  wallet: boolean;
+  /**
+   * Titip saldo: `on` is the franchise's own choice (made at `agreedAt`), `blocked` the platform owner's stop.
+   * `books` says its example QRIS count as money in the wallet: true once it has ever been on.
+   */
+  wallet: { on: boolean; blocked: boolean; agreedAt: string | null; books: boolean };
 }
+
+const NO_WALLET = { on: false, blocked: false, agreedAt: null, books: false };
 
 const today = () => new Date().toISOString().slice(0, 10);
 const dayFrom = (days: number) => new Date(Date.now() + days * DAY).toISOString().slice(0, 10);
@@ -65,9 +70,9 @@ function stateOf(franchise: Pick<DemoFranchise, 'active' | 'paid_until'>, graceD
 export function createDemo(): { account: Account; financeAccount: Account; admin: AdminApi; apiFor(franchise: Franchise): OwnerApi } {
   let platform: PlatformConfig = { ...DEFAULT_PLATFORM };
   let franchises: DemoFranchise[] = [
-    { id: 'demo-pusat', name: 'Foto Senja', active: true, paid_until: null, note: 'Booth milik sendiri', created_at: new Date(Date.now() - 60 * DAY).toISOString(), seed: 7, booths: ['Booth Kafe Senja', 'Booth Mal Lantai 2', 'Booth Acara'], ai: { enabled: true, limit: 300, month: 61 }, wallet: false },
-    { id: 'demo-budi', name: 'Booth Budi', active: true, paid_until: dayFrom(4), note: 'Transfer tiap tanggal 5', created_at: new Date(Date.now() - 26 * DAY).toISOString(), seed: 21, booths: ['Tablet Budi 1', 'Tablet Budi 2'], ai: { enabled: true, limit: 100, month: 25 }, wallet: true },
-    { id: 'demo-citra', name: 'Citra Photo', active: true, paid_until: dayFrom(-3), note: null, created_at: new Date(Date.now() - 34 * DAY).toISOString(), seed: 33, booths: ['Tablet Citra'], ai: { enabled: false, limit: 300, month: 0 }, wallet: false },
+    { id: 'demo-pusat', name: 'Foto Senja', active: true, paid_until: null, note: 'Booth milik sendiri', created_at: new Date(Date.now() - 60 * DAY).toISOString(), seed: 7, booths: ['Booth Kafe Senja', 'Booth Mal Lantai 2', 'Booth Acara'], ai: { enabled: true, limit: 300, month: 61 }, wallet: { ...NO_WALLET } },
+    { id: 'demo-budi', name: 'Booth Budi', active: true, paid_until: dayFrom(4), note: 'Transfer tiap tanggal 5', created_at: new Date(Date.now() - 26 * DAY).toISOString(), seed: 21, booths: ['Tablet Budi 1', 'Tablet Budi 2'], ai: { enabled: true, limit: 100, month: 25 }, wallet: { on: true, blocked: false, agreedAt: new Date(Date.now() - 20 * DAY).toISOString(), books: true } },
+    { id: 'demo-citra', name: 'Citra Photo', active: true, paid_until: dayFrom(-3), note: null, created_at: new Date(Date.now() - 34 * DAY).toISOString(), seed: 33, booths: ['Tablet Citra'], ai: { enabled: false, limit: 300, month: 0 }, wallet: { ...NO_WALLET } },
   ];
   // Titip saldo: where each franchise wants its money sent, and what it has asked for so far.
   const banks = new Map<string, BankAccount>([['demo-budi', { bank: 'BCA', account_no: '0000 1111 22', holder: 'Budi Santoso' }]]);
@@ -90,7 +95,12 @@ export function createDemo(): { account: Account; financeAccount: Account; admin
       platform: () => platform,
       subscription: () => find(franchise.id) ?? { active: true, paid_until: null },
       wallet: {
-        enabled: () => find(franchise.id)?.wallet ?? false,
+        state: () => find(franchise.id)?.wallet ?? NO_WALLET,
+        choose: (on) => {
+          franchises = franchises.map((row) =>
+            row.id !== franchise.id ? row : { ...row, wallet: on ? { ...row.wallet, on: true, books: true, agreedAt: new Date().toISOString() } : { ...row.wallet, on: false } },
+          );
+        },
         payouts: () => payouts.filter((row) => row.franchise_id === franchise.id),
         request: (row) => void (payouts = [row, ...payouts]),
         bank: () => banks.get(franchise.id) ?? null,
@@ -134,7 +144,9 @@ export function createDemo(): { account: Account; financeAccount: Account; admin
             ai_enabled: franchise.ai.enabled,
             ai_monthly_limit: franchise.ai.limit,
             ai_month: franchise.ai.month,
-            wallet_enabled: franchise.wallet,
+            wallet_enabled: franchise.wallet.on,
+            wallet_blocked: franchise.wallet.blocked,
+            wallet_agreed_at: franchise.wallet.agreedAt,
             wallet_available: (await api.walletSummary()).available,
           };
         }),
@@ -144,7 +156,7 @@ export function createDemo(): { account: Account; financeAccount: Account; admin
     async saveFranchise(input) {
       if (input.id === null) {
         const id = `demo-${crypto.randomUUID().slice(0, 8)}`;
-        franchises = [...franchises, { id, name: input.name, active: input.active, paid_until: input.paid_until, note: input.note || null, created_at: new Date().toISOString(), seed: 0, booths: [], ai: { enabled: false, limit: 300, month: 0 }, wallet: false }];
+        franchises = [...franchises, { id, name: input.name, active: input.active, paid_until: input.paid_until, note: input.note || null, created_at: new Date().toISOString(), seed: 0, booths: [], ai: { enabled: false, limit: 300, month: 0 }, wallet: { ...NO_WALLET } }];
         return id;
       }
       franchises = franchises.map((franchise) =>
@@ -152,16 +164,19 @@ export function createDemo(): { account: Account; financeAccount: Account; admin
       );
       return input.id;
     },
-    async setFranchiseWallet(id, enabled) {
-      franchises = franchises.map((franchise) => (franchise.id === id ? { ...franchise, wallet: enabled } : franchise));
+    async allowFranchiseWallet(id, allowed) {
+      // Stopping it also switches it off; allowing it again leaves the choice to the franchise.
+      franchises = franchises.map((franchise) =>
+        franchise.id === id ? { ...franchise, wallet: { ...franchise.wallet, blocked: !allowed, on: franchise.wallet.on && allowed } } : franchise,
+      );
     },
     async payoutBoard() {
       const wallets = await Promise.all(
         franchises
-          .filter((franchise) => franchise.wallet || payouts.some((row) => row.franchise_id === franchise.id))
+          .filter((franchise) => franchise.wallet.on || franchise.wallet.books || payouts.some((row) => row.franchise_id === franchise.id))
           .map(async (franchise) => {
             const summary = await apiFor(franchise).walletSummary();
-            return { id: franchise.id, name: franchise.name, enabled: franchise.wallet, available: summary.available, pending: summary.pending, paid_out: summary.paid_out, fees: summary };
+            return { id: franchise.id, name: franchise.name, enabled: franchise.wallet.on, blocked: franchise.wallet.blocked, available: summary.available, pending: summary.pending, paid_out: summary.paid_out, fees: summary };
           }),
       );
       const name = (id: string) => find(id)?.name ?? '';
@@ -257,7 +272,8 @@ function createDemoApi(
     platform: () => PlatformConfig;
     subscription: () => { active: boolean; paid_until: string | null };
     wallet: {
-      enabled: () => boolean;
+      state: () => { on: boolean; blocked: boolean; agreedAt: string | null; books: boolean };
+      choose: (on: boolean) => void;
       payouts: () => PayoutRow[];
       request: (row: PayoutRow) => void;
       bank: () => BankAccount | null;
@@ -344,7 +360,8 @@ function createDemoApi(
     used_at: i % 4 === 0 ? iso(now - (i + 1) * 3 * 60 * MINUTE) : null,
     used_by_name: i % 4 === 0 ? (devices[i % 2]?.name ?? 'Tablet') : null,
   }));
-  let outlet: unknown = {};
+  // The franchise that takes QRIS through titip saldo has automatic QRIS on, like a real one that chose it.
+  let outlet: unknown = shared.wallet.state().on ? { payment: { qris: true, qrisAuto: true } } : {};
   // Two frames of the franchise's own, one of them switched off, so the gallery shows how they are edited.
   const sampleFrame = (colour: string, photos: boolean) =>
     `data:image/svg+xml,${encodeURIComponent(
@@ -359,6 +376,7 @@ function createDemoApi(
   ];
   let doku: DokuState = {
     can_save: true,
+    platform_ready: true,
     source: 'none',
     doku: { clientId: '', merchantId: '', terminalId: '', postalCode: '', sandbox: false, publicKeyPem: '' },
     has_keys: false,
@@ -393,14 +411,12 @@ function createDemoApi(
     async status() {
       const subscription = shared.subscription();
       const graceDays = shared.platform().graceDays;
-      return { ...franchise, active: subscription.active, paid_until: subscription.paid_until, grace_days: graceDays, state: stateOf(subscription, graceDays), today: today(), wallet: shared.wallet.enabled() || shared.wallet.payouts().length > 0 };
+      return { ...franchise, active: subscription.active, paid_until: subscription.paid_until, grace_days: graceDays, state: stateOf(subscription, graceDays), today: today(), wallet: shared.wallet.state().on || shared.wallet.state().books || shared.wallet.payouts().length > 0 };
     },
     async getPlatform() {
       return { ...shared.platform() };
     },
     async dokuGet() {
-      // A titip saldo franchise runs on the platform's account: nothing of its own to fill in.
-      if (shared.wallet.enabled()) return { ...structuredClone(doku), source: 'platform', has_keys: true, can_save: false };
       return structuredClone(doku);
     },
     async dokuSave(fields) {
@@ -552,14 +568,17 @@ function createDemoApi(
     },
     async walletSummary() {
       const { dokuFee, platformFee, payoutDays } = shared.platform().wallet;
-      // In the example every paid QRIS of a wallet franchise went through the platform.
-      const paid = shared.wallet.enabled() ? payments.filter((row) => row.status === 'paid') : [];
+      // In the example every paid QRIS of a franchise that has used titip saldo went through the platform.
+      const state = shared.wallet.state();
+      const paid = state.books ? payments.filter((row) => row.status === 'paid') : [];
       const mine = shared.wallet.payouts();
       const sum = (status: PayoutRow['status']) => mine.filter((row) => row.status === status).reduce((total, row) => total + row.amount, 0);
       const gross = paid.reduce((total, row) => total + row.amount, 0);
       const last = mine.filter((row) => row.status !== 'rejected').map((row) => row.requested_at).sort().pop();
       return {
-        enabled: shared.wallet.enabled(),
+        enabled: state.on,
+        blocked: state.blocked,
+        agreed_at: state.agreedAt,
         doku_fee: dokuFee,
         platform_fee: platformFee,
         payout_days: payoutDays,
@@ -574,9 +593,13 @@ function createDemoApi(
         bank: shared.wallet.bank(),
       };
     },
+    async walletChoose(on) {
+      if (on && shared.wallet.state().blocked) throw new Error('Titip saldo dihentikan oleh platform untuk franchise ini.');
+      shared.wallet.choose(on);
+    },
     async walletEntries(offset, limit) {
       const { dokuFee, platformFee } = shared.platform().wallet;
-      const paid = shared.wallet.enabled() ? payments.filter((row) => row.status === 'paid') : [];
+      const paid = shared.wallet.state().books ? payments.filter((row) => row.status === 'paid') : [];
       return {
         rows: paid.slice(offset, offset + limit).map((row) => ({ id: row.id, paid_at: row.paid_at, device_name: row.device_name, package_name: row.package_name, amount: row.amount, fee_doku: dokuFee, fee_platform: platformFee, partner_ref: row.partner_ref })),
         total: paid.length,

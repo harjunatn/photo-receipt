@@ -152,7 +152,12 @@ export interface BankAccount {
 
 /** A franchise's wallet: what came in through the platform's QRIS, what went to fees, what was paid out and what is left. */
 export interface WalletSummary {
+  /** The franchise chose titip saldo: its automatic QRIS is paid into the platform's DOKU account. */
   enabled: boolean;
+  /** The platform owner stopped titip saldo for this franchise; it cannot be chosen. */
+  blocked: boolean;
+  /** When the franchise last chose titip saldo, and with that agreed to the fees. */
+  agreed_at: string | null;
   doku_fee: number;
   platform_fee: number;
   payout_days: number;
@@ -202,7 +207,7 @@ export interface PayoutRow {
 /** What the platform owner sees of every wallet. */
 export interface PayoutBoard {
   requests: PayoutRow[];
-  wallets: { id: string; name: string; enabled: boolean; available: number; pending: number; paid_out: number }[];
+  wallets: { id: string; name: string; enabled: boolean; blocked: boolean; available: number; pending: number; paid_out: number }[];
   /** The platform's own earnings from the fee per payment, so far. */
   platform_fees: number;
   doku_fees: number;
@@ -229,8 +234,12 @@ export interface FranchiseRow extends Franchise {
   ai_monthly_limit: number;
   /** AI versions made this calendar month. */
   ai_month: number;
-  /** Titip saldo: this franchise's QRIS is paid into the platform's DOKU account. */
+  /** Titip saldo: the franchise chose to have its QRIS paid into the platform's DOKU account. */
   wallet_enabled: boolean;
+  /** The platform owner stopped titip saldo for this franchise. */
+  wallet_blocked: boolean;
+  /** When the franchise last chose titip saldo, agreeing to the fees. */
+  wallet_agreed_at: string | null;
   /** What the platform currently owes it. */
   wallet_available: number;
 }
@@ -248,9 +257,11 @@ export interface DokuState {
   /** false while the platform owner has not set the master key that seals saved keys. */
   can_save: boolean;
   /** saved: this franchise's own keys · server: keys kept in the server's settings · none · unreadable: saved but cannot be opened. */
-  source: 'saved' | 'server' | 'platform' | 'none' | 'unreadable';
+  source: 'saved' | 'server' | 'none' | 'unreadable';
   doku: { clientId: string; merchantId: string; terminalId: string; postalCode: string; sandbox: boolean; publicKeyPem: string };
   has_keys: boolean;
+  /** The platform's own DOKU account is set up, so titip saldo can take payments. */
+  platform_ready: boolean;
   /** The address to enter at DOKU as Notification URL. */
   notify_url: string;
   updated_at: string | null;
@@ -351,6 +362,8 @@ export interface OwnerApi {
   getOutlet(): Promise<unknown>;
   saveOutlet(config: OutletConfig): Promise<void>;
   walletSummary(): Promise<WalletSummary>;
+  /** The franchise's own choice: QRIS through the platform's account (agreeing to the fees), or not any more. */
+  walletChoose(on: boolean): Promise<void>;
   walletEntries(offset: number, limit: number): Promise<Page<WalletEntry>>;
   walletPayouts(): Promise<PayoutRow[]>;
   walletSaveBank(account: BankAccount): Promise<void>;
@@ -378,8 +391,8 @@ export interface AdminApi extends PayoutApi {
   removeMember(userId: string): Promise<void>;
   getPlatform(): Promise<PlatformConfig>;
   savePlatform(config: PlatformConfig): Promise<void>;
-  /** Switches titip saldo on or off for one franchise. */
-  setFranchiseWallet(id: string, enabled: boolean): Promise<void>;
+  /** Lets one franchise choose titip saldo, or stops it there (which also switches it off). */
+  allowFranchiseWallet(id: string, allowed: boolean): Promise<void>;
   /** Finance staff: accounts that only open the payouts page. */
   listFinance(): Promise<MemberRow[]>;
   addFinance(email: string, password: string): Promise<void>;
@@ -442,6 +455,7 @@ const FUNCTION_ERRORS: Record<string, string> = {
   pending: 'Masih ada pengajuan yang belum ditransfer.',
   'too-soon': 'Belum waktunya mengajukan pencairan lagi.',
   amount: 'Jumlahnya harus lebih dari nol dan tidak melebihi saldo yang tersedia.',
+  blocked: 'Titip saldo dihentikan oleh platform untuk franchise ini.',
 };
 
 /** Calls an Edge Function as the signed-in account. A refusal comes back as an Error with a readable message. */
@@ -665,7 +679,11 @@ export function createSupabaseApi(db: SupabaseClient, account: Account, franchis
       const raw = checked<WalletSummary>(await db.rpc('wallet_summary', { p_franchise: fid }));
       // Sums come back from the database as numbers or as strings, depending on their size.
       const sums = ['transactions', 'gross', 'fees_doku', 'fees_platform', 'paid_out', 'pending', 'available'] as const;
-      return { ...raw, ...Object.fromEntries(sums.map((key) => [key, Number(raw[key]) || 0])) };
+      // `blocked` and `agreed_at` are absent while the server's schema is older than this page.
+      return { ...raw, blocked: raw.blocked === true, agreed_at: raw.agreed_at ?? null, ...Object.fromEntries(sums.map((key) => [key, Number(raw[key]) || 0])) };
+    },
+    async walletChoose(on) {
+      checked(await db.rpc('wallet_choose', { p_franchise: fid, p_on: on }));
     },
     async walletEntries(offset, limit) {
       const result = await db
@@ -702,6 +720,7 @@ function payoutApi(db: SupabaseClient): PayoutApi {
         wallets: (board.wallets ?? []).map((wallet) => ({
           ...wallet,
           enabled: wallet.enabled === true,
+          blocked: wallet.blocked === true,
           available: Number(wallet.available) || 0,
           pending: Number(wallet.pending) || 0,
           paid_out: Number(wallet.paid_out) || 0,
@@ -742,6 +761,8 @@ export function createSupabaseAdminApi(db: SupabaseClient): AdminApi {
           ai_monthly_limit: Number.isInteger(row.ai_monthly_limit) ? row.ai_monthly_limit : DEFAULT_AI_MONTHLY_LIMIT,
           ai_month: Number(row.ai_month) || 0,
           wallet_enabled: row.wallet_enabled === true,
+          wallet_blocked: row.wallet_blocked === true,
+          wallet_agreed_at: row.wallet_agreed_at ?? null,
           wallet_available: Number(row.wallet_available) || 0,
         })),
       };
@@ -772,8 +793,8 @@ export function createSupabaseAdminApi(db: SupabaseClient): AdminApi {
     async savePlatform(config) {
       unwrap(await db.from('platform').update({ config }).eq('id', 1).select('id'));
     },
-    async setFranchiseWallet(id, enabled) {
-      checked(await db.rpc('admin_franchise_wallet', { p_franchise: id, p_enabled: enabled }));
+    async allowFranchiseWallet(id, allowed) {
+      checked(await db.rpc('admin_franchise_wallet_allow', { p_franchise: id, p_allowed: allowed }));
     },
     async listFinance() {
       return checked<{ users: MemberRow[] }>(await db.rpc('admin_finance')).users;

@@ -57,9 +57,11 @@ export function Wallet({ api }: PageProps) {
 
       {data && !data.enabled && (
         <p class="banner">
-          {data.transactions > 0
-            ? 'Titip saldo sudah dimatikan untuk franchise ini, jadi QRIS baru tidak lagi masuk ke dompet. Saldo yang masih ada tetap bisa dicairkan.'
-            : 'Titip saldo belum dinyalakan untuk franchise ini. Hubungi pemilik platform kalau ingin menerima QRIS lewat akun platform.'}
+          {data.blocked
+            ? 'Titip saldo dihentikan oleh platform untuk franchise ini, jadi QRIS baru tidak lagi masuk ke dompet. Saldo yang masih ada tetap bisa dicairkan.'
+            : data.transactions > 0
+              ? 'Titip saldo sedang tidak dipakai, jadi QRIS baru tidak lagi masuk ke dompet. Saldo yang masih ada tetap bisa dicairkan. Memakainya lagi: Pengaturan → Cara bayar → QRIS.'
+              : 'Titip saldo belum dipakai. Pilih di Pengaturan → Cara bayar → QRIS → Otomatis, titip saldo.'}
         </p>
       )}
 

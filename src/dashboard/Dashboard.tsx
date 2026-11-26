@@ -59,6 +59,8 @@ export type PageId = (typeof FRANCHISE_PAGES)[number]['id'] | (typeof ADMIN_PAGE
 export interface PageProps {
   api: OwnerApi;
   go: (page: PageId) => void;
+  /** Called after a change the menu depends on, e.g. titip saldo was chosen and the Dompet entry should show. */
+  refresh: () => void;
 }
 export interface AdminPageProps {
   admin: AdminApi;
@@ -429,7 +431,7 @@ export function Dashboard() {
             <SubscriptionBanner status={status.data} superadmin={admin !== null} />
             {(() => {
               const View = (franchisePage ?? FRANCHISE_PAGES[0]).view;
-              return <View key={`${franchise.id}:${current}`} api={api} go={go} />;
+              return <View key={`${franchise.id}:${current}`} api={api} go={go} refresh={status.reload} />;
             })()}
           </>
         ) : (

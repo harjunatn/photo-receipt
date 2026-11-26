@@ -84,18 +84,16 @@ export interface SavedDoku {
   doku?: { clientId?: unknown; merchantId?: unknown; terminalId?: unknown; postalCode?: unknown; sandbox?: unknown; sendValidity?: unknown; publicKeyPem?: unknown };
   sealed?: string | null;
   updated_at?: string;
-  /** Titip saldo: this franchise's QRIS is paid into the platform's own DOKU account. */
-  wallet?: boolean;
 }
 
-export type DokuSource = 'saved' | 'server' | 'platform' | 'none' | 'unreadable';
+export type DokuSource = 'saved' | 'server' | 'none' | 'unreadable';
 
-/** The DOKU keys to use for one franchise, and where they came from. */
+/**
+ * The keys of one franchise's own DOKU account, and where they came from. A titip saldo charge
+ * does not use these: it goes through the platform's account, see dokuFor.
+ */
 export async function resolveDoku(env: Env, fetchFn: Fetch, franchiseId: string): Promise<{ config: DokuConfig | null; source: DokuSource; saved: SavedDoku }> {
   const saved = (await rpc<SavedDoku | null>(env, fetchFn, 'svc_doku_get', { p_franchise: franchiseId })) ?? {};
-  // Titip saldo wins over any keys the franchise once saved: the platform owner chose where its money goes.
-  // The platform's account is the one whose keys sit in these functions' own secrets.
-  if (saved.wallet === true) return { config: env.doku, source: 'platform', saved };
   if (saved.sealed && saved.doku) {
     const opened = env.secretsKey ? await open(saved.sealed, env.secretsKey, franchiseId) : null;
     let secrets: { secretKey?: unknown; privateKeyPem?: unknown } = {};
@@ -131,7 +129,13 @@ export function forgetDoku(env: Pick<Env, 'supabaseUrl'>, franchiseId: string): 
   dokuCache.delete(`${env.supabaseUrl}|${franchiseId}`);
 }
 
-async function dokuFor(env: Env, fetchFn: Fetch, franchiseId: string, now: () => Date): Promise<DokuConfig | null> {
+/**
+ * The DOKU account of one charge. A titip saldo charge (`wallet`) was made on the platform's account, the
+ * one whose keys sit in these functions' own secrets, and stays there until it is settled, also when the
+ * franchise has switched to its own account in the meantime. Every other charge uses the franchise's keys.
+ */
+async function dokuFor(env: Env, fetchFn: Fetch, franchiseId: string, wallet: boolean, now: () => Date): Promise<DokuConfig | null> {
+  if (wallet) return env.doku;
   if (!franchiseId) return null;
   const key = `${env.supabaseUrl}|${franchiseId}`;
   const cached = dokuCache.get(key);
@@ -143,16 +147,20 @@ async function dokuFor(env: Env, fetchFn: Fetch, franchiseId: string, now: () =>
 
 /** qris-create: opens a charge for one price option and returns the QR to show. */
 export async function handleCreate(input: Record<string, unknown>, env: Env, fetchFn: Fetch = fetch, now: () => Date = () => new Date()): Promise<Reply> {
-  const started = await rpc<{ error?: string; id?: string; amount?: number; partner_ref?: string; franchise_id?: string }>(env, fetchFn, 'payment_begin', {
+  const started = await rpc<{ error?: string; id?: string; amount?: number; partner_ref?: string; franchise_id?: string; wallet?: boolean }>(env, fetchFn, 'payment_begin', {
     p_token: text(input.token),
     p_package_id: text(input.package_id),
   });
   if (started.error || !started.id || !started.partner_ref || !started.amount) return { status: 200, body: { error: started.error ?? 'provider' } };
 
-  const doku = await dokuFor(env, fetchFn, text(started.franchise_id), now);
+  const wallet = started.wallet === true;
+  const doku = await dokuFor(env, fetchFn, text(started.franchise_id), wallet, now);
   if (!doku) {
-    await rpc(env, fetchFn, 'payment_settle', { p_id: started.id, p_status: 'failed', p_detail: { error: { code: 'config', message: 'Kunci DOKU belum diisi.' } } }).catch(() => undefined);
-    return { status: 200, body: { error: 'not-configured', message: 'Kunci DOKU belum diisi. Isi di dashboard → Pengaturan → Cara bayar.' } };
+    const message = wallet
+      ? 'Akun DOKU platform belum siap untuk titip saldo. Hubungi pemilik platform.'
+      : 'Kunci DOKU belum diisi. Isi di dashboard → Pengaturan → Cara bayar.';
+    await rpc(env, fetchFn, 'payment_settle', { p_id: started.id, p_status: 'failed', p_detail: { error: { code: 'config', message } } }).catch(() => undefined);
+    return { status: 200, body: { error: 'not-configured', message } };
   }
 
   const expiresAt = new Date(now().getTime() + env.qrMinutes * 60_000);
@@ -187,6 +195,8 @@ interface PendingPayment {
   provider_ref?: string | null;
   expires_at?: string | null;
   created_at?: string;
+  /** Made on the platform's DOKU account (titip saldo) rather than the franchise's own. */
+  wallet?: boolean;
 }
 
 /**
@@ -199,7 +209,7 @@ async function resolvePending(payment: PendingPayment, env: Env, fetchFn: Fetch,
   const ranOut = payment.expires_at ? now().getTime() > Date.parse(payment.expires_at) + GRACE_MS : now().getTime() > Date.parse(payment.created_at ?? '') + 60_000;
 
   // No QR was ever attached: creating it failed half-way, so there is nothing anyone could pay.
-  const config = payment.provider_ref ? await dokuFor(env, fetchFn, text(payment.franchise_id), now) : null;
+  const config = payment.provider_ref ? await dokuFor(env, fetchFn, text(payment.franchise_id), payment.wallet === true, now) : null;
   if (!payment.provider_ref || !config) {
     return { status: ranOut || cancel ? await settle('failed', { reason: 'no-qr' }) : 'pending' };
   }
@@ -276,13 +286,14 @@ export async function handleNotify(headers: Headers, rawBody: string, env: Env, 
   } catch {
     return { status: 400, body: { error: 'bad-json' } };
   }
-  // The charge named in the message tells whose keys must have signed it.
+  // The charge named in the message tells whose keys must have signed it: the platform's for a
+  // titip saldo charge, the franchise's own for every other.
   const reference = text(message.order?.invoice_number);
-  const franchiseId = reference ? await rpc<string | null>(env, fetchFn, 'payment_franchise', { p_partner_ref: reference }) : null;
+  const account = reference ? await rpc<{ franchise_id?: string; wallet?: boolean } | null>(env, fetchFn, 'payment_account', { p_partner_ref: reference }) : null;
   // Not one of our charges (the merchant may use the same DOKU account elsewhere): nothing to do, nothing revealed.
-  if (!franchiseId) return { status: 200, body: { ok: true, ignored: true } };
+  if (!account?.franchise_id) return { status: 200, body: { ok: true, ignored: true } };
 
-  const doku = await dokuFor(env, fetchFn, franchiseId, now);
+  const doku = await dokuFor(env, fetchFn, account.franchise_id, account.wallet === true, now);
   if (!doku) return { status: 503, body: { error: 'not-configured' } };
   const genuine = await verifyNotification(
     doku.secretKey,

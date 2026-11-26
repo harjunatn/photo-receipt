@@ -114,6 +114,7 @@ export function Franchises({ admin, current, open, changed }: AdminPageProps) {
               {current?.id === row.id && <span class="tag">Sedang dibuka</span>}
               {row.ai_enabled && <span class="tag">AI</span>}
               {row.wallet_enabled && <span class="tag">Titip saldo</span>}
+              {row.wallet_blocked && <span class="tag warn">Titip saldo dihentikan</span>}
               <span class={`tag ${STATE_TAG[row.state]}`}>{STATE_LABEL[row.state]}</span>
             </div>
             <dl class="facts">
@@ -149,7 +150,8 @@ export function Franchises({ admin, current, open, changed }: AdminPageProps) {
                 <div style={{ gridColumn: '1 / -1' }}>
                   <dt>Dompet titip saldo</dt>
                   <dd>
-                    {formatRupiah(row.wallet_available)} belum dicairkan{row.wallet_enabled ? '' : ' · titip saldo dimatikan'}
+                    {formatRupiah(row.wallet_available)} belum dicairkan
+                    {row.wallet_enabled ? '' : row.wallet_blocked ? ' · titip saldo dihentikan' : ' · titip saldo tidak dipakai lagi'}
                   </dd>
                 </div>
               )}
@@ -219,8 +221,8 @@ function FranchiseEditor(props: {
   // The AI version of a photo is sold per franchise: its own switch and monthly limit, saved on their own.
   const [aiOn, setAiOn] = useState(row.ai_enabled);
   const [aiLimit, setAiLimit] = useState(String(row.ai_monthly_limit));
-  // Titip saldo: this franchise's QRIS goes through the platform's own DOKU account.
-  const [walletOn, setWalletOn] = useState(row.wallet_enabled);
+  // Titip saldo is the franchise's own choice; here the platform owner only lets it, or stops it.
+  const [walletAllowed, setWalletAllowed] = useState(!row.wallet_blocked);
   const [busy, setBusy] = useState(false);
   const [email, setEmail] = useState('');
   const [confirmDelete, setConfirmDelete] = useState('');
@@ -241,8 +243,8 @@ function FranchiseEditor(props: {
   }, [row.ai_enabled, row.ai_monthly_limit]);
 
   useEffect(() => {
-    setWalletOn(row.wallet_enabled);
-  }, [row.wallet_enabled]);
+    setWalletAllowed(!row.wallet_blocked);
+  }, [row.wallet_blocked]);
 
   const limit = Number(aiLimit);
   const limitValid = aiLimit.trim() !== '' && Number.isInteger(limit) && limit >= 0 && limit <= 100_000;
@@ -275,9 +277,9 @@ function FranchiseEditor(props: {
 
   const saveWallet = () =>
     run(async () => {
-      await admin.setFranchiseWallet(row.id, walletOn);
+      await admin.allowFranchiseWallet(row.id, walletAllowed);
       props.onSaved({ id: row.id, name: row.name });
-    }, walletOn ? 'Disimpan. QRIS franchise ini sekarang lewat akun DOKU platform.' : 'Disimpan. QRIS baru tidak lagi masuk ke dompet.');
+    }, walletAllowed ? 'Disimpan. Franchise ini boleh memilih titip saldo lagi.' : 'Disimpan. Titip saldo dihentikan untuk franchise ini.');
 
   const addMember = (event: Event) => {
     event.preventDefault();
@@ -385,23 +387,35 @@ function FranchiseEditor(props: {
       <div class="panel" style={{ boxShadow: 'none' }}>
         <h2>Titip saldo</h2>
         <p class="hint">
-          Untuk franchise yang tidak punya QRIS sendiri: tamunya membayar ke akun DOKU platform, uangnya dicatat di menu <b>Dompet</b>{' '}
-          franchise itu setelah dipotong biaya per transaksi, lalu dicairkan lewat menu <b>Pencairan</b>.
+          Franchise memilihnya sendiri di <b>Pengaturan</b> → <b>Cara bayar</b>: tamunya membayar QRIS ke akun DOKU platform, uangnya dicatat
+          di menu <b>Dompet</b> franchise itu setelah dipotong biaya per transaksi, lalu dicairkan lewat menu <b>Pencairan</b>.
+        </p>
+        <p class="hint">
+          {row.wallet_enabled ? (
+            <>
+              Franchise ini <b>memakai</b> titip saldo{row.wallet_agreed_at ? `, disetujui ${dateTime(row.wallet_agreed_at)}` : ''}.
+            </>
+          ) : row.wallet_agreed_at ? (
+            `Franchise ini tidak memakai titip saldo sekarang. Terakhir memilihnya ${dateTime(row.wallet_agreed_at)}.`
+          ) : (
+            'Franchise ini belum pernah memilih titip saldo.'
+          )}
         </p>
         <label class="check">
-          <input type="checkbox" checked={walletOn} onChange={(event) => setWalletOn(event.currentTarget.checked)} />
+          <input type="checkbox" checked={walletAllowed} onChange={(event) => setWalletAllowed(event.currentTarget.checked)} />
           <span>
-            QRIS lewat akun platform
+            Boleh memakai titip saldo
             <small>
-              Selama menyala, kunci DOKU milik franchise ini (kalau ada) tidak dipakai. Kalau dimatikan, QRIS baru kembali memakai kunci
-              franchise sendiri; saldo yang sudah terkumpul tetap bisa dicairkan.
+              Kalau dimatikan, titip saldo langsung berhenti untuk franchise ini dan tidak bisa dipilihnya lagi: QR baru memakai kunci
+              DOKU franchise sendiri (kalau ada). QR yang sudah terlanjur dibuat tetap diselesaikan, dan saldo yang terkumpul tetap bisa
+              dicairkan. Menyalakannya lagi tidak mengaktifkan titip saldo; franchise memilihnya sendiri.
             </small>
           </span>
         </label>
         {row.wallet_available !== 0 && <p class="hint">Saldo yang belum dicairkan: {formatRupiah(row.wallet_available)}.</p>}
         <div class="row">
-          <button class="btn small primary" disabled={busy || walletOn === row.wallet_enabled} onClick={() => void saveWallet()}>
-            {walletOn === row.wallet_enabled ? 'Tersimpan' : 'Simpan'}
+          <button class="btn small primary" disabled={busy || walletAllowed === !row.wallet_blocked} onClick={() => void saveWallet()}>
+            {walletAllowed === !row.wallet_blocked ? 'Tersimpan' : 'Simpan'}
           </button>
         </div>
       </div>

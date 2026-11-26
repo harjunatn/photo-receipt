@@ -67,13 +67,7 @@ export function Payouts(props: { api: PayoutApi; admin?: AdminApi; open?: (franc
             <h2>Saldo tiap franchise</h2>
             {board.wallets.length === 0 ? (
               <p class="hint">
-                Belum ada franchise yang memakai titip saldo.
-                {admin && (
-                  <>
-                    {' '}
-                    Nyalakan di menu <b>Franchise</b> → <b>Atur</b> → <b>Titip saldo</b>.
-                  </>
-                )}
+                Belum ada franchise yang memakai titip saldo. Franchise memilihnya sendiri di <b>Pengaturan</b> → <b>Cara bayar</b>.
               </p>
             ) : (
               <div class="table-wrap">
@@ -100,7 +94,9 @@ export function Payouts(props: { api: PayoutApi; admin?: AdminApi; open?: (franc
                           )}
                         </td>
                         <td>
-                          <span class={`tag ${wallet.enabled ? 'ok' : ''}`}>{wallet.enabled ? 'Aktif' : 'Dimatikan'}</span>
+                          <span class={`tag ${wallet.enabled ? 'ok' : wallet.blocked ? 'warn' : ''}`}>
+                            {wallet.enabled ? 'Aktif' : wallet.blocked ? 'Dihentikan' : 'Tidak dipakai lagi'}
+                          </span>
                         </td>
                         <td class="num">{formatRupiah(wallet.available)}</td>
                         <td class="num">{formatRupiah(wallet.pending)}</td>

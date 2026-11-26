@@ -541,7 +541,7 @@ describe('tablets', () => {
     await db.query('update franchises set ai_enabled = false, ai_monthly_limit = 300');
   });
 
-  it('keep a wallet for a franchise that takes QRIS through the platform: fees per payment, one payout request at a time, settled by the owner', async () => {
+  it('keep a wallet for a franchise that chooses to take QRIS through the platform: fees per payment, one payout request at a time, settled by the owner', async () => {
     const pay = async (token: string) => {
       const made = await asRole('service_role', () => one(`select payment_begin($1, 'satu') r`, [token]));
       await asRole('service_role', () => db.query(`select payment_settle($1, 'paid', '{}'::jsonb)`, [made.id]));
@@ -553,18 +553,35 @@ describe('tablets', () => {
     const own = await pay(tokenA);
     expect((await rows('select wallet, fee_doku, fee_platform from payments where id = $1', [own]))[0]).toEqual({ wallet: false, fee_doku: 0, fee_platform: 0 });
 
-    // Only the platform owner switches it on; the franchise's own admin cannot.
-    await asUser(ANI, async () => expect((await one('select admin_franchise_wallet($1, true) r', [franchiseA])).error).toBe('forbidden'));
-    await asUser(OWNER, async () => expect((await one('select admin_franchise_wallet($1, true) r', [franchiseA])).ok).toBe(true));
-    expect((await asRole('service_role', () => one('select svc_doku_get($1) r', [franchiseA]))).wallet).toBe(true);
-    expect((await asRole('service_role', () => one('select svc_doku_get($1) r', [franchiseB]))).wallet).toBe(false);
+    // The franchise's own admin chooses titip saldo, and with that agrees to the fees. Another franchise's admin cannot do it for her.
+    await asUser(BUDI, async () => expect((await one('select wallet_choose($1, true) r', [franchiseA])).error).toBe('forbidden'));
+    await asUser(ANI, async () => {
+      expect(await summary(franchiseA)).toMatchObject({ enabled: false, blocked: false, agreed_at: null });
+      expect((await one('select wallet_choose($1, null) r', [franchiseA])).error).toBe('bad-request');
+      expect((await one('select wallet_choose($1, true) r', [franchiseA])).ok).toBe(true);
+      expect((await summary(franchiseA)).agreed_at).toBeTruthy();
+    });
+    expect((await rows('select wallet_enabled, wallet_blocked, wallet_agreed_by from franchises where id = $1', [franchiseA]))[0]).toEqual({ wallet_enabled: true, wallet_blocked: false, wallet_agreed_by: ANI });
+    expect((await rows('select wallet_enabled from franchises where id = $1', [franchiseB]))[0].wallet_enabled).toBe(false);
 
     // Two payments of 15.000: each leaves 15.000 - 500 (DOKU) - 200 (platform) = 14.300.
     const first = await pay(tokenA);
     await pay(tokenA);
     expect((await rows('select wallet, fee_doku, fee_platform from payments where id = $1', [first]))[0]).toEqual({ wallet: true, fee_doku: 500, fee_platform: 200 });
     // A QR that was never paid adds nothing.
-    await asRole('service_role', () => one(`select payment_begin($1, 'satu') r`, [tokenA]));
+    const open = await asRole('service_role', () => one(`select payment_begin($1, 'satu') r`, [tokenA]));
+
+    // Every charge tells which DOKU account its QR belongs to: the platform's for this one, the franchise's own for the earlier one.
+    expect(open.wallet).toBe(true);
+    const ownRef = (await rows('select partner_ref from payments where id = $1', [own]))[0].partner_ref;
+    await asRole('service_role', async () => {
+      expect((await one('select payment_get($1, $2) r', [tokenA, open.id])).wallet).toBe(true);
+      expect((await one('select payment_get($1, $2) r', [tokenA, own])).wallet).toBe(false);
+      expect(await one('select payment_account($1) r', [open.partner_ref])).toEqual({ franchise_id: franchiseA, wallet: true });
+      expect(await one('select payment_account($1) r', [ownRef])).toEqual({ franchise_id: franchiseA, wallet: false });
+      expect(await one(`select payment_account('tidak-ada') r`)).toBeNull();
+    });
+    await asRole('anon', () => expect(db.query(`select payment_account('x')`)).rejects.toThrow(/permission denied/));
 
     await asUser(ANI, async () => {
       expect(await summary(franchiseA)).toMatchObject({ enabled: true, doku_fee: 500, platform_fee: 200, payout_days: 7, transactions: 2, gross: 30000, fees_doku: 1000, fees_platform: 400, available: 28600, pending: 0, paid_out: 0, bank: null, next_request_at: null });
@@ -603,14 +620,14 @@ describe('tablets', () => {
       const board = await one('select admin_payouts() r');
       expect(board.requests).toHaveLength(1);
       expect(board.requests[0]).toMatchObject({ franchise: 'Booth Ani', amount: 20000, status: 'requested', bank: { bank: 'BCA', account_no: '1234567890', holder: 'Ani Wijaya' } });
-      expect(board.wallets).toEqual([{ id: franchiseA, name: 'Booth Ani', enabled: true, available: 8600, pending: 20000, paid_out: 0 }]);
+      expect(board.wallets).toEqual([{ id: franchiseA, name: 'Booth Ani', enabled: true, blocked: false, available: 8600, pending: 20000, paid_out: 0 }]);
       expect(board).toMatchObject({ platform_fees: 400, doku_fees: 1000, held: 28600 });
       requestId = board.requests[0].id;
       expect((await one(`select admin_payout_settle($1, true, 'BCA 25/11 ref 778899') r`, [requestId])).ok).toBe(true);
       // Marking it twice changes nothing.
       expect((await one('select admin_payout_settle($1, false, null) r', [requestId])).error).toBe('not-found');
       expect((await one('select admin_payouts() r')).held).toBe(8600);
-      expect((await one('select admin_franchises() r')).franchises.find((row: Row) => row.id === franchiseA)).toMatchObject({ wallet_enabled: true, wallet_available: 8600 });
+      expect((await one('select admin_franchises() r')).franchises.find((row: Row) => row.id === franchiseA)).toMatchObject({ wallet_enabled: true, wallet_blocked: false, wallet_available: 8600 });
     });
 
     await asUser(ANI, async () => {
@@ -641,15 +658,47 @@ describe('tablets', () => {
     expect((await rows('select fee_platform from payments where id = $1', [first]))[0].fee_platform).toBe(200);
     await asUser(ANI, async () => expect(await summary(franchiseA)).toMatchObject({ payout_days: 3, platform_fee: 1000, fees_platform: 1400 }));
 
-    // Switched off again: new QRs no longer go through the platform, but the balance stays to be paid out.
-    await asUser(OWNER, async () => expect((await one('select admin_franchise_wallet($1, false) r', [franchiseA])).ok).toBe(true));
+    // She goes back to her own account: new QRs no longer go through the platform, but the balance stays to be paid out.
+    await asUser(ANI, async () => expect((await one('select wallet_choose($1, false) r', [franchiseA])).ok).toBe(true));
     const after = await pay(tokenA);
     expect((await rows('select wallet from payments where id = $1', [after]))[0].wallet).toBe(false);
     await asUser(ANI, async () => expect(await summary(franchiseA)).toMatchObject({ enabled: false, available: 13500, pending: 8600 }));
+    // The QR made while titip saldo was on is still the platform account's, so that it is checked and settled there.
+    await db.query(`update payments set created_at = created_at - interval '5 minutes' where id = $1`, [open.id]);
+    await asRole('service_role', async () => {
+      expect((await one('select payment_get($1, $2) r', [tokenA, open.id])).wallet).toBe(true);
+      expect((await one('select payment_stale($1) r', [tokenA])).payments).toMatchObject([{ id: open.id, wallet: true }]);
+    });
+
+    // The platform owner can stop titip saldo for one franchise: it is off at once, and cannot be chosen until allowed again.
+    await asUser(ANI, async () => {
+      expect((await one('select wallet_choose($1, true) r', [franchiseA])).ok).toBe(true);
+      expect((await one('select admin_franchise_wallet_allow($1, false) r', [franchiseA])).error).toBe('forbidden');
+    });
+    await asUser(OWNER, async () => {
+      expect((await one('select admin_franchise_wallet_allow($1, null) r', [franchiseA])).error).toBe('bad-request');
+      expect((await one('select admin_franchise_wallet_allow($1, false) r', [franchiseA])).ok).toBe(true);
+      expect((await one('select admin_franchises() r')).franchises.find((row: Row) => row.id === franchiseA)).toMatchObject({ wallet_enabled: false, wallet_blocked: true });
+      expect((await one('select admin_payouts() r')).wallets[0]).toMatchObject({ enabled: false, blocked: true, available: 13500 });
+    });
+    const stopped = await pay(tokenA);
+    expect((await rows('select wallet, fee_platform from payments where id = $1', [stopped]))[0]).toEqual({ wallet: false, fee_platform: 0 });
+    await asUser(ANI, async () => {
+      expect((await one('select wallet_choose($1, true) r', [franchiseA])).error).toBe('blocked');
+      // What she had collected is still hers to ask for.
+      expect(await summary(franchiseA)).toMatchObject({ enabled: false, blocked: true, available: 13500, pending: 8600 });
+    });
+    // Allowing it again does not switch it on: that stays the franchise's own choice.
+    await asUser(OWNER, async () => expect((await one('select admin_franchise_wallet_allow($1, true) r', [franchiseA])).ok).toBe(true));
+    expect((await rows('select wallet_enabled, wallet_blocked from franchises where id = $1', [franchiseA]))[0]).toEqual({ wallet_enabled: false, wallet_blocked: false });
+    await asUser(ANI, async () => expect((await one('select wallet_choose($1, true) r', [franchiseA])).ok).toBe(true));
+    // The earlier switch, with which the platform owner turned it on for a franchise, is gone.
+    await expect(db.query('select admin_franchise_wallet($1, true)', [franchiseA])).rejects.toThrow(/does not exist/);
 
     await db.query('delete from payouts');
     await db.query('delete from wallet_banks');
     await db.query('delete from payments where franchise_id = $1', [franchiseA]);
+    await db.query('update franchises set wallet_enabled = false, wallet_blocked = false, wallet_agreed_at = null, wallet_agreed_by = null');
     await db.query(`update platform set config = config - 'wallet' where id = 1`);
   });
 
@@ -669,7 +718,7 @@ describe('tablets', () => {
     });
 
     // A request to settle: Ani's franchise takes QRIS through the platform, one payment comes in, she asks for 10.000.
-    await asUser(OWNER, async () => expect((await one('select admin_franchise_wallet($1, true) r', [franchiseA])).ok).toBe(true));
+    await asUser(ANI, async () => expect((await one('select wallet_choose($1, true) r', [franchiseA])).ok).toBe(true));
     const made = await asRole('service_role', () => one(`select payment_begin($1, 'satu') r`, [tokenA]));
     await asRole('service_role', () => db.query(`select payment_settle($1, 'paid', '{}'::jsonb)`, [made.id]));
     await asUser(ANI, async () => {
@@ -687,7 +736,7 @@ describe('tablets', () => {
       const board = await one('select admin_payouts() r');
       expect(board.requests).toHaveLength(1);
       expect(board.requests[0]).toMatchObject({ franchise: 'Booth Ani', amount: 10000, status: 'requested', settled_by: null, bank: { bank: 'BCA', account_no: '1234567890', holder: 'Ani Wijaya' } });
-      expect(board.wallets).toEqual([{ id: franchiseA, name: 'Booth Ani', enabled: true, available: 4300, pending: 10000, paid_out: 0 }]);
+      expect(board.wallets).toEqual([{ id: franchiseA, name: 'Booth Ani', enabled: true, blocked: false, available: 4300, pending: 10000, paid_out: 0 }]);
       requestId = board.requests[0].id;
 
       // Nothing of any franchise's dashboard: no rows from the tables, and the franchise and superadmin tools refuse.
@@ -698,7 +747,7 @@ describe('tablets', () => {
         await expect(db.query(`select * from ${table}`), table).rejects.toThrow(/permission denied/);
       }
       for (const call of [
-        'admin_franchises()', `admin_members('${franchiseA}')`, 'admin_finance()', `admin_franchise_wallet('${franchiseA}', false)`,
+        'admin_franchises()', `admin_members('${franchiseA}')`, 'admin_finance()', `admin_franchise_wallet_allow('${franchiseA}', false)`, `wallet_choose('${franchiseA}', false)`,
         `admin_franchise_ai('${franchiseA}', true, 10)`, `admin_save_franchise('${franchiseA}', 'Punyaku', true, null, null)`, 'ai_usage()',
         `franchise_status('${franchiseA}')`, `wallet_summary('${franchiseA}')`, `wallet_request('${franchiseA}', 1000)`,
         `wallet_save_bank('${franchiseA}', 'BCA', '9999999999', 'Fina')`, `save_outlet('${franchiseA}', '{}')`,
@@ -744,7 +793,7 @@ describe('tablets', () => {
     await db.query('delete from payouts');
     await db.query('delete from wallet_banks');
     await db.query('delete from payments where franchise_id = $1', [franchiseA]);
-    await db.query('update franchises set wallet_enabled = false where id = $1', [franchiseA]);
+    await db.query('update franchises set wallet_enabled = false, wallet_agreed_at = null, wallet_agreed_by = null where id = $1', [franchiseA]);
     await db.query('delete from auth.users where id = $1', [FINA]);
   });
 

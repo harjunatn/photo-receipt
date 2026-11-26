@@ -105,8 +105,9 @@ export function PlatformSettings({ admin }: AdminPageProps) {
             onChange={(v) => setDraft({ ...draft, wallet: { ...draft.wallet, payoutDays: Math.round(v) } })}
           />
           <p class="hint">
-            Perubahan biaya berlaku untuk QRIS yang dibuat sesudahnya; transaksi yang sudah ada tetap memakai biaya saat itu. Titip saldo
-            dinyalakan per franchise di menu <b>Franchise</b> → <b>Atur</b>, dan pengajuan pencairan masuk ke menu <b>Pencairan</b>.
+            Perubahan biaya berlaku untuk QRIS yang dibuat sesudahnya; transaksi yang sudah ada tetap memakai biaya saat itu. Franchise
+            memilih titip saldo sendiri di Pengaturan-nya dan menyetujui biaya yang berlaku saat itu; kamu bisa menghentikannya untuk satu
+            franchise di menu <b>Franchise</b> → <b>Atur</b>. Pengajuan pencairan masuk ke menu <b>Pencairan</b>.
           </p>
         </section>
 

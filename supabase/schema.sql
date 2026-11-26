@@ -71,8 +71,13 @@ create table if not exists public.franchises (
 );
 alter table public.franchises add column if not exists ai_enabled boolean not null default false;
 -- Titip saldo: QRIS franchise ini dibayar ke akun DOKU milik platform, dan bersihnya (setelah biaya DOKU dan biaya
--- platform) dicatat sebagai saldo franchise untuk dicairkan. Hanya superadmin yang menyalakannya.
+-- platform) dicatat sebagai saldo franchise untuk dicairkan. Admin franchise memilihnya sendiri di Pengaturan
+-- (wallet_choose) dan menyetujui biayanya saat itu; superadmin bisa menghentikannya untuk satu franchise
+-- (wallet_blocked), dan franchise yang dihentikan tidak pernah wallet_enabled.
 alter table public.franchises add column if not exists wallet_enabled boolean not null default false;
+alter table public.franchises add column if not exists wallet_blocked boolean not null default false;
+alter table public.franchises add column if not exists wallet_agreed_at timestamptz;
+alter table public.franchises add column if not exists wallet_agreed_by uuid;
 alter table public.franchises add column if not exists ai_monthly_limit int not null default 300 check (ai_monthly_limit between 0 and 100000);
 -- Sebelumnya fitur ini dinyalakan sekaligus untuk semua franchise di Pengaturan platform. Kalau saat itu menyala,
 -- semua franchise yang sudah ada ikut menyala dengan batas yang sama, sekali saja: tandanya di pengaturan
@@ -1040,7 +1045,8 @@ begin
       'id', f.id, 'name', f.name, 'active', f.active, 'paid_until', f.paid_until, 'note', f.note,
       'state', franchise_state(f.active, f.paid_until, grace), 'created_at', f.created_at,
       'ai_enabled', f.ai_enabled, 'ai_monthly_limit', f.ai_monthly_limit,
-      'wallet_enabled', f.wallet_enabled, 'wallet_available', wallet_available(f.id),
+      'wallet_enabled', f.wallet_enabled, 'wallet_blocked', f.wallet_blocked, 'wallet_agreed_at', f.wallet_agreed_at,
+      'wallet_available', wallet_available(f.id),
       'ai_month', (select count(*) from ai_edits e where e.franchise_id = f.id and e.status = 'done'
                     and e.created_at >= date_trunc('month', now() at time zone 'Asia/Jakarta') at time zone 'Asia/Jakarta'),
       'devices', (select count(*) from devices d where d.franchise_id = f.id),
@@ -1262,9 +1268,7 @@ as $$
   select coalesce((
     select jsonb_build_object('doku', s.doku, 'sealed', s.doku_sealed, 'updated_at', s.updated_at)
     from franchise_secrets s where s.franchise_id = p_franchise
-  ), '{}'::jsonb)
-  -- Titip saldo: franchise ini memakai akun DOKU platform, apa pun kunci yang pernah disimpannya.
-  || jsonb_build_object('wallet', coalesce((select f.wallet_enabled from franchises f where f.id = p_franchise), false));
+  ), '{}'::jsonb);
 $$;
 
 create or replace function public.svc_doku_save(p_franchise uuid, p_doku jsonb, p_sealed text)
@@ -1359,8 +1363,9 @@ begin
           'FS' || to_char(now() at time zone 'Asia/Jakarta', 'YYMMDDHH24MISS') || upper(substr(replace(gen_random_uuid()::text, '-', ''), 1, 10)),
           f.wallet_enabled, cut_doku, cut_platform)
   returning * into p;
+  -- 'wallet' menentukan akun DOKU yang membuat QR-nya: akun platform (titip saldo) atau akun franchise sendiri.
   return jsonb_build_object('id', p.id, 'amount', p.amount, 'partner_ref', p.partner_ref, 'franchise_id', p.franchise_id,
-                            'device_name', p.device_name, 'package_name', p.package_name);
+                            'device_name', p.device_name, 'package_name', p.package_name, 'wallet', p.wallet);
 end;
 $$;
 
@@ -1392,7 +1397,7 @@ begin
     return jsonb_build_object('error', 'not-found');
   end if;
   return jsonb_build_object('id', p.id, 'status', p.status, 'amount', p.amount, 'partner_ref', p.partner_ref, 'franchise_id', p.franchise_id,
-                            'provider_ref', p.provider_ref, 'expires_at', p.expires_at, 'created_at', p.created_at);
+                            'provider_ref', p.provider_ref, 'expires_at', p.expires_at, 'created_at', p.created_at, 'wallet', p.wallet);
 end;
 $$;
 
@@ -1421,13 +1426,22 @@ begin
 end;
 $$;
 
--- Franchise pemilik sebuah tagihan, dicari lewat nomor referensi kita. Dipakai untuk memilih kunci
--- yang memeriksa tanda tangan pemberitahuan dari penyedia pembayaran.
+-- Franchise pemilik sebuah tagihan, dicari lewat nomor referensi kita. Masih ada untuk Edge Function versi
+-- sebelum payment_account; versi sekarang tidak memanggilnya.
 create or replace function public.payment_franchise(p_partner_ref text)
 returns uuid
 language sql stable security definer set search_path = public
 as $$
   select franchise_id from payments where partner_ref = p_partner_ref;
+$$;
+
+-- Franchise pemilik sebuah tagihan dan akun DOKU yang membuat QR-nya (wallet = akun platform), dicari lewat
+-- nomor referensi kita. Dipakai untuk memilih kunci yang memeriksa tanda tangan pemberitahuan dari DOKU.
+create or replace function public.payment_account(p_partner_ref text)
+returns jsonb
+language sql stable security definer set search_path = public
+as $$
+  select jsonb_build_object('franchise_id', franchise_id, 'wallet', wallet) from payments where partner_ref = p_partner_ref;
 $$;
 
 -- Menutup tagihan berdasarkan nomor referensi kita, untuk pemberitahuan dari penyedia pembayaran.
@@ -1461,7 +1475,7 @@ begin
     return jsonb_build_object('error', 'unpaired');
   end if;
   return jsonb_build_object('franchise_id', d.franchise_id, 'payments', coalesce((
-    select jsonb_agg(jsonb_build_object('id', p.id, 'status', p.status, 'partner_ref', p.partner_ref,
+    select jsonb_agg(jsonb_build_object('id', p.id, 'status', p.status, 'partner_ref', p.partner_ref, 'wallet', p.wallet,
                                         'provider_ref', p.provider_ref, 'expires_at', p.expires_at, 'created_at', p.created_at)
                      order by p.created_at)
     from (
@@ -1481,7 +1495,8 @@ declare
 begin
   foreach fn in array array[
     'payment_begin(text, text)', 'payment_attach(uuid, text, text, timestamptz, jsonb)', 'payment_get(text, uuid)',
-    'payment_settle(uuid, text, jsonb)', 'payment_franchise(text)', 'payment_settle_by_ref(text, int, jsonb)', 'payment_stale(text)'
+    'payment_settle(uuid, text, jsonb)', 'payment_franchise(text)', 'payment_account(text)', 'payment_settle_by_ref(text, int, jsonb)',
+    'payment_stale(text)'
   ] loop
     execute format('revoke execute on function public.%s from public, anon, authenticated', fn);
     execute format('grant execute on function public.%s to service_role', fn);
@@ -1761,7 +1776,7 @@ begin
   -- Pengajuan yang ditolak tidak dihitung sebagai giliran yang sudah dipakai.
   select max(requested_at) into last_at from payouts where franchise_id = p_franchise and status <> 'rejected';
   return jsonb_build_object(
-    'enabled', f.wallet_enabled,
+    'enabled', f.wallet_enabled, 'blocked', f.wallet_blocked, 'agreed_at', f.wallet_agreed_at,
     'doku_fee', fee.doku_fee, 'platform_fee', fee.platform_fee, 'payout_days', fee.payout_days,
     'transactions', (select count(*) from payments where franchise_id = p_franchise and wallet and status = 'paid'),
     'gross', coalesce((select sum(amount) from payments where franchise_id = p_franchise and wallet and status = 'paid'), 0),
@@ -1870,7 +1885,7 @@ begin
     ), '[]'::jsonb),
     'wallets', coalesce((
       select jsonb_agg(jsonb_build_object(
-        'id', f.id, 'name', f.name, 'enabled', f.wallet_enabled,
+        'id', f.id, 'name', f.name, 'enabled', f.wallet_enabled, 'blocked', f.wallet_blocked,
         'available', wallet_available(f.id),
         'pending', coalesce((select sum(amount) from payouts where franchise_id = f.id and status = 'requested'), 0),
         'paid_out', coalesce((select sum(amount) from payouts where franchise_id = f.id and status = 'paid'), 0)
@@ -1909,8 +1924,42 @@ begin
 end;
 $$;
 
--- Superadmin menyalakan atau mematikan titip saldo untuk satu franchise.
-create or replace function public.admin_franchise_wallet(p_franchise uuid, p_enabled boolean)
+-- Admin franchise memilih sendiri memakai titip saldo, atau berhenti memakainya. Memilihnya berarti menyetujui
+-- biaya yang ditampilkan saat itu; kapan dan oleh siapa dicatat. Saldo yang sudah terkumpul tidak berubah.
+--   blocked   platform menghentikan titip saldo untuk franchise ini
+create or replace function public.wallet_choose(p_franchise uuid, p_on boolean)
+returns jsonb
+language plpgsql security definer set search_path = public
+as $$
+declare
+  f franchises;
+begin
+  if not can_access(p_franchise) then
+    return jsonb_build_object('error', 'forbidden');
+  end if;
+  if p_on is null then
+    return jsonb_build_object('error', 'bad-request');
+  end if;
+  select * into f from franchises where id = p_franchise for update;
+  if not found then
+    return jsonb_build_object('error', 'not-found');
+  end if;
+  if p_on and f.wallet_blocked then
+    return jsonb_build_object('error', 'blocked');
+  end if;
+  if p_on and not f.wallet_enabled then
+    update franchises set wallet_enabled = true, wallet_agreed_at = now(), wallet_agreed_by = auth.uid() where id = p_franchise;
+  elsif not p_on and f.wallet_enabled then
+    update franchises set wallet_enabled = false where id = p_franchise;
+  end if;
+  return jsonb_build_object('ok', true);
+end;
+$$;
+
+-- Superadmin mengizinkan atau menghentikan titip saldo untuk satu franchise. Menghentikan juga mematikannya;
+-- QR yang sudah dibuat tetap diselesaikan lewat akun platform, dan saldo yang terkumpul tetap bisa dicairkan.
+-- Mengizinkan lagi tidak menyalakannya: franchise memilihnya sendiri.
+create or replace function public.admin_franchise_wallet_allow(p_franchise uuid, p_allowed boolean)
 returns jsonb
 language plpgsql security definer set search_path = public
 as $$
@@ -1918,16 +1967,19 @@ begin
   if not is_superadmin() then
     return jsonb_build_object('error', 'forbidden');
   end if;
-  if p_enabled is null then
+  if p_allowed is null then
     return jsonb_build_object('error', 'bad-request');
   end if;
-  update franchises set wallet_enabled = p_enabled where id = p_franchise;
+  update franchises set wallet_blocked = not p_allowed, wallet_enabled = wallet_enabled and p_allowed where id = p_franchise;
   if not found then
     return jsonb_build_object('error', 'not-found');
   end if;
   return jsonb_build_object('ok', true);
 end;
 $$;
+
+-- Sebelumnya superadmin yang menyalakan titip saldo; sekarang franchise memilih sendiri.
+drop function if exists public.admin_franchise_wallet(uuid, boolean);
 
 -- Akun keuangan yang ada, dengan emailnya. Hanya superadmin yang melihat dan mengaturnya.
 create or replace function public.admin_finance()
@@ -1956,7 +2008,8 @@ revoke execute on function public.wallet_save_bank(uuid, text, text, text) from 
 revoke execute on function public.wallet_request(uuid, int) from public, anon;
 revoke execute on function public.admin_payouts() from public, anon;
 revoke execute on function public.admin_payout_settle(uuid, boolean, text) from public, anon;
-revoke execute on function public.admin_franchise_wallet(uuid, boolean) from public, anon;
+revoke execute on function public.wallet_choose(uuid, boolean) from public, anon;
+revoke execute on function public.admin_franchise_wallet_allow(uuid, boolean) from public, anon;
 grant execute on function public.wallet_fees() to service_role;
 grant execute on function public.wallet_available(uuid) to service_role;
 grant execute on function public.wallet_summary(uuid) to authenticated;
@@ -1964,4 +2017,5 @@ grant execute on function public.wallet_save_bank(uuid, text, text, text) to aut
 grant execute on function public.wallet_request(uuid, int) to authenticated;
 grant execute on function public.admin_payouts() to authenticated;
 grant execute on function public.admin_payout_settle(uuid, boolean, text) to authenticated;
-grant execute on function public.admin_franchise_wallet(uuid, boolean) to authenticated;
+grant execute on function public.wallet_choose(uuid, boolean) to authenticated;
+grant execute on function public.admin_franchise_wallet_allow(uuid, boolean) to authenticated;

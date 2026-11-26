@@ -5,13 +5,19 @@ import { boomerangMode, DEFAULT_SETTINGS, formatRupiah, includesVideos } from '.
 import { toast } from '../ui/components';
 import type { PageProps } from './Dashboard';
 import { DokuSetup } from './DokuSetup';
+import { QrisModePicker, WalletTerms, qrisModeOf, type QrisMode } from './QrisMode';
 import { CardFlow } from '../ui/CardFlow';
 import { LoadState, PageHead, describe, useLoad } from './ui';
 
 /** What every tablet shares: the outlet's name, logo, prices and ways of paying. Receipt texts are set on each tablet. */
-export function OutletSettings({ api }: PageProps) {
+export function OutletSettings({ api, refresh }: PageProps) {
   const load = useLoad(async () => completeOutlet(await api.getOutlet(), outletFromSettings(DEFAULT_SETTINGS)), [api]);
+  // Titip saldo is the franchise's own choice, but it is kept beside the settings, not in them: tablets never need it.
+  const wallet = useLoad(() => api.walletSummary(), [api]);
   const [draft, setDraft] = useState<OutletConfig | null>(null);
+  // The account automatic QRIS should run on, once picked here; null means as it is saved.
+  const [walletPick, setWalletPick] = useState<boolean | null>(null);
+  const [agreed, setAgreed] = useState(false);
   const [busy, setBusy] = useState(false);
   const [password, setPassword] = useState('');
 
@@ -28,7 +34,6 @@ export function OutletSettings({ api }: PageProps) {
     );
   }
 
-  const dirty = JSON.stringify(draft) !== JSON.stringify(load.data);
   const edit = (change: (next: OutletConfig) => void) => {
     const next = structuredClone(draft);
     change(next);
@@ -36,15 +41,51 @@ export function OutletSettings({ api }: PageProps) {
   };
   const activePrices = draft.packages.filter((p) => p.active).length;
 
+  const walletSaved = wallet.data?.enabled === true;
+  // Only a pick made here changes titip saldo: a page that was merely opened never has something to save.
+  const walletWanted = walletPick ?? walletSaved;
+  const mode = qrisModeOf(draft.payment.qrisAuto, walletWanted);
+  const walletChanged = wallet.data !== null && walletWanted !== walletSaved;
+  const outletDirty = JSON.stringify(draft) !== JSON.stringify(load.data);
+  const dirty = outletDirty || walletChanged;
+  // Switching titip saldo on means agreeing to its fees first.
+  const needsAgreement = walletChanged && walletWanted && !agreed;
+
+  const pickMode = (next: QrisMode) => {
+    edit((d) => void (d.payment.qrisAuto = next !== 'manual'));
+    // Manual QRIS goes to the franchise's own QR picture, so picking it leaves titip saldo too.
+    setWalletPick(next === 'wallet');
+    setAgreed(false);
+  };
+
+  const discard = () => {
+    setDraft(structuredClone(load.data));
+    setWalletPick(null);
+    setAgreed(false);
+  };
+
   const save = async () => {
     setBusy(true);
     try {
-      await api.saveOutlet(draft);
-      toast('Disimpan. Tablet mengikutinya dalam satu-dua menit, saat tidak ada tamu.');
+      // Titip saldo is switched on before the settings that rely on it and off after them, so that
+      // tablets never make a QR for an account the franchise has not chosen.
+      if (walletChanged && walletWanted) await api.walletChoose(true);
+      if (outletDirty) await api.saveOutlet(draft);
+      if (walletChanged && !walletWanted) await api.walletChoose(false);
+      toast(
+        walletChanged && walletWanted
+          ? 'Disimpan. QRIS sekarang lewat titip saldo; saldonya ada di menu Dompet.'
+          : 'Disimpan. Tablet mengikutinya dalam satu-dua menit, saat tidak ada tamu.',
+      );
+      setAgreed(false);
       load.reload();
     } catch (cause) {
+      // What was typed stays, to be saved again.
       toast(describe(cause));
     }
+    // Also after a failure half-way, so that the page shows which account is really in use.
+    wallet.reload();
+    if (walletChanged) refresh();
     setBusy(false);
   };
 
@@ -64,11 +105,11 @@ export function OutletSettings({ api }: PageProps) {
     <>
       <PageHead title="Pengaturan" lead={`Berlaku untuk semua tablet ${api.franchise.name}. Teks struk, printer, kamera, waktu sesi dan PIN petugas diatur di tiap tablet.`}>
         {dirty && (
-          <button class="btn small" disabled={busy} onClick={() => setDraft(structuredClone(load.data))}>
+          <button class="btn small" disabled={busy} onClick={discard}>
             Batalkan perubahan
           </button>
         )}
-        <button class="btn small primary" disabled={busy || !dirty} onClick={() => void save()}>
+        <button class="btn small primary" disabled={busy || !dirty || needsAgreement} onClick={() => void save()}>
           {busy ? 'Menyimpan…' : dirty ? 'Simpan' : 'Tersimpan'}
         </button>
       </PageHead>
@@ -107,24 +148,37 @@ export function OutletSettings({ api }: PageProps) {
           />
           {draft.payment.qris && (
             <div class="panel">
-              <Segmented
-                label="Cara kerja QRIS"
-                value={draft.payment.qrisAuto ? 'auto' : 'manual'}
-                options={[
-                  { value: 'auto', label: 'Otomatis (DOKU)' },
-                  { value: 'manual', label: 'Manual (gambar QRIS)' },
-                ]}
-                onChange={(v) => edit((d) => void (d.payment.qrisAuto = v === 'auto'))}
-              />
-              {draft.payment.qrisAuto ? (
-                <p class="hint">
-                  Tablet membuat kode QR khusus untuk tiap sesi dengan nominal yang sudah terisi, dan sesi foto mulai sendiri
-                  begitu pembayaran masuk — tanpa petugas. Membutuhkan internet di tablet dan akun DOKU: kunci milik franchise ini
-                  (diisi di bagian <b>Akun DOKU</b> di bawah), atau titip saldo lewat akun platform.
-                </p>
-              ) : (
+              <QrisModePicker value={mode} wallet={wallet.data} onChange={pickMode} />
+              {wallet.error && <p class="banner err">Keterangan titip saldo tidak bisa dimuat: {wallet.error}</p>}
+              {mode === 'own' && (
                 <>
-                  <p class="hint">Gambar QRIS tokomu ditampilkan; tamu membayar lalu menunjukkan buktinya ke petugas.</p>
+                  <p class="hint">
+                    Membutuhkan internet di tablet. Kunci akun DOKU-mu diisi di bagian <b>Akun DOKU franchise ini</b> di bawah.
+                  </p>
+                  {walletSaved && (
+                    <p class="banner">
+                      Setelah disimpan, QR baru dibuat lewat akun DOKU-mu sendiri. Isi kuncinya dan pastikan <b>Tes koneksi</b> berhasil
+                      dulu, supaya tamu tetap bisa membayar. Saldo titip saldo yang sudah terkumpul tetap bisa dicairkan dari Dompet.
+                    </p>
+                  )}
+                </>
+              )}
+              {mode === 'wallet' && wallet.data && (
+                <WalletTerms
+                  api={api}
+                  wallet={wallet.data}
+                  examplePrice={draft.packages.find((p) => p.active && p.price > 0)?.price ?? 0}
+                  agreed={agreed}
+                  onAgree={setAgreed}
+                />
+              )}
+              {mode === 'manual' && (
+                <>
+                  {walletChanged && (
+                    <p class="banner">
+                      Setelah disimpan, titip saldo berhenti dipakai. Saldo yang sudah terkumpul tetap bisa dicairkan dari Dompet.
+                    </p>
+                  )}
                   <ImageField label="Gambar QRIS" value={draft.payment.qrisImage} maxSide={720} onChange={(v) => edit((d) => void (d.payment.qrisImage = v))} />
                   {!draft.payment.qrisImage && <p class="banner">Unggah gambar QRIS dulu — tanpa gambar, pilihan QRIS tidak ditampilkan ke tamu.</p>}
                   <Check
@@ -204,7 +258,7 @@ export function OutletSettings({ api }: PageProps) {
           </div>
         </section>
 
-        {draft.payment.qris && draft.payment.qrisAuto && <DokuSetup api={api} />}
+        {draft.payment.qris && mode === 'own' && <DokuSetup api={api} />}
 
         <section class="panel span">
           <div class="row">

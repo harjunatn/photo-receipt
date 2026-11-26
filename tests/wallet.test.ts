@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { createDemo } from '../src/dashboard/demo';
+import { qrisModeOf, walletNet } from '../src/dashboard/QrisMode';
 import { bankLine, netOf, parseAmount } from '../src/dashboard/Wallet';
 
 describe('titip saldo', () => {
@@ -36,7 +37,7 @@ describe('titip saldo', () => {
     // What the platform owner sees adds up to the same numbers.
     const board = await demo.admin.payoutBoard();
     expect(board.requests[0]).toMatchObject({ status: 'requested', franchise: 'Booth Budi', amount: summary.pending });
-    expect(board.wallets).toEqual([{ id: 'demo-budi', name: 'Booth Budi', enabled: true, available: summary.available, pending: summary.pending, paid_out: summary.paid_out }]);
+    expect(board.wallets).toEqual([{ id: 'demo-budi', name: 'Booth Budi', enabled: true, blocked: false, available: summary.available, pending: summary.pending, paid_out: summary.paid_out }]);
     expect(board.platform_fees).toBe(summary.fees_platform);
     expect(board.held).toBe(summary.available + summary.pending);
     const listed = (await demo.admin.listFranchises()).franchises.find((row) => row.id === 'demo-budi');
@@ -98,12 +99,65 @@ describe('titip saldo', () => {
     expect((await demo.admin.payoutBoard()).requests.find((row) => row.status === 'paid')?.settled_by).toBe('keuangan@contoh.id');
   });
 
-  it('needs an account to send the money to, and follows the switch per franchise', async () => {
+  it('names the three ways of taking QRIS, and shows what a titip saldo payment leaves', () => {
+    expect(qrisModeOf(false, false)).toBe('manual');
+    // Without automatic QRIS the account does not matter.
+    expect(qrisModeOf(false, true)).toBe('manual');
+    expect(qrisModeOf(true, false)).toBe('own');
+    expect(qrisModeOf(true, true)).toBe('wallet');
+
+    const fees = { doku_fee: 500, platform_fee: 200 };
+    expect(walletNet(15_000, fees)).toBe(14_300);
+    // Like the server: the platform's fee never takes more than what is left after DOKU's.
+    expect(walletNet(600, fees)).toBe(0);
+    expect(walletNet(500, fees)).toBe(0);
+  });
+
+  it('is the franchise\'s own choice, which the platform owner can stop', async () => {
+    const demo = createDemo();
+    const citra = demo.apiFor({ id: 'demo-citra', name: 'Citra Photo' });
+    const row = async () => (await demo.admin.listFranchises()).franchises.find((franchise) => franchise.id === 'demo-citra')!;
+    expect(await citra.walletSummary()).toMatchObject({ enabled: false, blocked: false, agreed_at: null });
+    expect((await citra.status()).wallet).toBe(false);
+    expect((await citra.dokuGet()).platform_ready).toBe(true);
+
+    // Choosing it records when the fees were agreed to, and the Dompet menu shows from then on.
+    await citra.walletChoose(true);
+    expect((await citra.walletSummary()).enabled).toBe(true);
+    expect((await citra.walletSummary()).agreed_at).toBeTruthy();
+    expect((await citra.status()).wallet).toBe(true);
+    expect(await row()).toMatchObject({ wallet_enabled: true, wallet_blocked: false });
+    // The setup page still shows the franchise's own DOKU keys, never the platform's.
+    expect((await citra.dokuGet()).source).toBe('none');
+
+    // Leaving it keeps the balance and the menu.
+    const balance = (await citra.walletSummary()).available;
+    expect(balance).toBeGreaterThan(0);
+    await citra.walletChoose(false);
+    expect(await citra.walletSummary()).toMatchObject({ enabled: false, available: balance });
+    expect((await citra.status()).wallet).toBe(true);
+
+    // Stopped by the platform owner: off at once, and not to be chosen until allowed again.
+    await citra.walletChoose(true);
+    await demo.admin.allowFranchiseWallet('demo-citra', false);
+    expect(await citra.walletSummary()).toMatchObject({ enabled: false, blocked: true, available: balance });
+    expect(await row()).toMatchObject({ wallet_enabled: false, wallet_blocked: true });
+    await expect(citra.walletChoose(true)).rejects.toThrow(/dihentikan/);
+    expect((await demo.admin.payoutBoard()).wallets.find((wallet) => wallet.id === 'demo-citra')).toMatchObject({ enabled: false, blocked: true });
+
+    // Allowing it again leaves the choice with the franchise.
+    await demo.admin.allowFranchiseWallet('demo-citra', true);
+    expect(await citra.walletSummary()).toMatchObject({ enabled: false, blocked: false });
+    await citra.walletChoose(true);
+    expect((await citra.walletSummary()).enabled).toBe(true);
+  });
+
+  it('needs an account to send the money to', async () => {
     const demo = createDemo();
     const citra = demo.apiFor({ id: 'demo-citra', name: 'Citra Photo' });
     expect((await citra.walletSummary()).enabled).toBe(false);
 
-    await demo.admin.setFranchiseWallet('demo-citra', true);
+    await citra.walletChoose(true);
     const summary = await citra.walletSummary();
     expect(summary.enabled).toBe(true);
     expect(summary.bank).toBeNull();

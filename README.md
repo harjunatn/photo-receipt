@@ -577,9 +577,15 @@ Untuk franchise yang tidak punya QRIS sendiri dan tidak mau menerima tunai. Tamu
 platform (kunci `DOKU_*` di Secrets fungsi), uangnya dicatat sebagai saldo franchise itu, lalu dicairkan dengan transfer
 manual.
 
-- **Menyalakan**: superadmin → **Franchise → Atur → Titip saldo → QRIS lewat akun platform**. Di dashboard franchise itu
-  lalu muncul menu **Dompet**, dan bagian Akun DOKU di Pengaturan berganti menjadi keterangan "QRIS lewat platform".
-  Franchise tetap perlu menyalakan **Pengaturan → Cara bayar → QRIS → Otomatis (DOKU)**.
+- **Memilih**: franchise memilihnya sendiri di **Pengaturan → Cara bayar → QRIS**, yang punya tiga cara kerja: manual
+  (gambar QRIS), otomatis dengan akun DOKU sendiri, atau otomatis dengan titip saldo. Sebelum titip saldo bisa disimpan,
+  franchise melihat biaya dan aturan pencairannya lalu mencentang persetujuan; waktunya dicatat. Sesudah itu muncul menu
+  **Dompet**. Franchise boleh pindah cara kapan saja; saldo yang sudah terkumpul tetap bisa dicairkan.
+- **Menghentikan**: titip saldo terbuka untuk semua franchise. Superadmin bisa menghentikannya untuk satu franchise di
+  **Franchise → Atur → Titip saldo → Boleh memakai titip saldo**: titip saldo langsung mati di franchise itu dan tidak
+  bisa dipilihnya lagi sampai diizinkan kembali.
+- **Akun DOKU mengikuti tiap QR**: QR yang dibuat lewat titip saldo dicek, dibatalkan, dan dikonfirmasi lewat akun DOKU
+  platform sampai selesai, juga kalau franchise pindah ke akun sendiri saat QR itu masih terbuka (dan sebaliknya).
 - **Potongan**: tiap QRIS yang lunas dipotong biaya DOKU (bawaan Rp500) dan biaya platform (bawaan Rp200); sisanya masuk
   ke dompet. Kedua biaya dan jarak antar pencairan (bawaan 7 hari) diatur di **Pengaturan platform → Titip saldo** dan
   sama untuk semua franchise. Biayanya dicatat pada tiap pembayaran saat QR dibuat, jadi mengubah tarif tidak mengubah
@@ -595,11 +601,11 @@ manual.
   **Pencairan → Akun keuangan** (email, lalu password sementara dan tautannya lewat **Salin semua**). Akun itu masuk di
   `https://<alamat-aplikasi>/#finance` dan hanya mendapat halaman Pencairan: pengajuan, rekening tujuan, saldo tiap
   franchise, dan tombol tandai/tolak. Ia tidak bisa membuka dashboard, transaksi, foto, atau pengaturan franchise mana
-  pun, tidak bisa mengubah biaya, dan tidak bisa menyalakan titip saldo; database menolaknya, bukan hanya menunya yang
+  pun, tidak bisa mengubah biaya, dan tidak bisa menyalakan atau menghentikan titip saldo; database menolaknya, bukan hanya menunya yang
   disembunyikan. Satu email satu peran: superadmin, admin franchise, atau keuangan. Riwayat pencairan mencatat siapa
   yang menandai tiap pengajuan (kolom **Oleh**).
-- Tunai, voucher, dan QRIS manual tidak lewat dompet. Mematikan titip saldo menghentikan QRIS baru masuk ke dompet; saldo
-  yang sudah ada tetap bisa dicairkan.
+- Tunai, voucher, dan QRIS manual tidak lewat dompet. Berhenti memakai titip saldo menghentikan QRIS baru masuk ke
+  dompet; saldo yang sudah ada tetap bisa dicairkan.
 - Aplikasi ini hanya mencatat: uangnya sendiri berpindah lewat DOKU (ke rekeningmu) dan lewat transfer manualmu (ke
   franchise). Pastikan perjanjianmu dengan DOKU mengizinkan menerima pembayaran untuk usaha lain.
 

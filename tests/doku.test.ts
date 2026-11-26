@@ -44,7 +44,7 @@ function world() {
     expireRefused: false,
     /** What the franchise saved on the setup page; null while it has saved nothing. */
     saved: null as null | { doku: Record<string, unknown>; sealed: string; updated_at: string },
-    /** Titip saldo: the platform owner switched this franchise to the platform's own DOKU account. */
+    /** Titip saldo: the franchise chose to take QRIS through the platform's own DOKU account, so new charges are marked for it. */
     wallet: false,
   };
   let token = 0;
@@ -60,10 +60,11 @@ function world() {
       const args = JSON.parse(body);
       if (name === 'payment_begin') {
         if (args.p_token !== 'token-tablet') return reply(200, { error: 'unpaired' });
-        state.payment = { id: 'pay-1', franchise_id: FRANCHISE, status: 'pending', amount: 15000, partner_ref: 'FS1', provider_ref: null, expires_at: null, created_at: new Date(0).toISOString() };
-        return reply(200, { id: 'pay-1', amount: 15000, partner_ref: 'FS1', franchise_id: FRANCHISE });
+        // Like the database: the charge keeps the account it was opened for, whatever the franchise chooses later.
+        state.payment = { id: 'pay-1', franchise_id: FRANCHISE, status: 'pending', amount: 15000, partner_ref: 'FS1', provider_ref: null, expires_at: null, created_at: new Date(0).toISOString(), wallet: state.wallet };
+        return reply(200, { id: 'pay-1', amount: 15000, partner_ref: 'FS1', franchise_id: FRANCHISE, wallet: state.wallet });
       }
-      if (name === 'svc_doku_get') return reply(200, { ...(args.p_franchise === FRANCHISE && state.saved ? state.saved : {}), wallet: state.wallet });
+      if (name === 'svc_doku_get') return reply(200, args.p_franchise === FRANCHISE && state.saved ? state.saved : {});
       if (name === 'svc_doku_save') {
         state.saved = { doku: args.p_doku, sealed: args.p_sealed, updated_at: clock.toISOString() };
         return new Response('', { status: 200 });
@@ -72,7 +73,7 @@ function world() {
         state.saved = null;
         return new Response('', { status: 200 });
       }
-      if (name === 'payment_franchise') return reply(200, args.p_partner_ref === 'FS1' && state.payment ? FRANCHISE : null);
+      if (name === 'payment_account') return reply(200, args.p_partner_ref === 'FS1' && state.payment ? { franchise_id: FRANCHISE, wallet: state.payment.wallet } : null);
       if (name === 'svc_can_access') return reply(200, args.p_franchise === FRANCHISE && (args.p_user === ADMIN_USER || args.p_user === SUPER_USER));
       if (name === 'svc_is_superadmin') return reply(200, args.p_user === SUPER_USER);
       if (name === 'payment_attach') {
@@ -554,27 +555,95 @@ describe('doku-setup', () => {
     expect((await handleCreate({ token: 'token-tablet', package_id: 'a' }, otherMaster, fetchFn, now)).body.error).toBe('not-configured');
   });
 
-  it("sends a wallet franchise's QRIS through the platform's account, whatever keys it once saved", async () => {
+  it("makes a titip saldo QR on the platform's account, at once, while the setup page keeps showing the franchise's own keys", async () => {
     const { state, fetchFn } = world();
-    // A franchise that is not the one named for the server keys, with none of its own: no QRIS.
+    // A franchise with keys of its own (terminal C09). The platform's account is the one in the functions' secrets (terminal A01).
     const settings = env({ DOKU_ENV_FRANCHISE: '' });
-    const get = async (using = settings) => (await handleDokuSetup({ action: 'get', franchise_id: FRANCHISE }, 'jwt-super', using, fetchFn, now)).body;
-    expect(await get()).toMatchObject({ source: 'none', has_keys: false, can_save: true });
-
-    // Titip saldo: the platform's keys are used, and there is nothing for the franchise to fill in.
-    state.wallet = true;
-    expect(await get()).toMatchObject({ source: 'platform', has_keys: true, can_save: false });
-    // Also when it saved keys of its own earlier: the platform owner decides where its money goes.
-    await handleDokuSetup({ action: 'save', ...fields, terminal_id: 'C09' }, 'jwt-super', settings, fetchFn, now);
-    expect(await get()).toMatchObject({ source: 'platform' });
+    const get = async (using = settings) => (await handleDokuSetup({ action: 'get', franchise_id: FRANCHISE }, 'jwt-admin', using, fetchFn, now)).body;
+    expect(await get()).toMatchObject({ source: 'none', has_keys: false, can_save: true, platform_ready: true });
+    await handleDokuSetup({ action: 'save', ...fields, terminal_id: 'C09' }, 'jwt-admin', settings, fetchFn, now);
 
     later();
-    const made = await handleCreate({ token: 'token-tablet', package_id: 'a' }, settings, fetchFn, now);
-    expect(made.body.error).toBeUndefined();
-    expect(state.generated).toHaveLength(1);
+    await handleCreate({ token: 'token-tablet', package_id: 'a' }, settings, fetchFn, now);
+    expect(state.generated[0]).toMatchObject({ terminalId: 'C09' });
 
-    // Without the platform's keys in place, the franchise is told so rather than given a form.
-    expect(await get(env({ DOKU_ENV_FRANCHISE: '', DOKU_CLIENT_ID: '' }))).toMatchObject({ source: 'platform', has_keys: false });
+    // It chooses titip saldo: the very next QR goes through the platform, without waiting for remembered keys to run out.
+    state.wallet = true;
+    await handleCreate({ token: 'token-tablet', package_id: 'a' }, settings, fetchFn, now);
+    expect(state.generated[1]).toMatchObject({ terminalId: 'A01' });
+    // Its own keys stay where they are, to be filled in or tested before switching back.
+    expect(await get()).toMatchObject({ source: 'saved', has_keys: true, can_save: true });
+
+    // And back to its own account, again at once.
+    state.wallet = false;
+    await handleCreate({ token: 'token-tablet', package_id: 'a' }, settings, fetchFn, now);
+    expect(state.generated[2]).toMatchObject({ terminalId: 'C09' });
+  });
+
+  it('says so when titip saldo is chosen but the platform has no DOKU account in place', async () => {
+    const { state, fetchFn } = world();
+    const noPlatform = env({ DOKU_ENV_FRANCHISE: '', DOKU_CLIENT_ID: '' });
+    expect((await handleDokuSetup({ action: 'get', franchise_id: FRANCHISE }, 'jwt-admin', noPlatform, fetchFn, now)).body).toMatchObject({ platform_ready: false });
+    state.wallet = true;
+    const made = await handleCreate({ token: 'token-tablet', package_id: 'a' }, noPlatform, fetchFn, now);
+    expect(made.body).toMatchObject({ error: 'not-configured', message: expect.stringContaining('platform') });
+    expect(state.settled).toEqual(['failed']);
+  });
+
+  it('settles an open QR on the account it was made with, also after the franchise switched', async () => {
+    // Made through titip saldo by a franchise without keys of its own, which then leaves titip saldo before the guest pays.
+    const first = world();
+    const settings = env({ DOKU_ENV_FRANCHISE: '' });
+    first.state.wallet = true;
+    await handleCreate({ token: 'token-tablet', package_id: 'a' }, settings, first.fetchFn, now);
+    first.state.wallet = false;
+    expect((await handleStatus({ token: 'token-tablet', id: 'pay-1' }, settings, first.fetchFn, now)).body).toEqual({ status: 'pending' });
+    first.state.paidAtDoku = true;
+    expect((await handleStatus({ token: 'token-tablet', id: 'pay-1' }, settings, first.fetchFn, now)).body).toEqual({ status: 'paid' });
+
+    // The other way round: made on the franchise's own account, which then chooses titip saldo on a platform without an account.
+    later();
+    const second = world();
+    const noPlatform = env({ DOKU_ENV_FRANCHISE: '', DOKU_CLIENT_ID: '' });
+    await handleDokuSetup({ action: 'save', ...fields }, 'jwt-admin', noPlatform, second.fetchFn, now);
+    await handleCreate({ token: 'token-tablet', package_id: 'a' }, noPlatform, second.fetchFn, now);
+    second.state.wallet = true;
+    second.state.paidAtDoku = true;
+    expect((await handleCancel({ token: 'token-tablet', id: 'pay-1' }, noPlatform, second.fetchFn, now)).body).toEqual({ status: 'paid' });
+
+    // A QR left behind is swept on its own account too.
+    later();
+    const third = world();
+    third.state.wallet = true;
+    await handleCreate({ token: 'token-tablet', package_id: 'a' }, settings, third.fetchFn, now);
+    third.state.wallet = false;
+    third.state.paidAtDoku = true;
+    clock = new Date(clock.getTime() + 30 * 60_000);
+    expect((await handleSweep({ token: 'token-tablet' }, settings, third.fetchFn, now)).body).toMatchObject({ checked: 1, results: [{ id: 'pay-1', status: 'paid' }] });
+  });
+
+  it("checks DOKU's notification against the account the QR was made with", async () => {
+    const PATH = '/functions/v1/doku-notify';
+    const body = JSON.stringify({ order: { invoice_number: 'FS1', amount: 15000.0 }, transaction: { status: 'SUCCESS' } });
+    const signed = (client: string, secret: string): Headers => {
+      const digest = createHash('sha256').update(body).digest('base64');
+      const text = `Client-Id:${client}\nRequest-Id:r-1\nRequest-Timestamp:2026-11-17T05:00:00Z\nRequest-Target:${PATH}\nDigest:${digest}`;
+      return new Headers({ 'Client-Id': client, 'Request-Id': 'r-1', 'Request-Timestamp': '2026-11-17T05:00:00Z', Signature: `HMACSHA256=${createHmac('sha256', secret).update(text).digest('base64')}` });
+    };
+    const { state, fetchFn } = world();
+    const settings = env({ DOKU_ENV_FRANCHISE: '' });
+    // The franchise has an account of its own, with other keys than the platform's.
+    await handleDokuSetup({ action: 'save', ...fields, client_id: 'BRN-FRANCHISE', secret_key: 'rahasia-franchise' }, 'jwt-admin', settings, fetchFn, now);
+
+    // A titip saldo QR, and the franchise goes back to its own account before DOKU's message arrives.
+    state.wallet = true;
+    await handleCreate({ token: 'token-tablet', package_id: 'a' }, settings, fetchFn, now);
+    state.wallet = false;
+    // Signed by the franchise's own account: not the one this QR belongs to.
+    expect((await handleNotify(signed('BRN-FRANCHISE', 'rahasia-franchise'), body, settings, fetchFn, now)).status).toBe(401);
+    expect(state.payment?.status).toBe('pending');
+    expect((await handleNotify(signed(CLIENT, SECRET), body, settings, fetchFn, now)).status).toBe(200);
+    expect(state.payment?.status).toBe('paid');
   });
 
   it('lets the first franchise keep using the server keys until it saves or after it clears its own', async () => {
