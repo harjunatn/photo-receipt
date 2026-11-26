@@ -70,6 +70,9 @@ create table if not exists public.franchises (
   created_at timestamptz not null default now()
 );
 alter table public.franchises add column if not exists ai_enabled boolean not null default false;
+-- Titip saldo: QRIS franchise ini dibayar ke akun DOKU milik platform, dan bersihnya (setelah biaya DOKU dan biaya
+-- platform) dicatat sebagai saldo franchise untuk dicairkan. Hanya superadmin yang menyalakannya.
+alter table public.franchises add column if not exists wallet_enabled boolean not null default false;
 alter table public.franchises add column if not exists ai_monthly_limit int not null default 300 check (ai_monthly_limit between 0 and 100000);
 -- Sebelumnya fitur ini dinyalakan sekaligus untuk semua franchise di Pengaturan platform. Kalau saat itu menyala,
 -- semua franchise yang sudah ada ikut menyala dengan batas yang sama, sekali saja: tandanya di pengaturan
@@ -105,6 +108,15 @@ create table if not exists public.members (
   created_at timestamptz not null default now()
 );
 create index if not exists members_franchise on public.members (franchise_id);
+
+-- Akun keuangan: hanya mengurus pencairan titip saldo (halaman #finance). Bukan superadmin dan bukan admin
+-- franchise, jadi tidak melihat dashboard, transaksi, atau foto franchise mana pun. Dibuat oleh superadmin.
+create table if not exists public.finance_users (
+  user_id uuid primary key references auth.users (id) on delete cascade,
+  -- Password masih buatan superadmin: halaman keuangan meminta menggantinya saat pertama masuk.
+  must_change_password boolean not null default false,
+  created_at timestamptz not null default now()
+);
 
 -- Kunci pembayaran (DOKU) tiap franchise. Hanya Edge Functions yang membaca dan menulisnya.
 create table if not exists public.franchise_secrets (
@@ -194,7 +206,43 @@ create table if not exists public.payments (
   detail jsonb not null default '{}'::jsonb,
   created_at timestamptz not null default now()
 );
+-- Titip saldo: pembayaran yang masuk ke akun DOKU platform, dengan biaya yang berlaku saat QR-nya dibuat,
+-- supaya riwayat lama tidak ikut berubah kalau tarifnya diganti.
+alter table public.payments add column if not exists wallet boolean not null default false;
+alter table public.payments add column if not exists fee_doku int not null default 0;
+alter table public.payments add column if not exists fee_platform int not null default 0;
 create index if not exists payments_franchise on public.payments (franchise_id, created_at desc);
+create index if not exists payments_wallet on public.payments (franchise_id, paid_at desc) where wallet and status = 'paid';
+
+-- Rekening tujuan pencairan saldo satu franchise, diisi admin franchise itu sendiri.
+create table if not exists public.wallet_banks (
+  franchise_id uuid primary key references public.franchises (id) on delete cascade,
+  bank text not null check (length(trim(bank)) between 2 and 40),
+  account_no text not null check (account_no ~ '^[0-9][0-9 .-]{3,28}[0-9]$'),
+  holder text not null check (length(trim(holder)) between 2 and 80),
+  updated_at timestamptz not null default now()
+);
+
+-- Pencairan saldo: diajukan admin franchise, ditransfer manual oleh superadmin atau akun keuangan, lalu ditandai.
+create table if not exists public.payouts (
+  id uuid primary key default gen_random_uuid(),
+  franchise_id uuid not null references public.franchises (id) on delete cascade,
+  amount int not null check (amount > 0),
+  -- requested: menunggu ditransfer · paid: sudah ditransfer · rejected: ditolak (saldonya kembali)
+  status text not null default 'requested' check (status in ('requested', 'paid', 'rejected')),
+  -- Salinan rekening tujuan saat diajukan: { bank, account_no, holder }.
+  bank jsonb not null,
+  requested_by uuid,
+  requested_at timestamptz not null default now(),
+  settled_at timestamptz,
+  settled_by uuid,
+  -- Catatan dari yang mentransfer: nomor bukti transfer, atau alasan penolakan.
+  note text
+);
+-- Siapa yang menandai sudah ditransfer atau menolak: superadmin atau akun keuangan.
+alter table public.payouts add column if not exists settled_by uuid;
+create index if not exists payouts_franchise on public.payouts (franchise_id, requested_at desc);
+create index if not exists payouts_open on public.payouts (requested_at) where status = 'requested';
 create index if not exists payments_device on public.payments (device_id, created_at desc);
 
 create table if not exists public.transactions (
@@ -339,6 +387,14 @@ as $$
   select exists (select 1 from superadmins where user_id = auth.uid());
 $$;
 
+-- Akun keuangan: boleh melihat dan menyelesaikan pengajuan pencairan, tidak lebih.
+create or replace function public.is_finance()
+returns boolean
+language sql stable security definer set search_path = public
+as $$
+  select exists (select 1 from finance_users where user_id = auth.uid());
+$$;
+
 -- Franchise milik akun yang sedang masuk; kosong untuk superadmin dan akun tak dikenal.
 create or replace function public.my_franchise()
 returns uuid
@@ -415,18 +471,21 @@ begin
   return jsonb_build_object(
     'user_id', uid,
     'superadmin', exists (select 1 from superadmins where user_id = uid),
-    'must_change_password', coalesce(m.must_change_password, false),
+    'finance', exists (select 1 from finance_users where user_id = uid),
+    'must_change_password', coalesce(m.must_change_password, false)
+                            or coalesce((select must_change_password from finance_users where user_id = uid), false),
     'franchise', case when f.id is null then null else jsonb_build_object('id', f.id, 'name', f.name) end
   );
 end;
 $$;
 
--- Dipanggil dashboard setelah admin franchise mengganti password buatan superadmin.
+-- Dipanggil dashboard setelah admin franchise atau akun keuangan mengganti password buatan superadmin.
 create or replace function public.password_changed()
 returns void
 language sql security definer set search_path = public
 as $$
   update members set must_change_password = false where user_id = auth.uid();
+  update finance_users set must_change_password = false where user_id = auth.uid();
 $$;
 
 -- ---------------------------------------------------------------- hak akses
@@ -435,6 +494,7 @@ alter table public.platform enable row level security;
 alter table public.superadmins enable row level security;
 alter table public.franchises enable row level security;
 alter table public.members enable row level security;
+alter table public.finance_users enable row level security;
 alter table public.franchise_secrets enable row level security;
 alter table public.devices enable row level security;
 alter table public.transactions enable row level security;
@@ -442,10 +502,13 @@ alter table public.vouchers enable row level security;
 alter table public.payments enable row level security;
 alter table public.shares enable row level security;
 alter table public.ai_edits enable row level security;
+alter table public.wallet_banks enable row level security;
+alter table public.payouts enable row level security;
 alter table public.frames enable row level security;
 
-revoke all on public.platform, public.superadmins, public.franchises, public.members, public.franchise_secrets,
-              public.devices, public.transactions, public.vouchers, public.payments, public.shares, public.frames
+revoke all on public.platform, public.superadmins, public.franchises, public.members, public.finance_users, public.franchise_secrets,
+              public.devices, public.transactions, public.vouchers, public.payments, public.shares, public.frames,
+              public.ai_edits, public.wallet_banks, public.payouts
   from anon, authenticated;
 
 -- Platform: semua akun membaca; hanya superadmin mengubah.
@@ -469,7 +532,7 @@ create policy member_read on public.members for select to authenticated
   using ((select public.is_superadmin()) or user_id = auth.uid());
 grant select on public.members to authenticated;
 
--- superadmins dan franchise_secrets: tanpa policy, jadi hanya lewat fungsi.
+-- superadmins, finance_users dan franchise_secrets: tanpa policy, jadi hanya lewat fungsi.
 
 drop policy if exists tenant_all on public.devices;
 create policy tenant_all on public.devices for all to authenticated
@@ -524,6 +587,17 @@ drop policy if exists tenant_read on public.shares;
 create policy tenant_read on public.shares for select to authenticated
   using ((select public.is_superadmin()) or franchise_id = (select public.my_franchise()));
 grant select on public.shares to authenticated;
+
+-- Rekening dan pencairan dibaca franchise-nya sendiri; yang menulis hanya fungsi wallet_* dan admin_payout_*.
+drop policy if exists tenant_read on public.wallet_banks;
+create policy tenant_read on public.wallet_banks for select to authenticated
+  using ((select public.is_superadmin()) or franchise_id = (select public.my_franchise()));
+grant select on public.wallet_banks to authenticated;
+
+drop policy if exists tenant_read on public.payouts;
+create policy tenant_read on public.payouts for select to authenticated
+  using ((select public.is_superadmin()) or franchise_id = (select public.my_franchise()));
+grant select on public.payouts to authenticated;
 
 drop policy if exists tenant_read on public.ai_edits;
 create policy tenant_read on public.ai_edits for select to authenticated
@@ -832,11 +906,13 @@ grant execute on function public.device_save_settings(text, jsonb) to anon, auth
 -- ---------------------------------------------------------------- fungsi untuk dashboard
 
 revoke execute on function public.is_superadmin() from public, anon;
+revoke execute on function public.is_finance() from public, anon;
 revoke execute on function public.my_franchise() from public, anon;
 revoke execute on function public.can_access(uuid) from public, anon;
 revoke execute on function public.whoami() from public, anon;
 revoke execute on function public.password_changed() from public, anon;
 grant execute on function public.is_superadmin() to authenticated;
+grant execute on function public.is_finance() to authenticated;
 grant execute on function public.my_franchise() to authenticated;
 grant execute on function public.can_access(uuid) to authenticated;
 grant execute on function public.whoami() to authenticated;
@@ -861,7 +937,9 @@ begin
   return jsonb_build_object(
     'id', f.id, 'name', f.name, 'active', f.active, 'paid_until', f.paid_until, 'grace_days', grace,
     'state', franchise_state(f.active, f.paid_until, grace),
-    'today', (now() at time zone 'Asia/Jakarta')::date
+    'today', (now() at time zone 'Asia/Jakarta')::date,
+    -- Menu Dompet tampil selama titip saldo menyala, atau masih ada riwayatnya.
+    'wallet', f.wallet_enabled or exists (select 1 from payments p where p.franchise_id = f.id and p.wallet)
   );
 end;
 $$;
@@ -962,6 +1040,7 @@ begin
       'id', f.id, 'name', f.name, 'active', f.active, 'paid_until', f.paid_until, 'note', f.note,
       'state', franchise_state(f.active, f.paid_until, grace), 'created_at', f.created_at,
       'ai_enabled', f.ai_enabled, 'ai_monthly_limit', f.ai_monthly_limit,
+      'wallet_enabled', f.wallet_enabled, 'wallet_available', wallet_available(f.id),
       'ai_month', (select count(*) from ai_edits e where e.franchise_id = f.id and e.status = 'done'
                     and e.created_at >= date_trunc('month', now() at time zone 'Asia/Jakarta') at time zone 'Asia/Jakarta'),
       'devices', (select count(*) from devices d where d.franchise_id = f.id),
@@ -1059,7 +1138,7 @@ as $$
   );
 $$;
 
--- Akun dengan email ini, kalau sudah ada: id-nya, dan apakah sudah terpakai (superadmin atau admin franchise lain).
+-- Akun dengan email ini, kalau sudah ada: id-nya, dan apakah sudah terpakai (superadmin, akun keuangan, atau admin franchise).
 create or replace function public.svc_user_by_email(p_email text)
 returns jsonb
 language sql stable security definer set search_path = public
@@ -1068,6 +1147,7 @@ as $$
     select jsonb_build_object(
       'user_id', u.id,
       'superadmin', exists (select 1 from superadmins s where s.user_id = u.id),
+      'finance', exists (select 1 from finance_users x where x.user_id = u.id),
       'franchise_id', (select m.franchise_id from members m where m.user_id = u.id)
     )
     from auth.users u where lower(u.email) = lower(trim(p_email))
@@ -1082,6 +1162,10 @@ as $$
 begin
   if not exists (select 1 from franchises where id = p_franchise) then
     return jsonb_build_object('error', 'not-found');
+  end if;
+  -- Satu akun satu peran: akun keuangan tidak sekaligus menjadi admin franchise.
+  if exists (select 1 from finance_users where user_id = p_user) then
+    return jsonb_build_object('error', 'taken');
   end if;
   insert into members (user_id, franchise_id, must_change_password)
   values (p_user, p_franchise, coalesce(p_temp, false))
@@ -1100,8 +1184,39 @@ language sql stable security definer set search_path = public
 as $$
   select jsonb_build_object(
     'franchise_id', (select franchise_id from members where user_id = p_user),
-    'superadmin', exists (select 1 from superadmins where user_id = p_user)
+    'superadmin', exists (select 1 from superadmins where user_id = p_user),
+    'finance', exists (select 1 from finance_users where user_id = p_user)
   );
+$$;
+
+-- Akun keuangan: satu akun satu peran, jadi tidak untuk superadmin atau admin franchise.
+create or replace function public.svc_finance_add(p_user uuid, p_temp boolean)
+returns jsonb
+language plpgsql security definer set search_path = public
+as $$
+begin
+  if exists (select 1 from superadmins where user_id = p_user) or exists (select 1 from members where user_id = p_user) then
+    return jsonb_build_object('error', 'taken');
+  end if;
+  insert into finance_users (user_id, must_change_password)
+  values (p_user, coalesce(p_temp, false))
+  on conflict (user_id) do nothing;
+  return jsonb_build_object('ok', true);
+end;
+$$;
+
+create or replace function public.svc_finance_flag(p_user uuid, p_temp boolean)
+returns void
+language sql security definer set search_path = public
+as $$
+  update finance_users set must_change_password = coalesce(p_temp, false) where user_id = p_user;
+$$;
+
+create or replace function public.svc_finance_remove(p_user uuid)
+returns void
+language sql security definer set search_path = public
+as $$
+  delete from finance_users where user_id = p_user;
 $$;
 
 create or replace function public.svc_member_flag(p_user uuid, p_temp boolean)
@@ -1147,7 +1262,9 @@ as $$
   select coalesce((
     select jsonb_build_object('doku', s.doku, 'sealed', s.doku_sealed, 'updated_at', s.updated_at)
     from franchise_secrets s where s.franchise_id = p_franchise
-  ), '{}'::jsonb);
+  ), '{}'::jsonb)
+  -- Titip saldo: franchise ini memakai akun DOKU platform, apa pun kunci yang pernah disimpannya.
+  || jsonb_build_object('wallet', coalesce((select f.wallet_enabled from franchises f where f.id = p_franchise), false));
 $$;
 
 create or replace function public.svc_doku_save(p_franchise uuid, p_doku jsonb, p_sealed text)
@@ -1174,6 +1291,7 @@ begin
   foreach fn in array array[
     'svc_is_superadmin(uuid)', 'svc_can_access(uuid, uuid)', 'svc_user_by_email(text)', 'svc_member_add(uuid, uuid, boolean)',
     'svc_member_of(uuid)', 'svc_member_flag(uuid, boolean)', 'svc_member_remove(uuid)',
+    'svc_finance_add(uuid, boolean)', 'svc_finance_flag(uuid, boolean)', 'svc_finance_remove(uuid)',
     'svc_franchise_members(uuid)', 'svc_franchise_delete(uuid)',
     'svc_doku_get(uuid)', 'svc_doku_save(uuid, jsonb, text)', 'svc_doku_clear(uuid)'
   ] loop
@@ -1201,6 +1319,9 @@ declare
   pkg jsonb;
   price int;
   p payments;
+  fee record;
+  cut_doku int := 0;
+  cut_platform int := 0;
 begin
   select * into d from devices where token_hash = token_hash(p_token) and active;
   if not found then
@@ -1227,9 +1348,16 @@ begin
   if (select count(*) from payments where device_id = d.id and created_at > now() - interval '10 minutes') >= 30 then
     return jsonb_build_object('error', 'too-many');
   end if;
-  insert into payments (franchise_id, device_id, device_name, package_id, package_name, amount, partner_ref)
+  if f.wallet_enabled then
+    select * into fee from wallet_fees();
+    cut_doku := fee.doku_fee;
+    -- Biaya platform tidak pernah membuat bagian franchise lebih kecil daripada yang tersisa setelah biaya DOKU.
+    cut_platform := least(fee.platform_fee, greatest(price - fee.doku_fee, 0));
+  end if;
+  insert into payments (franchise_id, device_id, device_name, package_id, package_name, amount, partner_ref, wallet, fee_doku, fee_platform)
   values (d.franchise_id, d.id, d.name, p_package_id, left(pkg ->> 'name', 80), price,
-          'FS' || to_char(now() at time zone 'Asia/Jakarta', 'YYMMDDHH24MISS') || upper(substr(replace(gen_random_uuid()::text, '-', ''), 1, 10)))
+          'FS' || to_char(now() at time zone 'Asia/Jakarta', 'YYMMDDHH24MISS') || upper(substr(replace(gen_random_uuid()::text, '-', ''), 1, 10)),
+          f.wallet_enabled, cut_doku, cut_platform)
   returning * into p;
   return jsonb_build_object('id', p.id, 'amount', p.amount, 'partner_ref', p.partner_ref, 'franchise_id', p.franchise_id,
                             'device_name', p.device_name, 'package_name', p.package_name);
@@ -1584,3 +1712,256 @@ revoke execute on function public.ai_usage() from public, anon;
 grant execute on function public.share_ai_begin(text, text, text) to service_role;
 grant execute on function public.share_ai_finish(uuid, boolean, jsonb, text) to service_role;
 grant execute on function public.ai_usage() to authenticated;
+
+-- ---------------------------------------------------------------- titip saldo
+
+-- Tarif titip saldo dari Pengaturan platform: biaya DOKU per transaksi, biaya platform per transaksi, dan jarak
+-- paling pendek antara dua pengajuan pencairan (hari).
+create or replace function public.wallet_fees()
+returns table (doku_fee int, platform_fee int, payout_days int)
+language sql stable security definer set search_path = public
+as $$
+  select
+    case when (config #>> '{wallet,dokuFee}') ~ '^[0-9]{1,6}$' then (config #>> '{wallet,dokuFee}')::int else 500 end,
+    case when (config #>> '{wallet,platformFee}') ~ '^[0-9]{1,6}$' then (config #>> '{wallet,platformFee}')::int else 200 end,
+    case when (config #>> '{wallet,payoutDays}') ~ '^[0-9]{1,3}$' then (config #>> '{wallet,payoutDays}')::int else 7 end
+  from platform where id = 1;
+$$;
+
+-- Saldo yang bisa dicairkan: bersih dari semua QRIS lunas lewat platform, dikurangi pencairan yang sudah dibayar
+-- atau sedang diajukan. Pencairan yang ditolak tidak mengurangi.
+create or replace function public.wallet_available(p_franchise uuid)
+returns bigint
+language sql stable security definer set search_path = public
+as $$
+  select coalesce((select sum(amount - fee_doku - fee_platform) from payments
+                    where franchise_id = p_franchise and wallet and status = 'paid'), 0)
+       - coalesce((select sum(amount) from payouts
+                    where franchise_id = p_franchise and status in ('requested', 'paid')), 0);
+$$;
+
+-- Ringkasan dompet satu franchise, untuk admin franchise itu dan superadmin.
+create or replace function public.wallet_summary(p_franchise uuid)
+returns jsonb
+language plpgsql stable security definer set search_path = public
+as $$
+declare
+  f franchises;
+  fee record;
+  last_at timestamptz;
+begin
+  if not can_access(p_franchise) then
+    return jsonb_build_object('error', 'forbidden');
+  end if;
+  select * into f from franchises where id = p_franchise;
+  if not found then
+    return jsonb_build_object('error', 'not-found');
+  end if;
+  select * into fee from wallet_fees();
+  -- Pengajuan yang ditolak tidak dihitung sebagai giliran yang sudah dipakai.
+  select max(requested_at) into last_at from payouts where franchise_id = p_franchise and status <> 'rejected';
+  return jsonb_build_object(
+    'enabled', f.wallet_enabled,
+    'doku_fee', fee.doku_fee, 'platform_fee', fee.platform_fee, 'payout_days', fee.payout_days,
+    'transactions', (select count(*) from payments where franchise_id = p_franchise and wallet and status = 'paid'),
+    'gross', coalesce((select sum(amount) from payments where franchise_id = p_franchise and wallet and status = 'paid'), 0),
+    'fees_doku', coalesce((select sum(fee_doku) from payments where franchise_id = p_franchise and wallet and status = 'paid'), 0),
+    'fees_platform', coalesce((select sum(fee_platform) from payments where franchise_id = p_franchise and wallet and status = 'paid'), 0),
+    'paid_out', coalesce((select sum(amount) from payouts where franchise_id = p_franchise and status = 'paid'), 0),
+    'pending', coalesce((select sum(amount) from payouts where franchise_id = p_franchise and status = 'requested'), 0),
+    'available', wallet_available(p_franchise),
+    'next_request_at', case when last_at is null then null else last_at + make_interval(days => fee.payout_days) end,
+    'bank', (select jsonb_build_object('bank', b.bank, 'account_no', b.account_no, 'holder', b.holder) from wallet_banks b where b.franchise_id = p_franchise)
+  );
+end;
+$$;
+
+-- Admin franchise mengisi atau mengganti rekening tujuan pencairannya.
+create or replace function public.wallet_save_bank(p_franchise uuid, p_bank text, p_account_no text, p_holder text)
+returns jsonb
+language plpgsql security definer set search_path = public
+as $$
+begin
+  if not can_access(p_franchise) then
+    return jsonb_build_object('error', 'forbidden');
+  end if;
+  if length(trim(coalesce(p_bank, ''))) not between 2 and 40
+     or coalesce(trim(p_account_no), '') !~ '^[0-9][0-9 .-]{3,28}[0-9]$'
+     or length(trim(coalesce(p_holder, ''))) not between 2 and 80 then
+    return jsonb_build_object('error', 'bad-request');
+  end if;
+  insert into wallet_banks (franchise_id, bank, account_no, holder, updated_at)
+  values (p_franchise, trim(p_bank), trim(p_account_no), trim(p_holder), now())
+  on conflict (franchise_id) do update set bank = excluded.bank, account_no = excluded.account_no, holder = excluded.holder, updated_at = now();
+  return jsonb_build_object('ok', true);
+end;
+$$;
+
+-- Admin franchise mengajukan pencairan. Satu pengajuan pada satu waktu, paling sering sekali tiap payout_days hari,
+-- dan tidak lebih dari saldo yang tersedia.
+--   no-bank    rekening tujuan belum diisi
+--   pending    masih ada pengajuan yang belum ditransfer
+--   too-soon   belum waktunya (lihat next_request_at)
+--   amount     jumlahnya nol, atau lebih dari saldo
+create or replace function public.wallet_request(p_franchise uuid, p_amount int)
+returns jsonb
+language plpgsql security definer set search_path = public
+as $$
+declare
+  f franchises;
+  b wallet_banks;
+  fee record;
+  last_at timestamptz;
+  available bigint;
+  new_id uuid;
+begin
+  if not can_access(p_franchise) then
+    return jsonb_build_object('error', 'forbidden');
+  end if;
+  -- Baris franchise dikunci, supaya dua pengajuan bersamaan tidak sama-sama lolos.
+  select * into f from franchises where id = p_franchise for update;
+  if not found then
+    return jsonb_build_object('error', 'not-found');
+  end if;
+  select * into b from wallet_banks where franchise_id = p_franchise;
+  if not found then
+    return jsonb_build_object('error', 'no-bank');
+  end if;
+  if exists (select 1 from payouts where franchise_id = p_franchise and status = 'requested') then
+    return jsonb_build_object('error', 'pending');
+  end if;
+  select * into fee from wallet_fees();
+  select max(requested_at) into last_at from payouts where franchise_id = p_franchise and status <> 'rejected';
+  if last_at is not null and last_at + make_interval(days => fee.payout_days) > now() then
+    return jsonb_build_object('error', 'too-soon', 'next_request_at', last_at + make_interval(days => fee.payout_days));
+  end if;
+  available := wallet_available(p_franchise);
+  if p_amount is null or p_amount <= 0 or p_amount > available then
+    return jsonb_build_object('error', 'amount', 'available', available);
+  end if;
+  insert into payouts (franchise_id, amount, bank, requested_by)
+  values (p_franchise, p_amount, jsonb_build_object('bank', b.bank, 'account_no', b.account_no, 'holder', b.holder), auth.uid())
+  returning id into new_id;
+  return jsonb_build_object('ok', true, 'id', new_id);
+end;
+$$;
+
+-- Untuk superadmin dan akun keuangan: pengajuan pencairan (yang menunggu lebih dulu), saldo tiap franchise titip
+-- saldo, dan pendapatan biaya platform.
+create or replace function public.admin_payouts()
+returns jsonb
+language plpgsql stable security definer set search_path = public
+as $$
+begin
+  if not (is_superadmin() or is_finance()) then
+    return jsonb_build_object('error', 'forbidden');
+  end if;
+  return jsonb_build_object(
+    'requests', coalesce((
+      select jsonb_agg(to_jsonb(x) order by x.open desc, x.requested_at desc)
+      from (
+        select p.id, p.franchise_id, f.name as franchise, p.amount, p.status, p.bank, p.requested_at, p.settled_at, p.note,
+               (select u.email from auth.users u where u.id = p.settled_by) as settled_by,
+               (p.status = 'requested') as open
+        from payouts p join franchises f on f.id = p.franchise_id
+        order by (p.status = 'requested') desc, p.requested_at desc
+        limit 200
+      ) x
+    ), '[]'::jsonb),
+    'wallets', coalesce((
+      select jsonb_agg(jsonb_build_object(
+        'id', f.id, 'name', f.name, 'enabled', f.wallet_enabled,
+        'available', wallet_available(f.id),
+        'pending', coalesce((select sum(amount) from payouts where franchise_id = f.id and status = 'requested'), 0),
+        'paid_out', coalesce((select sum(amount) from payouts where franchise_id = f.id and status = 'paid'), 0)
+      ) order by f.name)
+      from franchises f
+      where f.wallet_enabled or exists (select 1 from payments p where p.franchise_id = f.id and p.wallet)
+    ), '[]'::jsonb),
+    'platform_fees', coalesce((select sum(fee_platform) from payments where wallet and status = 'paid'), 0),
+    'doku_fees', coalesce((select sum(fee_doku) from payments where wallet and status = 'paid'), 0),
+    'held', coalesce((select sum(amount - fee_doku - fee_platform) from payments where wallet and status = 'paid'), 0)
+          - coalesce((select sum(amount) from payouts where status = 'paid'), 0)
+  );
+end;
+$$;
+
+-- Superadmin atau akun keuangan menandai satu pengajuan: sudah ditransfer, atau ditolak (saldonya kembali tersedia).
+create or replace function public.admin_payout_settle(p_id uuid, p_paid boolean, p_note text default null)
+returns jsonb
+language plpgsql security definer set search_path = public
+as $$
+begin
+  if not (is_superadmin() or is_finance()) then
+    return jsonb_build_object('error', 'forbidden');
+  end if;
+  if p_paid is null then
+    return jsonb_build_object('error', 'bad-request');
+  end if;
+  update payouts
+    set status = case when p_paid then 'paid' else 'rejected' end, settled_at = now(), settled_by = auth.uid(),
+        note = nullif(left(trim(coalesce(p_note, '')), 200), '')
+    where id = p_id and status = 'requested';
+  if not found then
+    return jsonb_build_object('error', 'not-found');
+  end if;
+  return jsonb_build_object('ok', true);
+end;
+$$;
+
+-- Superadmin menyalakan atau mematikan titip saldo untuk satu franchise.
+create or replace function public.admin_franchise_wallet(p_franchise uuid, p_enabled boolean)
+returns jsonb
+language plpgsql security definer set search_path = public
+as $$
+begin
+  if not is_superadmin() then
+    return jsonb_build_object('error', 'forbidden');
+  end if;
+  if p_enabled is null then
+    return jsonb_build_object('error', 'bad-request');
+  end if;
+  update franchises set wallet_enabled = p_enabled where id = p_franchise;
+  if not found then
+    return jsonb_build_object('error', 'not-found');
+  end if;
+  return jsonb_build_object('ok', true);
+end;
+$$;
+
+-- Akun keuangan yang ada, dengan emailnya. Hanya superadmin yang melihat dan mengaturnya.
+create or replace function public.admin_finance()
+returns jsonb
+language plpgsql stable security definer set search_path = public
+as $$
+begin
+  if not is_superadmin() then
+    return jsonb_build_object('error', 'forbidden');
+  end if;
+  return jsonb_build_object('users', coalesce((
+    select jsonb_agg(jsonb_build_object('user_id', x.user_id, 'email', u.email, 'created_at', x.created_at,
+                                        'last_sign_in_at', u.last_sign_in_at, 'must_change_password', x.must_change_password)
+                     order by x.created_at)
+    from finance_users x join auth.users u on u.id = x.user_id
+  ), '[]'::jsonb));
+end;
+$$;
+
+revoke execute on function public.admin_finance() from public, anon;
+grant execute on function public.admin_finance() to authenticated;
+revoke execute on function public.wallet_fees() from public, anon, authenticated;
+revoke execute on function public.wallet_available(uuid) from public, anon, authenticated;
+revoke execute on function public.wallet_summary(uuid) from public, anon;
+revoke execute on function public.wallet_save_bank(uuid, text, text, text) from public, anon;
+revoke execute on function public.wallet_request(uuid, int) from public, anon;
+revoke execute on function public.admin_payouts() from public, anon;
+revoke execute on function public.admin_payout_settle(uuid, boolean, text) from public, anon;
+revoke execute on function public.admin_franchise_wallet(uuid, boolean) from public, anon;
+grant execute on function public.wallet_fees() to service_role;
+grant execute on function public.wallet_available(uuid) to service_role;
+grant execute on function public.wallet_summary(uuid) to authenticated;
+grant execute on function public.wallet_save_bank(uuid, text, text, text) to authenticated;
+grant execute on function public.wallet_request(uuid, int) to authenticated;
+grant execute on function public.admin_payouts() to authenticated;
+grant execute on function public.admin_payout_settle(uuid, boolean, text) to authenticated;
+grant execute on function public.admin_franchise_wallet(uuid, boolean) to authenticated;

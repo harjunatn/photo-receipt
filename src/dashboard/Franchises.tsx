@@ -1,9 +1,10 @@
 import { useEffect, useState } from 'preact/hooks';
-import { addDays } from '../lib/cloud/shared';
+import { addDays, appLinks, handoverText } from '../lib/cloud/shared';
 import { formatRupiah } from '../lib/settings';
-import { Overlay, toast } from '../ui/components';
+import { toast } from '../ui/components';
 import { newTempPassword, type AdminApi, type FranchiseRow, type MemberRow, type SubscriptionState } from './api';
 import type { AdminPageProps } from './Dashboard';
+import { HandoverDialog, type Handover } from './Handover';
 import { addMonths, extendFrom } from './stats';
 import { CardFlow } from '../ui/CardFlow';
 import { costRange } from './PlatformSettings';
@@ -11,12 +12,6 @@ import { LoadState, PageHead, Tile, ago, dateOnly, dateTime, describe, useLoad }
 
 const STATE_LABEL: Record<SubscriptionState, string> = { active: 'Aktif', grace: 'Masa tenggang', expired: 'Langganan berakhir', suspended: 'Dihentikan' };
 const STATE_TAG: Record<SubscriptionState, string> = { active: 'ok', grace: 'warn', expired: 'err', suspended: 'err' };
-
-/** A password to hand over, shown once so the platform owner can pass it on. */
-interface Handover {
-  email: string;
-  password: string;
-}
 
 /** The platform owner's list of franchises: who they are, whether they have paid, and how their booths are doing. */
 export function Franchises({ admin, current, open, changed }: AdminPageProps) {
@@ -118,6 +113,7 @@ export function Franchises({ admin, current, open, changed }: AdminPageProps) {
               <h2 class="grow">{row.name}</h2>
               {current?.id === row.id && <span class="tag">Sedang dibuka</span>}
               {row.ai_enabled && <span class="tag">AI</span>}
+              {row.wallet_enabled && <span class="tag">Titip saldo</span>}
               <span class={`tag ${STATE_TAG[row.state]}`}>{STATE_LABEL[row.state]}</span>
             </div>
             <dl class="facts">
@@ -149,6 +145,14 @@ export function Franchises({ admin, current, open, changed }: AdminPageProps) {
                     : 'Tidak aktif'}
                 </dd>
               </div>
+              {(row.wallet_enabled || row.wallet_available !== 0) && (
+                <div style={{ gridColumn: '1 / -1' }}>
+                  <dt>Dompet titip saldo</dt>
+                  <dd>
+                    {formatRupiah(row.wallet_available)} belum dicairkan{row.wallet_enabled ? '' : ' · titip saldo dimatikan'}
+                  </dd>
+                </div>
+              )}
             </dl>
             {row.note && <p class="hint">Catatan: {row.note}</p>}
             <div class="row">
@@ -182,39 +186,17 @@ export function Franchises({ admin, current, open, changed }: AdminPageProps) {
       </div>
 
       {handover && (
-        <Overlay>
-          <div class="card dialog">
-            <h2 class="heading small">Password sementara</h2>
-            <p class="lead">Berikan ke admin franchise. Saat pertama masuk, ia diminta membuat password sendiri.</p>
-            <dl class="facts">
-              <div>
-                <dt>Email</dt>
-                <dd>{handover.email}</dd>
-              </div>
-              <div>
-                <dt>Password</dt>
-                <dd class="mono">{handover.password}</dd>
-              </div>
-            </dl>
-            <p class="hint">Password ini tidak bisa ditampilkan lagi setelah jendela ini ditutup. Kalau hilang, buat password baru.</p>
-            <div class="row center">
-              <button
-                class="btn small"
-                onClick={() =>
-                  void navigator.clipboard
-                    .writeText(`Email: ${handover.email}\nPassword sementara: ${handover.password}`)
-                    .then(() => toast('Disalin.'))
-                    .catch(() => toast('Browser tidak mengizinkan menyalin.'))
-                }
-              >
-                Salin
-              </button>
-              <button class="btn small primary" onClick={() => setHandover(null)}>
-                Sudah kucatat
-              </button>
-            </div>
-          </div>
-        </Overlay>
+        <HandoverDialog
+          handover={handover}
+          who="admin franchise"
+          links={[
+            { label: 'Dashboard', url: appLinks().dashboard },
+            { label: 'Aplikasi booth (di tablet)', url: appLinks().app },
+          ]}
+          text={handoverText(handover, appLinks())}
+          copied="Disalin: email, password, dan kedua tautan."
+          onClose={() => setHandover(null)}
+        />
       )}
     </>
   );
@@ -237,6 +219,8 @@ function FranchiseEditor(props: {
   // The AI version of a photo is sold per franchise: its own switch and monthly limit, saved on their own.
   const [aiOn, setAiOn] = useState(row.ai_enabled);
   const [aiLimit, setAiLimit] = useState(String(row.ai_monthly_limit));
+  // Titip saldo: this franchise's QRIS goes through the platform's own DOKU account.
+  const [walletOn, setWalletOn] = useState(row.wallet_enabled);
   const [busy, setBusy] = useState(false);
   const [email, setEmail] = useState('');
   const [confirmDelete, setConfirmDelete] = useState('');
@@ -255,6 +239,10 @@ function FranchiseEditor(props: {
     setAiOn(row.ai_enabled);
     setAiLimit(String(row.ai_monthly_limit));
   }, [row.ai_enabled, row.ai_monthly_limit]);
+
+  useEffect(() => {
+    setWalletOn(row.wallet_enabled);
+  }, [row.wallet_enabled]);
 
   const limit = Number(aiLimit);
   const limitValid = aiLimit.trim() !== '' && Number.isInteger(limit) && limit >= 0 && limit <= 100_000;
@@ -284,6 +272,12 @@ function FranchiseEditor(props: {
       await admin.setFranchiseAi(row.id, aiOn, limit);
       props.onSaved({ id: row.id, name: row.name });
     }, aiOn ? 'Disimpan. Tablet franchise ini mengikutinya dalam satu-dua menit.' : 'Disimpan.');
+
+  const saveWallet = () =>
+    run(async () => {
+      await admin.setFranchiseWallet(row.id, walletOn);
+      props.onSaved({ id: row.id, name: row.name });
+    }, walletOn ? 'Disimpan. QRIS franchise ini sekarang lewat akun DOKU platform.' : 'Disimpan. QRIS baru tidak lagi masuk ke dompet.');
 
   const addMember = (event: Event) => {
     event.preventDefault();
@@ -384,6 +378,30 @@ function FranchiseEditor(props: {
         <div class="row">
           <button class="btn small primary" disabled={busy || !aiDirty || !limitValid} onClick={() => void saveAi()}>
             {aiDirty ? 'Simpan' : 'Tersimpan'}
+          </button>
+        </div>
+      </div>
+
+      <div class="panel" style={{ boxShadow: 'none' }}>
+        <h2>Titip saldo</h2>
+        <p class="hint">
+          Untuk franchise yang tidak punya QRIS sendiri: tamunya membayar ke akun DOKU platform, uangnya dicatat di menu <b>Dompet</b>{' '}
+          franchise itu setelah dipotong biaya per transaksi, lalu dicairkan lewat menu <b>Pencairan</b>.
+        </p>
+        <label class="check">
+          <input type="checkbox" checked={walletOn} onChange={(event) => setWalletOn(event.currentTarget.checked)} />
+          <span>
+            QRIS lewat akun platform
+            <small>
+              Selama menyala, kunci DOKU milik franchise ini (kalau ada) tidak dipakai. Kalau dimatikan, QRIS baru kembali memakai kunci
+              franchise sendiri; saldo yang sudah terkumpul tetap bisa dicairkan.
+            </small>
+          </span>
+        </label>
+        {row.wallet_available !== 0 && <p class="hint">Saldo yang belum dicairkan: {formatRupiah(row.wallet_available)}.</p>}
+        <div class="row">
+          <button class="btn small primary" disabled={busy || walletOn === row.wallet_enabled} onClick={() => void saveWallet()}>
+            {walletOn === row.wallet_enabled ? 'Tersimpan' : 'Simpan'}
           </button>
         </div>
       </div>

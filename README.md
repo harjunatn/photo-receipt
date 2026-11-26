@@ -183,7 +183,8 @@ franchise sebelumnya. Yang diatur di tablet itu sendiri (printer, sesi, teks str
 ### Franchise dan langganan
 
 - **Menambah franchise:** menu **Franchise** → isi nama dan email adminnya → **Tambah franchise**. Password sementara
-  untuk admin itu ditampilkan sekali; berikan kepadanya. Saat pertama masuk ia diminta membuat password sendiri. Satu
+  untuk admin itu ditampilkan sekali; **Salin semua** menyalin email, password, tautan dashboard, dan tautan aplikasi
+  booth sekaligus, siap ditempel ke pesan untuknya. Saat pertama masuk ia diminta membuat password sendiri. Satu
   franchise boleh punya beberapa akun admin (tombol **Atur**). Lupa password: buat **Password baru** dari sana.
 - **Menghapus franchise** (Atur → Hapus franchise) menghapus semua datanya beserta login admin-adminnya.
 - **Batas per franchise:** 200 perangkat, 20 frame buatan sendiri, 20.000 voucher, supaya satu franchise tidak bisa
@@ -569,6 +570,38 @@ Yang perlu diketahui:
   QRIS manual selalu **Berhasil**.
 - Kalau QR gagal dibuat, pesan dari DOKU tersimpan di kolom `detail` tabel `payments` dan di log fungsi
   (Supabase → Edge Functions → `qris-create` → Logs).
+
+### Titip saldo: QRIS franchise lewat akun DOKU platform
+
+Untuk franchise yang tidak punya QRIS sendiri dan tidak mau menerima tunai. Tamunya membayar ke akun DOKU milik pemilik
+platform (kunci `DOKU_*` di Secrets fungsi), uangnya dicatat sebagai saldo franchise itu, lalu dicairkan dengan transfer
+manual.
+
+- **Menyalakan**: superadmin → **Franchise → Atur → Titip saldo → QRIS lewat akun platform**. Di dashboard franchise itu
+  lalu muncul menu **Dompet**, dan bagian Akun DOKU di Pengaturan berganti menjadi keterangan "QRIS lewat platform".
+  Franchise tetap perlu menyalakan **Pengaturan → Cara bayar → QRIS → Otomatis (DOKU)**.
+- **Potongan**: tiap QRIS yang lunas dipotong biaya DOKU (bawaan Rp500) dan biaya platform (bawaan Rp200); sisanya masuk
+  ke dompet. Kedua biaya dan jarak antar pencairan (bawaan 7 hari) diatur di **Pengaturan platform → Titip saldo** dan
+  sama untuk semua franchise. Biayanya dicatat pada tiap pembayaran saat QR dibuat, jadi mengubah tarif tidak mengubah
+  transaksi yang sudah ada.
+- **Dompet** (franchise): saldo tersedia, yang sedang diajukan, yang sudah dicairkan, daftar QRIS masuk dengan
+  potongannya, dan riwayat pencairan. Franchise mengisi rekening tujuan, lalu mengajukan pencairan: satu pengajuan pada
+  satu waktu, paling sering sekali tiap jarak yang diatur, tidak melebihi saldo.
+- **Pencairan** (superadmin): pengajuan yang menunggu, lengkap dengan rekening dan tombol salin. Setelah mentransfer dari
+  rekeningmu, tekan **Tandai sudah ditransfer** (boleh dengan catatan, misalnya nomor referensi). **Tolak** mengembalikan
+  jumlahnya ke saldo franchise. Halaman ini juga menampilkan saldo tiap franchise, uang franchise yang masih ada padamu,
+  dan biaya platform yang terkumpul.
+- **Akun keuangan**: supaya orang yang mengurus pencairan tidak perlu akses superadmin. Superadmin membuatnya di
+  **Pencairan → Akun keuangan** (email, lalu password sementara dan tautannya lewat **Salin semua**). Akun itu masuk di
+  `https://<alamat-aplikasi>/#finance` dan hanya mendapat halaman Pencairan: pengajuan, rekening tujuan, saldo tiap
+  franchise, dan tombol tandai/tolak. Ia tidak bisa membuka dashboard, transaksi, foto, atau pengaturan franchise mana
+  pun, tidak bisa mengubah biaya, dan tidak bisa menyalakan titip saldo; database menolaknya, bukan hanya menunya yang
+  disembunyikan. Satu email satu peran: superadmin, admin franchise, atau keuangan. Riwayat pencairan mencatat siapa
+  yang menandai tiap pengajuan (kolom **Oleh**).
+- Tunai, voucher, dan QRIS manual tidak lewat dompet. Mematikan titip saldo menghentikan QRIS baru masuk ke dompet; saldo
+  yang sudah ada tetap bisa dicairkan.
+- Aplikasi ini hanya mencatat: uangnya sendiri berpindah lewat DOKU (ke rekeningmu) dan lewat transfer manualmu (ke
+  franchise). Pastikan perjanjianmu dengan DOKU mengizinkan menerima pembayaran untuk usaha lain.
 
 ## Yang belum ada
 

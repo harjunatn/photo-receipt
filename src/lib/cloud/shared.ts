@@ -37,7 +37,18 @@ export interface PlatformConfig {
   receiptLine: string;
   /** Days a booth keeps running after its franchise's subscription ran out. */
   graceDays: number;
+  /** Titip saldo: franchises whose QRIS is paid into the platform's own DOKU account. */
+  wallet: {
+    /** What DOKU takes from every payment, in rupiah. */
+    dokuFee: number;
+    /** What the platform keeps from every payment, in rupiah. */
+    platformFee: number;
+    /** A franchise may ask for a payout at most once in this many days. */
+    payoutDays: number;
+  };
 }
+
+export const DEFAULT_WALLET = { dokuFee: 500, platformFee: 200, payoutDays: 7 };
 
 /**
  * What one AI version of a photo costs the platform owner, in rupiah: from Google's price for the picture alone
@@ -52,6 +63,7 @@ export const DEFAULT_PLATFORM: PlatformConfig = {
   watermark: DEFAULT_SETTINGS.platform.watermark,
   receiptLine: DEFAULT_SETTINGS.platform.receiptLine,
   graceDays: 7,
+  wallet: { ...DEFAULT_WALLET },
 };
 
 /** Fills the gaps of saved platform settings, e.g. before the owner has saved any. */
@@ -59,11 +71,18 @@ export function completePlatform(saved: unknown): PlatformConfig {
   const source = isObject(saved) ? saved : {};
   const line = (value: unknown, fallback: string, max: number) => (typeof value === 'string' ? value.trim().slice(0, max) : fallback);
   const days = Number(source.graceDays);
+  const wallet = isObject(source.wallet) ? source.wallet : {};
+  const whole = (value: unknown, fallback: number, max: number) => (Number.isInteger(value) && (value as number) >= 0 && (value as number) <= max ? (value as number) : fallback);
   return {
     name: line(source.name, DEFAULT_PLATFORM.name, 40) || DEFAULT_PLATFORM.name,
     watermark: line(source.watermark, DEFAULT_PLATFORM.watermark, 60),
     receiptLine: line(source.receiptLine, DEFAULT_PLATFORM.receiptLine, 40),
     graceDays: Number.isInteger(days) && days >= 0 && days <= 60 ? days : DEFAULT_PLATFORM.graceDays,
+    wallet: {
+      dokuFee: whole(wallet.dokuFee, DEFAULT_WALLET.dokuFee, 100_000),
+      platformFee: whole(wallet.platformFee, DEFAULT_WALLET.platformFee, 100_000),
+      payoutDays: whole(wallet.payoutDays, DEFAULT_WALLET.payoutDays, 365),
+    },
   };
 }
 
@@ -257,4 +276,40 @@ export function newShareCode(): string {
 /** The page a guest opens by scanning the QR code on the receipt. */
 export function shareUrl(code: string, base: { origin: string; pathname: string } = location): string {
   return `${base.origin}${base.pathname}#s/${code}`;
+}
+
+/**
+ * Where the booth app and the dashboard open, taken from the address this page
+ * itself was opened at, so the links are right on any domain the app runs on.
+ */
+export function appLinks(base: { origin: string; pathname: string } = location): { app: string; dashboard: string; finance: string } {
+  const root = `${base.origin}${base.pathname}`;
+  return { app: root, dashboard: `${root}#dashboard`, finance: `${root}#finance` };
+}
+
+/**
+ * What the platform owner pastes to a new franchise admin: where to sign in,
+ * with what, and where the booth app opens on the tablet.
+ */
+export function handoverText(account: { email: string; password: string }, links: { app: string; dashboard: string }): string {
+  return [
+    `Dashboard: ${links.dashboard}`,
+    `Email: ${account.email}`,
+    `Password sementara: ${account.password}`,
+    '',
+    `Aplikasi booth (dibuka di tablet): ${links.app}`,
+    '',
+    'Saat pertama masuk ke dashboard, kamu diminta membuat password sendiri.',
+  ].join('\n');
+}
+
+/** The same for finance staff, who only ever open the payouts page. */
+export function financeHandoverText(account: { email: string; password: string }, links: { finance: string }): string {
+  return [
+    `Halaman keuangan: ${links.finance}`,
+    `Email: ${account.email}`,
+    `Password sementara: ${account.password}`,
+    '',
+    'Saat pertama masuk, kamu diminta membuat password sendiri.',
+  ].join('\n');
 }

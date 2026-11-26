@@ -37,11 +37,29 @@ async function authAdmin(env: AuthEnv, fetchFn: Fetch, method: 'POST' | 'PUT' | 
 
 const refuse = (error: string, message?: string): Reply => ({ status: 200, body: message ? { error, message } : { error } });
 
+/** What the database knows of the login behind an email address. */
+interface Existing {
+  user_id?: string;
+  superadmin?: boolean;
+  finance?: boolean;
+  franchise_id?: string | null;
+}
+
+/** Why an email cannot be given a new role, or '' when its login has none. One account, one role. */
+function takenBy(existing: Existing): string {
+  if (existing.superadmin) return 'Email itu adalah akun superadmin.';
+  if (existing.finance) return 'Email itu sudah menjadi akun keuangan.';
+  if (existing.franchise_id) return 'Email itu sudah menjadi admin sebuah franchise.';
+  return '';
+}
+
+const authError = (reply: { body: Record<string, unknown>; status: number }) => text(reply.body.msg) || text(reply.body.message) || String(reply.status);
+
 /**
  * admin, for the superadmin only: creates, re-keys and removes the accounts of
- * franchise admins, and deletes a franchise together with their logins. Passwords
- * are chosen by the superadmin and handed over; the dashboard then asks the
- * admin to choose their own.
+ * franchise admins and of finance staff, and deletes a franchise together with
+ * its admins' logins. Passwords are chosen by the superadmin and handed over;
+ * the dashboard then asks the account to choose its own.
  */
 export async function handleAdmin(input: Record<string, unknown>, bearer: string, env: AuthEnv, fetchFn: Fetch = fetch): Promise<Reply> {
   const caller = await callerOf(env, fetchFn, bearer);
@@ -60,10 +78,10 @@ export async function handleAdmin(input: Record<string, unknown>, bearer: string
     // Nothing is touched for a franchise that does not exist.
     if ((await rpc<boolean>(env, fetchFn, 'svc_can_access', { p_user: caller.id, p_franchise: franchiseId })) !== true) return refuse('not-found');
 
-    const existing = await rpc<{ user_id?: string; superadmin?: boolean; franchise_id?: string | null }>(env, fetchFn, 'svc_user_by_email', { p_email: email });
+    const existing = await rpc<Existing>(env, fetchFn, 'svc_user_by_email', { p_email: email });
     if (existing.user_id) {
-      if (existing.superadmin) return refuse('email-taken', 'Email itu adalah akun superadmin.');
-      if (existing.franchise_id) return refuse('email-taken', 'Email itu sudah menjadi admin sebuah franchise.');
+      const taken = takenBy(existing);
+      if (taken) return refuse('email-taken', taken);
       // A login without any role, e.g. left over from a deleted franchise. It is replaced by a new one rather than
       // taken over, so that nobody still signed in to the old login ends up inside this franchise.
       const gone = await authAdmin(env, fetchFn, 'DELETE', `users/${existing.user_id}`);
@@ -79,6 +97,52 @@ export async function handleAdmin(input: Record<string, unknown>, bearer: string
       return refuse(added.error === 'not-found' ? 'not-found' : 'email-taken');
     }
     return { status: 200, body: { ok: true, user_id: userId } };
+  }
+
+  // Finance staff: an account that only handles payouts. It belongs to no franchise and is no superadmin.
+  if (input.action === 'finance-add') {
+    const email = text(input.email).trim().toLowerCase();
+    if (!EMAIL.test(email) || email.length > 200) return refuse('email', 'Alamat email tidak sah.');
+    if (weak) return refuse('password', 'Password minimal 8 karakter.');
+
+    const existing = await rpc<Existing>(env, fetchFn, 'svc_user_by_email', { p_email: email });
+    if (existing.user_id) {
+      const taken = takenBy(existing);
+      if (taken) return refuse('email-taken', taken);
+      // A login without any role is replaced, as for a franchise admin: whoever still holds the old one stays outside.
+      const gone = await authAdmin(env, fetchFn, 'DELETE', `users/${existing.user_id}`);
+      if (!gone.ok) return refuse('auth', `Supabase Auth menolak menghapus akun lama: ${authError(gone)}`);
+    }
+    const made = await authAdmin(env, fetchFn, 'POST', 'users', { email, password, email_confirm: true });
+    const userId = text(made.body.id);
+    if (!made.ok || !UUID.test(userId)) return refuse('auth', `Supabase Auth menolak: ${authError(made)}`);
+    const added = await rpc<{ ok?: boolean; error?: string }>(env, fetchFn, 'svc_finance_add', { p_user: userId, p_temp: true });
+    if (!added.ok) {
+      await authAdmin(env, fetchFn, 'DELETE', `users/${userId}`).catch(() => undefined);
+      return refuse('email-taken');
+    }
+    return { status: 200, body: { ok: true, user_id: userId } };
+  }
+
+  if (input.action === 'finance-password' || input.action === 'finance-remove') {
+    const userId = text(input.user_id);
+    if (!UUID.test(userId)) return refuse('bad-request');
+    const target = await rpc<{ finance?: boolean; superadmin?: boolean; franchise_id?: string | null }>(env, fetchFn, 'svc_member_of', { p_user: userId });
+    // Only finance accounts are managed here; a superadmin or a franchise admin is never touched.
+    if (!target.finance || target.superadmin || target.franchise_id) return refuse('not-found');
+
+    if (input.action === 'finance-password') {
+      if (weak) return refuse('password', 'Password minimal 8 karakter.');
+      const updated = await authAdmin(env, fetchFn, 'PUT', `users/${userId}`, { password });
+      if (!updated.ok) return refuse('auth', `Supabase Auth menolak: ${authError(updated)}`);
+      await rpc(env, fetchFn, 'svc_finance_flag', { p_user: userId, p_temp: true });
+      return { status: 200, body: { ok: true } };
+    }
+
+    // The role goes first: even if deleting the login fails, the account can no longer see any payout.
+    await rpc(env, fetchFn, 'svc_finance_remove', { p_user: userId });
+    const deleted = await authAdmin(env, fetchFn, 'DELETE', `users/${userId}`);
+    return { status: 200, body: { ok: true, login_deleted: deleted.ok } };
   }
 
   if (input.action === 'franchise-delete') {
@@ -99,9 +163,9 @@ export async function handleAdmin(input: Record<string, unknown>, bearer: string
   if (input.action === 'member-password' || input.action === 'member-remove') {
     const userId = text(input.user_id);
     if (!UUID.test(userId)) return refuse('bad-request');
-    const target = await rpc<{ franchise_id?: string | null; superadmin?: boolean }>(env, fetchFn, 'svc_member_of', { p_user: userId });
-    // Only franchise admins are managed here; a superadmin account is never touched.
-    if (!target.franchise_id || target.superadmin) return refuse('not-found');
+    const target = await rpc<{ franchise_id?: string | null; superadmin?: boolean; finance?: boolean }>(env, fetchFn, 'svc_member_of', { p_user: userId });
+    // Only franchise admins are managed here; a superadmin or finance account is never touched.
+    if (!target.franchise_id || target.superadmin || target.finance) return refuse('not-found');
 
     if (input.action === 'member-password') {
       if (weak) return refuse('password', 'Password minimal 8 karakter.');

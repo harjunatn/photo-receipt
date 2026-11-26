@@ -139,6 +139,75 @@ export interface FranchiseStatus extends Franchise {
   state: SubscriptionState;
   /** Today's date as the server counts it. */
   today: string;
+  /** Titip saldo is on for this franchise, or it still has a wallet history: the Dompet menu shows. */
+  wallet?: boolean;
+}
+
+/** Where a franchise wants its wallet paid out to. */
+export interface BankAccount {
+  bank: string;
+  account_no: string;
+  holder: string;
+}
+
+/** A franchise's wallet: what came in through the platform's QRIS, what went to fees, what was paid out and what is left. */
+export interface WalletSummary {
+  enabled: boolean;
+  doku_fee: number;
+  platform_fee: number;
+  payout_days: number;
+  transactions: number;
+  gross: number;
+  fees_doku: number;
+  fees_platform: number;
+  paid_out: number;
+  /** Asked for, not yet transferred. */
+  pending: number;
+  available: number;
+  /** From when the next payout may be asked for; null when it may be asked for now. */
+  next_request_at: string | null;
+  bank: BankAccount | null;
+}
+
+/** One QRIS payment that went into the wallet. */
+export interface WalletEntry {
+  id: string;
+  paid_at: string | null;
+  device_name: string;
+  package_name: string | null;
+  amount: number;
+  fee_doku: number;
+  fee_platform: number;
+  partner_ref: string;
+}
+
+export type PayoutStatus = 'requested' | 'paid' | 'rejected';
+
+export interface PayoutRow {
+  id: string;
+  franchise_id: string;
+  /** Only in the platform owner's list. */
+  franchise?: string;
+  amount: number;
+  status: PayoutStatus;
+  bank: BankAccount;
+  requested_at: string;
+  settled_at: string | null;
+  /** The note of whoever settled it: a transfer reference, or why it was turned down. */
+  note: string | null;
+  /** Only in the platform's list: the email of who marked it as transferred or turned it down. */
+  settled_by?: string | null;
+}
+
+/** What the platform owner sees of every wallet. */
+export interface PayoutBoard {
+  requests: PayoutRow[];
+  wallets: { id: string; name: string; enabled: boolean; available: number; pending: number; paid_out: number }[];
+  /** The platform's own earnings from the fee per payment, so far. */
+  platform_fees: number;
+  doku_fees: number;
+  /** Money of the franchises still in the platform's account: not yet paid out. */
+  held: number;
 }
 
 /** One franchise as the platform owner sees it. */
@@ -160,6 +229,10 @@ export interface FranchiseRow extends Franchise {
   ai_monthly_limit: number;
   /** AI versions made this calendar month. */
   ai_month: number;
+  /** Titip saldo: this franchise's QRIS is paid into the platform's DOKU account. */
+  wallet_enabled: boolean;
+  /** What the platform currently owes it. */
+  wallet_available: number;
 }
 
 export interface MemberRow {
@@ -175,7 +248,7 @@ export interface DokuState {
   /** false while the platform owner has not set the master key that seals saved keys. */
   can_save: boolean;
   /** saved: this franchise's own keys · server: keys kept in the server's settings · none · unreadable: saved but cannot be opened. */
-  source: 'saved' | 'server' | 'none' | 'unreadable';
+  source: 'saved' | 'server' | 'platform' | 'none' | 'unreadable';
   doku: { clientId: string; merchantId: string; terminalId: string; postalCode: string; sandbox: boolean; publicKeyPem: string };
   has_keys: boolean;
   /** The address to enter at DOKU as Notification URL. */
@@ -222,7 +295,9 @@ export interface CustomFrameInput {
 export interface Account {
   email: string;
   superadmin: boolean;
-  /** The franchise this account administers; null for the platform owner. */
+  /** Finance staff: sees and settles payout requests, and nothing of any franchise's dashboard. */
+  finance: boolean;
+  /** The franchise this account administers; null for the platform owner and for finance staff. */
   franchise: Franchise | null;
   mustChangePassword: boolean;
 }
@@ -275,10 +350,23 @@ export interface OwnerApi {
   watchVoucherUses(onUse: (use: VoucherUse) => void, onLive: (live: boolean) => void): () => void;
   getOutlet(): Promise<unknown>;
   saveOutlet(config: OutletConfig): Promise<void>;
+  walletSummary(): Promise<WalletSummary>;
+  walletEntries(offset: number, limit: number): Promise<Page<WalletEntry>>;
+  walletPayouts(): Promise<PayoutRow[]>;
+  walletSaveBank(account: BankAccount): Promise<void>;
+  /** Asks the platform owner to pay out this much. */
+  walletRequest(amount: number): Promise<void>;
+}
+
+/** Settling payouts: all that finance staff can do, and part of what the platform owner can. */
+export interface PayoutApi {
+  payoutBoard(): Promise<PayoutBoard>;
+  /** Marks a payout request as transferred (paid) or turned down, with a note for the franchise. */
+  settlePayout(id: string, paid: boolean, note: string): Promise<void>;
 }
 
 /** What only the platform owner can do: franchises, their subscriptions and admin accounts, platform settings. */
-export interface AdminApi {
+export interface AdminApi extends PayoutApi {
   demo: boolean;
   listFranchises(): Promise<{ today: string; graceDays: number; franchises: FranchiseRow[] }>;
   /** Creates (id null) or changes a franchise; returns its id. */
@@ -290,6 +378,13 @@ export interface AdminApi {
   removeMember(userId: string): Promise<void>;
   getPlatform(): Promise<PlatformConfig>;
   savePlatform(config: PlatformConfig): Promise<void>;
+  /** Switches titip saldo on or off for one franchise. */
+  setFranchiseWallet(id: string, enabled: boolean): Promise<void>;
+  /** Finance staff: accounts that only open the payouts page. */
+  listFinance(): Promise<MemberRow[]>;
+  addFinance(email: string, password: string): Promise<void>;
+  setFinancePassword(userId: string, password: string): Promise<void>;
+  removeFinance(userId: string): Promise<void>;
   /** Switches the AI version of a photo on or off for one franchise, and sets its monthly limit. */
   setFranchiseAi(id: string, enabled: boolean, monthlyLimit: number): Promise<void>;
   /** With `check`, Google is also asked whether it accepts the key (free; no picture is made). */
@@ -342,6 +437,11 @@ const FUNCTION_ERRORS: Record<string, string> = {
   'email-taken': 'Email itu sudah dipakai akun lain.',
   'bad-request': 'Permintaan tidak lengkap.',
   server: 'Server sedang bermasalah. Coba lagi.',
+  // Titip saldo.
+  'no-bank': 'Isi rekening tujuan dulu.',
+  pending: 'Masih ada pengajuan yang belum ditransfer.',
+  'too-soon': 'Belum waktunya mengajukan pencairan lagi.',
+  amount: 'Jumlahnya harus lebih dari nol dan tidak melebihi saldo yang tersedia.',
 };
 
 /** Calls an Edge Function as the signed-in account. A refusal comes back as an Error with a readable message. */
@@ -368,8 +468,14 @@ function checked<T>(result: { data: unknown; error: { message: string } | null }
 
 /** Asks the database who the signed-in account is. */
 export async function loadAccount(db: SupabaseClient, email: string): Promise<Account> {
-  const me = checked<{ superadmin?: boolean; must_change_password?: boolean; franchise?: Franchise | null }>(await db.rpc('whoami'));
-  return { email, superadmin: me.superadmin === true, franchise: me.franchise ?? null, mustChangePassword: me.must_change_password === true };
+  const me = checked<{ superadmin?: boolean; finance?: boolean; must_change_password?: boolean; franchise?: Franchise | null }>(await db.rpc('whoami'));
+  return {
+    email,
+    superadmin: me.superadmin === true,
+    finance: me.finance === true,
+    franchise: me.franchise ?? null,
+    mustChangePassword: me.must_change_password === true,
+  };
 }
 
 /** Sets the password of the signed-in account and notes that it is no longer the one handed over. */
@@ -555,12 +661,73 @@ export function createSupabaseApi(db: SupabaseClient, account: Account, franchis
     async saveOutlet(config) {
       checked(await db.rpc('save_outlet', { p_franchise: fid, p_config: config }));
     },
+    async walletSummary() {
+      const raw = checked<WalletSummary>(await db.rpc('wallet_summary', { p_franchise: fid }));
+      // Sums come back from the database as numbers or as strings, depending on their size.
+      const sums = ['transactions', 'gross', 'fees_doku', 'fees_platform', 'paid_out', 'pending', 'available'] as const;
+      return { ...raw, ...Object.fromEntries(sums.map((key) => [key, Number(raw[key]) || 0])) };
+    },
+    async walletEntries(offset, limit) {
+      const result = await db
+        .from('payments')
+        .select('id,paid_at,device_name,package_name,amount,fee_doku,fee_platform,partner_ref', { count: 'exact' })
+        .eq('franchise_id', fid)
+        .eq('wallet', true)
+        .eq('status', 'paid')
+        .order('paid_at', { ascending: false })
+        .range(offset, offset + limit - 1);
+      return { rows: unwrap(result) as WalletEntry[], total: result.count ?? 0 };
+    },
+    async walletPayouts() {
+      return unwrap(
+        await db.from('payouts').select('id,franchise_id,amount,status,bank,requested_at,settled_at,note').eq('franchise_id', fid).order('requested_at', { ascending: false }).limit(100),
+      ) as PayoutRow[];
+    },
+    async walletSaveBank(account) {
+      checked(await db.rpc('wallet_save_bank', { p_franchise: fid, p_bank: account.bank, p_account_no: account.account_no, p_holder: account.holder }));
+    },
+    async walletRequest(amount) {
+      checked(await db.rpc('wallet_request', { p_franchise: fid, p_amount: amount }));
+    },
   };
+}
+
+/** The payouts page's data, for the platform owner and for finance staff alike. */
+function payoutApi(db: SupabaseClient): PayoutApi {
+  return {
+    async payoutBoard() {
+      const board = checked<PayoutBoard>(await db.rpc('admin_payouts'));
+      return {
+        requests: board.requests ?? [],
+        wallets: (board.wallets ?? []).map((wallet) => ({
+          ...wallet,
+          enabled: wallet.enabled === true,
+          available: Number(wallet.available) || 0,
+          pending: Number(wallet.pending) || 0,
+          paid_out: Number(wallet.paid_out) || 0,
+        })),
+        platform_fees: Number(board.platform_fees) || 0,
+        doku_fees: Number(board.doku_fees) || 0,
+        held: Number(board.held) || 0,
+      };
+    },
+    async settlePayout(id, paid, note) {
+      checked(await db.rpc('admin_payout_settle', { p_id: id, p_paid: paid, p_note: note }));
+    },
+  };
+}
+
+/** What finance staff get: the payouts, and the platform's name for the page's heading. */
+export type FinanceApi = PayoutApi & { getPlatform(): Promise<PlatformConfig> };
+
+export function createSupabaseFinanceApi(db: SupabaseClient): FinanceApi {
+  return { ...payoutApi(db), getPlatform: () => readPlatform(db) };
 }
 
 export function createSupabaseAdminApi(db: SupabaseClient): AdminApi {
   return {
     demo: false,
+    ...payoutApi(db),
     async listFranchises() {
       const reply = checked<{ today: string; grace_days: number; franchises: FranchiseRow[] }>(await db.rpc('admin_franchises'));
       return {
@@ -574,6 +741,8 @@ export function createSupabaseAdminApi(db: SupabaseClient): AdminApi {
           ai_enabled: row.ai_enabled === true,
           ai_monthly_limit: Number.isInteger(row.ai_monthly_limit) ? row.ai_monthly_limit : DEFAULT_AI_MONTHLY_LIMIT,
           ai_month: Number(row.ai_month) || 0,
+          wallet_enabled: row.wallet_enabled === true,
+          wallet_available: Number(row.wallet_available) || 0,
         })),
       };
     },
@@ -602,6 +771,21 @@ export function createSupabaseAdminApi(db: SupabaseClient): AdminApi {
     getPlatform: () => readPlatform(db),
     async savePlatform(config) {
       unwrap(await db.from('platform').update({ config }).eq('id', 1).select('id'));
+    },
+    async setFranchiseWallet(id, enabled) {
+      checked(await db.rpc('admin_franchise_wallet', { p_franchise: id, p_enabled: enabled }));
+    },
+    async listFinance() {
+      return checked<{ users: MemberRow[] }>(await db.rpc('admin_finance')).users;
+    },
+    async addFinance(email, password) {
+      await callFunction(db, 'admin', { action: 'finance-add', email, password });
+    },
+    async setFinancePassword(userId, password) {
+      await callFunction(db, 'admin', { action: 'finance-password', user_id: userId, password });
+    },
+    async removeFinance(userId) {
+      await callFunction(db, 'admin', { action: 'finance-remove', user_id: userId });
     },
     async setFranchiseAi(id, enabled, monthlyLimit) {
       checked(await db.rpc('admin_franchise_ai', { p_franchise: id, p_enabled: enabled, p_limit: monthlyLimit }));

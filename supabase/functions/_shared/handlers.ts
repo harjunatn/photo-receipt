@@ -84,13 +84,18 @@ export interface SavedDoku {
   doku?: { clientId?: unknown; merchantId?: unknown; terminalId?: unknown; postalCode?: unknown; sandbox?: unknown; sendValidity?: unknown; publicKeyPem?: unknown };
   sealed?: string | null;
   updated_at?: string;
+  /** Titip saldo: this franchise's QRIS is paid into the platform's own DOKU account. */
+  wallet?: boolean;
 }
 
-export type DokuSource = 'saved' | 'server' | 'none' | 'unreadable';
+export type DokuSource = 'saved' | 'server' | 'platform' | 'none' | 'unreadable';
 
 /** The DOKU keys to use for one franchise, and where they came from. */
 export async function resolveDoku(env: Env, fetchFn: Fetch, franchiseId: string): Promise<{ config: DokuConfig | null; source: DokuSource; saved: SavedDoku }> {
   const saved = (await rpc<SavedDoku | null>(env, fetchFn, 'svc_doku_get', { p_franchise: franchiseId })) ?? {};
+  // Titip saldo wins over any keys the franchise once saved: the platform owner chose where its money goes.
+  // The platform's account is the one whose keys sit in these functions' own secrets.
+  if (saved.wallet === true) return { config: env.doku, source: 'platform', saved };
   if (saved.sealed && saved.doku) {
     const opened = env.secretsKey ? await open(saved.sealed, env.secretsKey, franchiseId) : null;
     let secrets: { secretKey?: unknown; privateKeyPem?: unknown } = {};

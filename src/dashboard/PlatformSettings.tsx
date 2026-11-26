@@ -74,6 +74,43 @@ export function PlatformSettings({ admin }: AdminPageProps) {
         </section>
 
         <section class="panel">
+          <h2>Titip saldo</h2>
+          <p class="hint">
+            Potongan dari tiap QRIS yang dibayar lewat akun DOKU platform, sama untuk semua franchise titip saldo. Contoh: tamu membayar{' '}
+            {formatRupiah(25_000)}, franchise menerima <b>{formatRupiah(Math.max(0, 25_000 - draft.wallet.dokuFee - draft.wallet.platformFee))}</b> di
+            dompetnya.
+          </p>
+          <NumberField
+            label="Biaya DOKU per transaksi (Rp)"
+            hint="Yang dipotong DOKU dari tiap QRIS. Samakan dengan tarif di akun DOKU-mu."
+            value={draft.wallet.dokuFee}
+            min={0}
+            max={100_000}
+            onChange={(v) => setDraft({ ...draft, wallet: { ...draft.wallet, dokuFee: Math.round(v) } })}
+          />
+          <NumberField
+            label="Biaya platform per transaksi (Rp)"
+            hint="Pendapatanmu dari tiap QRIS titipan."
+            value={draft.wallet.platformFee}
+            min={0}
+            max={100_000}
+            onChange={(v) => setDraft({ ...draft, wallet: { ...draft.wallet, platformFee: Math.round(v) } })}
+          />
+          <NumberField
+            label="Jarak antar pencairan (hari)"
+            hint="Franchise bisa mengajukan pencairan sekali tiap sekian hari. Isi 0 kalau boleh kapan saja."
+            value={draft.wallet.payoutDays}
+            min={0}
+            max={365}
+            onChange={(v) => setDraft({ ...draft, wallet: { ...draft.wallet, payoutDays: Math.round(v) } })}
+          />
+          <p class="hint">
+            Perubahan biaya berlaku untuk QRIS yang dibuat sesudahnya; transaksi yang sudah ada tetap memakai biaya saat itu. Titip saldo
+            dinyalakan per franchise di menu <b>Franchise</b> → <b>Atur</b>, dan pengajuan pencairan masuk ke menu <b>Pencairan</b>.
+          </p>
+        </section>
+
+        <section class="panel">
           <h2>Langganan</h2>
           <NumberField
             label="Masa tenggang (hari)"

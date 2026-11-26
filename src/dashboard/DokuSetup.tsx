@@ -30,6 +30,7 @@ export async function generateKeyPair(): Promise<{ privateKeyPem: string; public
 const SOURCE_TAG: Record<DokuState['source'], { tag: string; label: string }> = {
   saved: { tag: 'ok', label: 'Kunci tersimpan' },
   server: { tag: 'ok', label: 'Memakai kunci di server' },
+  platform: { tag: 'ok', label: 'Titip saldo' },
   none: { tag: 'warn', label: 'Belum diisi' },
   unreadable: { tag: 'err', label: 'Kunci tidak bisa dibuka' },
 };
@@ -73,6 +74,23 @@ export function DokuSetup({ api }: { api: OwnerApi }) {
       <section class="panel span">
         <h2>Akun DOKU</h2>
         <LoadState load={load} />
+      </section>
+    );
+  }
+
+  // Titip saldo: nothing to fill in here, the QRIS runs on the platform's account.
+  if (state.source === 'platform') {
+    return (
+      <section class="panel span">
+        <div class="row">
+          <h2 class="grow">QRIS lewat platform</h2>
+          <span class="tag ok">Titip saldo</span>
+        </div>
+        <p class="hint">
+          Franchise ini tidak perlu akun DOKU sendiri. Uang QRIS tamu masuk ke akun platform; setelah dipotong biaya, bersihnya dicatat di
+          menu <b>Dompet</b> dan bisa diajukan untuk dicairkan.
+        </p>
+        {!state.has_keys && <p class="banner err">Akun DOKU platform belum siap, jadi QRIS otomatis belum bisa dipakai. Hubungi pemilik platform.</p>}
       </section>
     );
   }

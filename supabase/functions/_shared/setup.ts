@@ -37,7 +37,8 @@ export async function handleDokuSetup(input: Record<string, unknown>, bearer: st
       status: 200,
       body: {
         // Whether keys can be saved at all: the master key must be set once by the platform owner.
-        can_save: env.secretsKey !== '',
+        // A wallet franchise has nothing to fill in: its QRIS runs on the platform's account.
+        can_save: env.secretsKey !== '' && current.source !== 'platform',
         source: current.source,
         doku: shown,
         has_keys: current.config !== null,

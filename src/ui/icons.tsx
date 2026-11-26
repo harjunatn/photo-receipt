@@ -149,6 +149,28 @@ export function LayersIcon() {
   );
 }
 
+/** A wallet, for titip saldo. */
+export function WalletIcon() {
+  return (
+    <Line>
+      <path d="M4 7.5V6a2 2 0 0 1 2-2h11v3.5" />
+      <rect x="3" y="7.5" width="18" height="12.5" rx="2" />
+      <path d="M21 12h-4.5a2 2 0 0 0 0 4H21" />
+    </Line>
+  );
+}
+
+/** Money going out: a banknote with an arrow. */
+export function PayoutIcon() {
+  return (
+    <Line>
+      <rect x="3" y="5" width="18" height="10" rx="2" />
+      <circle cx="12" cy="10" r="2" />
+      <path d="M12 18v3M9 19l3 2.5 3-2.5" />
+    </Line>
+  );
+}
+
 export function ChevronDownIcon() {
   return (
     <Line size={16}>

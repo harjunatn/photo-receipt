@@ -5,8 +5,8 @@
 -- untuk memulai dari nol. Sesudahnya jalankan supabase/schema.sql.
 
 drop table if exists
-  public.ai_edits, public.frames, public.shares, public.vouchers, public.transactions, public.payments, public.devices,
-  public.franchise_secrets, public.members, public.franchises, public.superadmins, public.platform,
+  public.payouts, public.wallet_banks, public.ai_edits, public.frames, public.shares, public.vouchers, public.transactions, public.payments, public.devices,
+  public.franchise_secrets, public.finance_users, public.members, public.franchises, public.superadmins, public.platform,
   public.outlet, public.owners
   cascade;
 

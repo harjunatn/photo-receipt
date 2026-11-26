@@ -119,8 +119,8 @@ export function OutletSettings({ api }: PageProps) {
               {draft.payment.qrisAuto ? (
                 <p class="hint">
                   Tablet membuat kode QR khusus untuk tiap sesi dengan nominal yang sudah terisi, dan sesi foto mulai sendiri
-                  begitu pembayaran masuk — tanpa petugas. Membutuhkan internet di tablet dan kunci akun DOKU franchise ini,
-                  yang diisi di bagian <b>Akun DOKU</b> di bawah.
+                  begitu pembayaran masuk — tanpa petugas. Membutuhkan internet di tablet dan akun DOKU: kunci milik franchise ini
+                  (diisi di bagian <b>Akun DOKU</b> di bawah), atau titip saldo lewat akun platform.
                 </p>
               ) : (
                 <>

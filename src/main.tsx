@@ -15,7 +15,8 @@ const root = document.getElementById('app')!;
 
 /** One address serves three apps: the booth, the owner's dashboard, and the guest's download page. */
 type Mode = 'booth' | 'dashboard' | 'share';
-const modeOf = (hash: string): Mode => (hash.startsWith('#dashboard') ? 'dashboard' : hash.startsWith('#s/') ? 'share' : 'booth');
+// "#finance" is the dashboard too: the page finance staff sign in at, where they only get the payouts.
+const modeOf = (hash: string): Mode => (hash.startsWith('#dashboard') || hash.startsWith('#finance') ? 'dashboard' : hash.startsWith('#s/') ? 'share' : 'booth');
 const mode = modeOf(location.hash);
 
 window.addEventListener('hashchange', () => {

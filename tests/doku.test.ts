@@ -44,6 +44,8 @@ function world() {
     expireRefused: false,
     /** What the franchise saved on the setup page; null while it has saved nothing. */
     saved: null as null | { doku: Record<string, unknown>; sealed: string; updated_at: string },
+    /** Titip saldo: the platform owner switched this franchise to the platform's own DOKU account. */
+    wallet: false,
   };
   let token = 0;
 
@@ -61,7 +63,7 @@ function world() {
         state.payment = { id: 'pay-1', franchise_id: FRANCHISE, status: 'pending', amount: 15000, partner_ref: 'FS1', provider_ref: null, expires_at: null, created_at: new Date(0).toISOString() };
         return reply(200, { id: 'pay-1', amount: 15000, partner_ref: 'FS1', franchise_id: FRANCHISE });
       }
-      if (name === 'svc_doku_get') return reply(200, args.p_franchise === FRANCHISE && state.saved ? state.saved : {});
+      if (name === 'svc_doku_get') return reply(200, { ...(args.p_franchise === FRANCHISE && state.saved ? state.saved : {}), wallet: state.wallet });
       if (name === 'svc_doku_save') {
         state.saved = { doku: args.p_doku, sealed: args.p_sealed, updated_at: clock.toISOString() };
         return new Response('', { status: 200 });
@@ -550,6 +552,29 @@ describe('doku-setup', () => {
     expect((await handleDokuSetup({ action: 'get', franchise_id: FRANCHISE }, 'jwt-admin', otherMaster, fetchFn, now)).body).toMatchObject({ source: 'unreadable', has_keys: false });
     later();
     expect((await handleCreate({ token: 'token-tablet', package_id: 'a' }, otherMaster, fetchFn, now)).body.error).toBe('not-configured');
+  });
+
+  it("sends a wallet franchise's QRIS through the platform's account, whatever keys it once saved", async () => {
+    const { state, fetchFn } = world();
+    // A franchise that is not the one named for the server keys, with none of its own: no QRIS.
+    const settings = env({ DOKU_ENV_FRANCHISE: '' });
+    const get = async (using = settings) => (await handleDokuSetup({ action: 'get', franchise_id: FRANCHISE }, 'jwt-super', using, fetchFn, now)).body;
+    expect(await get()).toMatchObject({ source: 'none', has_keys: false, can_save: true });
+
+    // Titip saldo: the platform's keys are used, and there is nothing for the franchise to fill in.
+    state.wallet = true;
+    expect(await get()).toMatchObject({ source: 'platform', has_keys: true, can_save: false });
+    // Also when it saved keys of its own earlier: the platform owner decides where its money goes.
+    await handleDokuSetup({ action: 'save', ...fields, terminal_id: 'C09' }, 'jwt-super', settings, fetchFn, now);
+    expect(await get()).toMatchObject({ source: 'platform' });
+
+    later();
+    const made = await handleCreate({ token: 'token-tablet', package_id: 'a' }, settings, fetchFn, now);
+    expect(made.body.error).toBeUndefined();
+    expect(state.generated).toHaveLength(1);
+
+    // Without the platform's keys in place, the franchise is told so rather than given a form.
+    expect(await get(env({ DOKU_ENV_FRANCHISE: '', DOKU_CLIENT_ID: '' }))).toMatchObject({ source: 'platform', has_keys: false });
   });
 
   it('lets the first franchise keep using the server keys until it saves or after it clears its own', async () => {

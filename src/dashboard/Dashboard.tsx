@@ -5,16 +5,18 @@ import { cloudConfigured, DEFAULT_PLATFORM } from '../lib/cloud/shared';
 import { useStore } from '../lib/store';
 import { applyUpdate, updateReady } from '../lib/update';
 import { ToastHost } from '../ui/components';
-import { BoothIcon, GalleryIcon, HistoryIcon, HomeIcon, LayersIcon, ScanIcon, SlidersIcon, StoreIcon, TicketIcon } from '../ui/icons';
+import { BoothIcon, GalleryIcon, HistoryIcon, HomeIcon, LayersIcon, PayoutIcon, ScanIcon, SlidersIcon, StoreIcon, TicketIcon, WalletIcon } from '../ui/icons';
 import {
   changeOwnPassword,
   NOT_FOUND,
   createSupabaseAdminApi,
   createSupabaseApi,
+  createSupabaseFinanceApi,
   getClient,
   loadAccount,
   type Account,
   type AdminApi,
+  type FinanceApi,
   type Franchise,
   type FranchiseStatus,
   type OwnerApi,
@@ -26,10 +28,12 @@ import { Franchises } from './Franchises';
 import { Overview } from './Overview';
 import { OutletSettings } from './OutletSettings';
 import { Payments } from './Payments';
+import { Payouts, PayoutsPage } from './Payouts';
 import { PlatformSettings } from './PlatformSettings';
 import { Transactions } from './Transactions';
 import { dateOnly, describe, useDismiss, useLoad } from './ui';
 import { Vouchers } from './Vouchers';
+import { Wallet } from './Wallet';
 
 /** Pages about one franchise. The platform owner picks which franchise they look at. */
 const FRANCHISE_PAGES = [
@@ -37,6 +41,8 @@ const FRANCHISE_PAGES = [
   { id: 'perangkat', label: 'Booth Saya', icon: BoothIcon, view: Devices },
   { id: 'transaksi', label: 'Riwayat Sesi', icon: HistoryIcon, view: Transactions },
   { id: 'pembayaran', label: 'Kasir QRIS', icon: ScanIcon, view: Payments },
+  // Only in the menu of a franchise that takes QRIS through the platform's account (titip saldo).
+  { id: 'dompet', label: 'Dompet', icon: WalletIcon, view: Wallet },
   { id: 'voucher', label: 'Kode Promo', icon: TicketIcon, view: Vouchers },
   { id: 'frame', label: 'Galeri Frame', icon: GalleryIcon, view: FrameSets },
   { id: 'pengaturan', label: 'Pengaturan', icon: SlidersIcon, view: OutletSettings },
@@ -45,6 +51,7 @@ const FRANCHISE_PAGES = [
 /** Pages only the platform owner has. */
 const ADMIN_PAGES = [
   { id: 'franchise', label: 'Franchise', icon: StoreIcon, view: Franchises },
+  { id: 'pencairan', label: 'Pencairan', icon: PayoutIcon, view: PayoutsPage },
   { id: 'platform', label: 'Pengaturan platform', icon: LayersIcon, view: PlatformSettings },
 ] as const;
 
@@ -62,13 +69,19 @@ export interface AdminPageProps {
   open: (franchise: Franchise, page?: PageId) => void;
   /** Called after a franchise was renamed or deleted, so the menu follows. */
   changed: (franchise: Franchise | null, id: string) => void;
+  /** Called after a payout request was settled, so the count in the menu follows. */
+  recount: () => void;
 }
 
 type Phase = 'loading' | 'setup' | 'login' | 'denied' | 'ready';
 
 const CHOSEN_KEY = 'dashboard.franchise';
 
+/** Finance staff sign in at "#finance"; for the platform owner that address is simply the payouts page. */
+const atFinance = () => location.hash.startsWith('#finance');
+
 function pageFromHash(): PageId | null {
+  if (atFinance()) return 'pencairan';
   const wanted = location.hash.split('/')[1];
   return [...FRANCHISE_PAGES, ...ADMIN_PAGES].find((page) => page.id === wanted)?.id ?? null;
 }
@@ -98,7 +111,8 @@ export function Dashboard() {
 
   useEffect(() => {
     if (demoData) {
-      setAccount(demoData.account);
+      // The example opened at "#finance" shows what finance staff see.
+      setAccount(atFinance() ? demoData.financeAccount : demoData.account);
       setPhase('ready');
       return;
     }
@@ -118,7 +132,7 @@ export function Dashboard() {
       try {
         const me = await loadAccount(db, email);
         setAccount(me);
-        setPhase(me.superadmin || me.franchise ? 'ready' : 'denied');
+        setPhase(me.superadmin || me.franchise || me.finance ? 'ready' : 'denied');
       } catch {
         setPhase('denied');
       }
@@ -141,6 +155,13 @@ export function Dashboard() {
     return demoData ? demoData.apiFor(franchise) : createSupabaseApi(getClient(), account, franchise);
   }, [account, franchise?.id, franchise?.name, demoData]);
 
+  // Finance staff get the payouts and nothing else: no franchise is ever opened for them.
+  const financeOnly = account !== null && account.finance && !account.superadmin;
+  const financeApi = useMemo<FinanceApi | null>(
+    () => (!financeOnly ? null : demoData ? demoData.admin : createSupabaseFinanceApi(getClient())),
+    [financeOnly, demoData],
+  );
+
   const forget = () => {
     setChosen(null);
     try {
@@ -152,18 +173,29 @@ export function Dashboard() {
 
   // The platform's name heads the menu; it is the owner's to change.
   useEffect(() => {
-    const source = admin ?? api;
+    const source = admin ?? financeApi ?? api;
     if (!source) return;
     void source
       .getPlatform()
       .then((platform) => setPlatformName(platform.name))
       .catch(() => undefined);
-  }, [admin, api]);
+  }, [admin, financeApi, api]);
 
   // The browser tab says whose dashboard this is.
   useEffect(() => {
-    document.title = franchise ? `${franchise.name} · ${platformName}` : `Dashboard · ${platformName}`;
-  }, [franchise?.name, platformName]);
+    document.title = financeOnly ? `Keuangan · ${platformName}` : franchise ? `${franchise.name} · ${platformName}` : `Dashboard · ${platformName}`;
+  }, [franchise?.name, platformName, financeOnly]);
+
+  // Wherever finance staff signed in or typed, the address says where they are: their one page.
+  useEffect(() => {
+    if (!financeOnly) return;
+    const stay = () => {
+      if (!atFinance()) history.replaceState(null, '', `${location.pathname}${location.search}#finance`);
+    };
+    stay();
+    window.addEventListener('hashchange', stay);
+    return () => window.removeEventListener('hashchange', stay);
+  }, [financeOnly]);
 
   const status = useLoad<FranchiseStatus | null>(async () => {
     if (!api) return null;
@@ -175,6 +207,17 @@ export function Dashboard() {
       throw cause;
     }
   }, [api]);
+
+  // Payout requests waiting for the platform owner's transfer, counted beside the menu entry. Asked again on every page change.
+  const waiting = useLoad<number>(async () => {
+    const desk = admin ?? financeApi;
+    if (!desk) return 0;
+    try {
+      return (await desk.payoutBoard()).requests.filter((row) => row.status === 'requested').length;
+    } catch {
+      return 0;
+    }
+  }, [admin, financeApi, page]);
 
   // Typed addresses and the browser's back button change the page too.
   useEffect(() => {
@@ -261,17 +304,54 @@ export function Dashboard() {
     return <NewPassword email={account.email} onDone={() => setAccount({ ...account, mustChangePassword: false })} />;
   }
 
+  const signOut = () => {
+    if (demoData) location.assign('./#dashboard');
+    else void getClient().auth.signOut();
+  };
+
+  if (financeApi) {
+    return (
+      <div class="dash">
+        <nav class="dash-nav">
+          <div class="dash-brand">
+            <b>{platformName}</b>
+            <span class="pill">Keuangan</span>
+          </div>
+          <div class="dash-links">
+            <span class="dash-group">Keuangan</span>
+            <button class="on">
+              <PayoutIcon />
+              Pencairan
+              {(waiting.data ?? 0) > 0 && (
+                <span class="dash-count" aria-label={`${waiting.data} pengajuan menunggu`}>
+                  {waiting.data}
+                </span>
+              )}
+            </button>
+          </div>
+        </nav>
+        <main class="dash-main">
+          <header class="dash-top">
+            <div class="dash-crumb">
+              <span>Keuangan</span>
+              <span>Pencairan</span>
+            </div>
+            <AccountMenu email={account.email} leave={demoData ? 'Tutup contoh' : 'Keluar'} onLeave={signOut} />
+          </header>
+          {demoData && <p class="banner">Ini data contoh, dilihat sebagai petugas keuangan. Tidak ada yang tersimpan.</p>}
+          <Payouts api={financeApi} onSettled={waiting.refresh} />
+        </main>
+        <ToastHost />
+      </div>
+    );
+  }
+
   // Without a franchise picked, the platform owner starts at the list of franchises.
   const fallback: PageId = admin && !franchise ? 'franchise' : 'ringkasan';
   const wanted = page ?? fallback;
   const adminPage = ADMIN_PAGES.find((entry) => entry.id === wanted);
   const franchisePage = FRANCHISE_PAGES.find((entry) => entry.id === wanted);
   const current: PageId = adminPage && !admin ? 'ringkasan' : wanted;
-
-  const signOut = () => {
-    if (demoData) location.assign('./#dashboard');
-    else void getClient().auth.signOut();
-  };
 
   return (
     <div class="dash">
@@ -288,6 +368,11 @@ export function Dashboard() {
                 <button key={entry.id} class={entry.id === current ? 'on' : ''} onClick={() => go(entry.id)}>
                   <entry.icon />
                   {entry.label}
+                  {entry.id === 'pencairan' && (waiting.data ?? 0) > 0 && (
+                    <span class="dash-count" aria-label={`${waiting.data} pengajuan menunggu`}>
+                      {waiting.data}
+                    </span>
+                  )}
                 </button>
               ))}
             </>
@@ -297,7 +382,7 @@ export function Dashboard() {
               <span class="dash-group" title={franchise.name}>
                 {franchise.name}
               </span>
-              {FRANCHISE_PAGES.map((entry) => (
+              {FRANCHISE_PAGES.filter((entry) => entry.id !== 'dompet' || status.data?.wallet === true || current === 'dompet').map((entry) => (
                 <button key={entry.id} class={entry.id === current ? 'on' : ''} onClick={() => go(entry.id)}>
                   <entry.icon />
                   {entry.label}
@@ -329,6 +414,7 @@ export function Dashboard() {
             changed={(next, id) => {
               if (franchise?.id === id) choose(next);
             }}
+            recount={waiting.refresh}
           />
         ) : api && franchise ? (
           <>
@@ -437,7 +523,7 @@ function Login() {
   return (
     <div class="dash-gate">
       <form class="panel" onSubmit={(event) => void submit(event)}>
-        <span class="pill">Dashboard</span>
+        <span class="pill">{atFinance() ? 'Keuangan' : 'Dashboard'}</span>
         <h1 class="heading small">Masuk</h1>
         <label class="field">
           <span>Email</span>
@@ -457,7 +543,7 @@ function Login() {
         <button class="btn small primary" disabled={busy}>
           {busy ? 'Memeriksa…' : 'Masuk'}
         </button>
-        <p class="hint">Akun admin franchise dibuatkan oleh pemilik platform. Lupa password? Minta password baru ke pemilik platform.</p>
+        <p class="hint">Akun dibuatkan oleh pemilik platform. Lupa password? Minta password baru ke pemilik platform.</p>
       </form>
     </div>
   );

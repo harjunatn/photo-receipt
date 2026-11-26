@@ -162,7 +162,12 @@ describe('platform settings', () => {
       watermark: '',
       receiptLine: '@jepretin.id',
       graceDays: 0,
+      wallet: DEFAULT_PLATFORM.wallet,
     });
+    // Titip saldo: DOKU's fee, the platform's fee and the days between payouts, each a whole number or its default.
+    expect(DEFAULT_PLATFORM.wallet).toEqual({ dokuFee: 500, platformFee: 200, payoutDays: 7 });
+    expect(completePlatform({ wallet: { dokuFee: 700, platformFee: 0, payoutDays: 14 } }).wallet).toEqual({ dokuFee: 700, platformFee: 0, payoutDays: 14 });
+    expect(completePlatform({ wallet: { dokuFee: -1, platformFee: 199.5, payoutDays: '3' } }).wallet).toEqual(DEFAULT_PLATFORM.wallet);
     // The AI edit is switched on per franchise now; nothing of it is kept among the platform's settings.
     expect(completePlatform({ ai: { enabled: true, monthlyLimit: 50 } })).toEqual(DEFAULT_PLATFORM);
   });
@@ -188,5 +193,35 @@ describe('a new franchise', () => {
     const chosen = structuredClone(DEFAULT_SETTINGS);
     chosen.receipt.title = 'HELLO VIOREN';
     expect(applyRemote(chosen, { brand: { title: 'Booth Budi' } }, null).receipt.title).toBe('HELLO VIOREN');
+  });
+});
+
+describe('handing a new admin their account', () => {
+  it('gives the dashboard link, the account and the booth app link in one text to paste', async () => {
+    const { appLinks, handoverText } = await import('../src/lib/cloud/shared');
+    // The links follow wherever the app itself is opened, without the query of the page they were made on.
+    const links = appLinks({ origin: 'https://booth.contoh.id', pathname: '/' });
+    expect(links).toEqual({ app: 'https://booth.contoh.id/', dashboard: 'https://booth.contoh.id/#dashboard', finance: 'https://booth.contoh.id/#finance' });
+    expect(appLinks({ origin: 'https://contoh.id', pathname: '/booth/' }).dashboard).toBe('https://contoh.id/booth/#dashboard');
+    expect(handoverText({ email: 'budi@contoh.id', password: 'abcd-efgh-234' }, links)).toBe(
+      [
+        'Dashboard: https://booth.contoh.id/#dashboard',
+        'Email: budi@contoh.id',
+        'Password sementara: abcd-efgh-234',
+        '',
+        'Aplikasi booth (dibuka di tablet): https://booth.contoh.id/',
+        '',
+        'Saat pertama masuk ke dashboard, kamu diminta membuat password sendiri.',
+      ].join('\n'),
+    );
+  });
+
+  it('gives finance staff only the page they work on', async () => {
+    const { appLinks, financeHandoverText } = await import('../src/lib/cloud/shared');
+    const text = financeHandoverText({ email: 'rina@contoh.id', password: 'abcd-efgh-234' }, appLinks({ origin: 'https://booth.contoh.id', pathname: '/' }));
+    expect(text).toBe(
+      ['Halaman keuangan: https://booth.contoh.id/#finance', 'Email: rina@contoh.id', 'Password sementara: abcd-efgh-234', '', 'Saat pertama masuk, kamu diminta membuat password sendiri.'].join('\n'),
+    );
+    expect(text).not.toContain('#dashboard');
   });
 });
